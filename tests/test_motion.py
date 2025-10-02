@@ -12,6 +12,7 @@ from config import Config
 from camera_monitor.camera_base import CameraBase
 from camera_monitor.motion_detector import MotionDetector
 from camera_monitor.recorder import MediaRecorder
+from utils import get_timestamp  # ← 추가
 
 print("=" * 50)
 print("🚨 움직임 감지 테스트")

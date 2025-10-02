@@ -15,6 +15,10 @@ class Config:
     def _load_default(self):
         """기본 설정"""
         return {
+            "system": {
+                "timezone": "Asia/Seoul",
+                "log_timezone": True
+            },
             "camera": {
                 "index": 0,
                 "resolution": {"width": 640, "height": 360},
@@ -92,3 +96,11 @@ class Config:
                 self._merge(base[key], value)
             else:
                 base[key] = value
+    def get_timezone(self):
+        """현재 설정된 timezone 반환"""
+        return self.get('system.timezone', 'Asia/Seoul')
+    
+    def set_timezone(self, timezone):
+        """timezone 설정"""
+        self.set('system.timezone', timezone)
+        return self.save()

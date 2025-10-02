@@ -17,6 +17,7 @@ from config import Config
 from camera_monitor.camera_base import CameraBase
 from camera_monitor.motion_detector import MotionDetector
 from camera_monitor.recorder import MediaRecorder
+from utils import get_timestamp  # ← 추가
 
 # 전역 변수
 is_running = True
@@ -36,7 +37,7 @@ def signal_handler(sig, frame):
 
 def log(message, level="INFO"):
     """로그 출력"""
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    timestamp = get_timestamp('%Y-%m-%d %H:%M:%S')  # ← 수정
     print(f"[{timestamp}] [{level}] {message}")
 
 def print_stats():
@@ -109,11 +110,11 @@ def main():
     # 움직임 감지 콜백
     def on_motion(frame):
         stats['motion_detected'] += 1
-        timestamp = datetime.datetime.now().strftime('%H:%M:%S')
+        timestamp = get_timestamp('%H:%M:%S')  # ← 수정
         
         # 자동 스크린샷
         if config.get('screenshot.auto_capture_on_motion'):
-            filename = f"motion_{stats['motion_detected']:04d}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+            filename = f"motion_{stats['motion_detected']:04d}_{get_timestamp()}.jpg"  # ← 수정
             recorder.take_screenshot(frame, filename)
             stats['screenshots_saved'] += 1
             log(f"🚨 움직임 감지 #{stats['motion_detected']} → 스크린샷 저장", "MOTION")
@@ -128,8 +129,7 @@ def main():
     
     # 5. 자동 녹화 시작 여부
     if config.get('recording.auto_start'):
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"auto_recording_{timestamp}.avi"
+        filename = f"auto_recording_{get_timestamp()}.avi"  # ← 수정
         if recorder.start_recording(filename, codec=config.get('recording.codec')):
             stats['recording_count'] += 1
             log(f"🔴 자동 녹화 시작: {filename}", "RECORDING")

@@ -12,6 +12,8 @@ from typing import Optional, Callable
 from camera_monitor.camera_base import CameraBase
 from camera_monitor.recorder import MediaRecorder
 from camera_monitor.motion_detector import MotionDetector
+from utils import get_timestamp  # ← 추가
+
 
 
 def draw_text_with_background(img: np.ndarray, text: str, pos: tuple,
@@ -134,7 +136,7 @@ class CameraMonitor:
             
             # FPS 계산 (30프레임마다)
             fps_counter += 1
-            if fps_counter >= 30:
+            if fps_counter  >= 30:
                 current_time = time.time()
                 elapsed = current_time - last_fps_time
                 if elapsed > 0:

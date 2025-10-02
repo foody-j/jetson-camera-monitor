@@ -1,4 +1,8 @@
 {
+  "system": {
+    "timezone": "Asia/Seoul",
+    "log_timezone": true
+  },
   "camera": {
     "index": 0,
     "resolution": {

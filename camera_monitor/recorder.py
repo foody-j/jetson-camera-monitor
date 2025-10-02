@@ -9,10 +9,9 @@ import datetime
 import numpy as np
 from typing import Optional
 from camera_monitor.camera_base import CameraBase
+from utils import get_timestamp  # ← 추가
 
-def get_timestamp(format_str: str = "%Y%m%d_%H%M%S") -> str:
-    """현재 시간 문자열 반환"""
-    return datetime.datetime.now().strftime(format_str)
+
 
 
 def create_directories(*dirs) -> None:
