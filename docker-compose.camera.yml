@@ -1,0 +1,6 @@
+# docker-compose.camera.yml
+
+services:
+  ai-dev: # 반드시 원래 서비스 이름과 같아야 합니다.
+    devices:
+      - /dev/video0:/dev/video0

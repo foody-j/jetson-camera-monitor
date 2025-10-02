@@ -1,0 +1,26 @@
+{
+  "camera": {
+    "index": 0,
+    "resolution": {
+      "width": 640,
+      "height": 360
+    },
+    "fps": 120,
+    "name": "Jetson Camera"
+  },
+  "recording": {
+    "codec": "MJPG",
+    "output_dir": "output/recordings",
+    "auto_start": true
+  },
+  "motion_detection": {
+    "enabled": true,
+    "threshold": 1000,
+    "min_area": 500
+  },
+  "screenshot": {
+    "output_dir": "output/screenshots",
+    "format": "jpg",
+    "auto_capture_on_motion": true
+  }
+}
