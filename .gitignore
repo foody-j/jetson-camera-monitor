@@ -38,3 +38,5 @@ Thumbs.db
 
 # Docker
 *.pid
+# Frying AI dataset images (but keep metadata)
+frying_dataset/*/images/

@@ -1,0 +1,330 @@
+{
+  "session_id": "potato_20251027_141132",
+  "food_type": "potato",
+  "start_time": 1761541892.934177,
+  "end_time": 1761541921.9641697,
+  "completion_time": null,
+  "probe_temp": null,
+  "frames": [
+    {
+      "timestamp": 1761541893.3928087,
+      "image_path": "potato_20251027_141132/images/t0000.jpg",
+      "sensor_data": {
+        "timestamp": 1761541893.3872063,
+        "oil_temp": 169.70065619887086,
+        "fryer_temp": 175.10331301963353,
+        "elapsed_time": 0.4529759883880615
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541893.94301,
+      "image_path": "potato_20251027_141132/images/t0001.jpg",
+      "sensor_data": {
+        "timestamp": 1761541893.9397228,
+        "oil_temp": 169.0450039121615,
+        "fryer_temp": 174.44217952324584,
+        "elapsed_time": 1.0054917335510254
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541894.9460502,
+      "image_path": "potato_20251027_141132/images/t0002.jpg",
+      "sensor_data": {
+        "timestamp": 1761541894.941142,
+        "oil_temp": 170.08527101614268,
+        "fryer_temp": 174.86418807922257,
+        "elapsed_time": 2.006911277770996
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541895.9486806,
+      "image_path": "potato_20251027_141132/images/t0003.jpg",
+      "sensor_data": {
+        "timestamp": 1761541895.943518,
+        "oil_temp": 170.03017809300442,
+        "fryer_temp": 174.9453497972171,
+        "elapsed_time": 3.009287118911743
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541896.9504778,
+      "image_path": "potato_20251027_141132/images/t0004.jpg",
+      "sensor_data": {
+        "timestamp": 1761541896.944059,
+        "oil_temp": 169.91976808396905,
+        "fryer_temp": 175.0264476152038,
+        "elapsed_time": 4.009828329086304
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541897.9512415,
+      "image_path": "potato_20251027_141132/images/t0005.jpg",
+      "sensor_data": {
+        "timestamp": 1761541897.9459069,
+        "oil_temp": 170.39254092868185,
+        "fryer_temp": 175.3180442469669,
+        "elapsed_time": 5.011676788330078
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541898.951827,
+      "image_path": "potato_20251027_141132/images/t0006.jpg",
+      "sensor_data": {
+        "timestamp": 1761541898.9463089,
+        "oil_temp": 169.46480025968353,
+        "fryer_temp": 174.49148586192157,
+        "elapsed_time": 6.012077808380127
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541899.9525285,
+      "image_path": "potato_20251027_141132/images/t0007.jpg",
+      "sensor_data": {
+        "timestamp": 1761541899.9473166,
+        "oil_temp": 170.10688800638843,
+        "fryer_temp": 175.10240456285888,
+        "elapsed_time": 7.013085842132568
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541900.9555445,
+      "image_path": "potato_20251027_141132/images/t0008.jpg",
+      "sensor_data": {
+        "timestamp": 1761541900.949255,
+        "oil_temp": 169.32686940767405,
+        "fryer_temp": 174.6061469121326,
+        "elapsed_time": 8.015024185180664
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541901.9566455,
+      "image_path": "potato_20251027_141132/images/t0009.jpg",
+      "sensor_data": {
+        "timestamp": 1761541901.9503183,
+        "oil_temp": 169.116791226056,
+        "fryer_temp": 174.57495111866794,
+        "elapsed_time": 9.016087532043457
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541902.9516454,
+      "image_path": "potato_20251027_141132/images/t0010.jpg",
+      "sensor_data": {
+        "timestamp": 1761541902.9485133,
+        "oil_temp": 169.21623574501663,
+        "fryer_temp": 174.7293756518747,
+        "elapsed_time": 10.014281988143921
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541903.9531152,
+      "image_path": "potato_20251027_141132/images/t0011.jpg",
+      "sensor_data": {
+        "timestamp": 1761541903.9496999,
+        "oil_temp": 169.38219895434204,
+        "fryer_temp": 175.3597072605318,
+        "elapsed_time": 11.01546859741211
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541904.9535599,
+      "image_path": "potato_20251027_141132/images/t0012.jpg",
+      "sensor_data": {
+        "timestamp": 1761541904.9506104,
+        "oil_temp": 169.2141200399864,
+        "fryer_temp": 174.9411296213898,
+        "elapsed_time": 12.016379117965698
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541905.960999,
+      "image_path": "potato_20251027_141132/images/t0013.jpg",
+      "sensor_data": {
+        "timestamp": 1761541905.9549906,
+        "oil_temp": 168.5964913376441,
+        "fryer_temp": 175.29247188607536,
+        "elapsed_time": 13.020760297775269
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541906.9560118,
+      "image_path": "potato_20251027_141132/images/t0014.jpg",
+      "sensor_data": {
+        "timestamp": 1761541906.9527023,
+        "oil_temp": 169.75974328888344,
+        "fryer_temp": 174.61313728191163,
+        "elapsed_time": 14.018471002578735
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541907.957263,
+      "image_path": "potato_20251027_141132/images/t0015.jpg",
+      "sensor_data": {
+        "timestamp": 1761541907.9541686,
+        "oil_temp": 169.38038310187954,
+        "fryer_temp": 174.1869328864157,
+        "elapsed_time": 15.01993727684021
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541908.9592738,
+      "image_path": "potato_20251027_141132/images/t0016.jpg",
+      "sensor_data": {
+        "timestamp": 1761541908.9557855,
+        "oil_temp": 168.7380733436184,
+        "fryer_temp": 174.6110120306616,
+        "elapsed_time": 16.021554231643677
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541909.9598546,
+      "image_path": "potato_20251027_141132/images/t0017.jpg",
+      "sensor_data": {
+        "timestamp": 1761541909.9565732,
+        "oil_temp": 168.89715417525272,
+        "fryer_temp": 174.3385540570227,
+        "elapsed_time": 17.022342205047607
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541910.965511,
+      "image_path": "potato_20251027_141132/images/t0018.jpg",
+      "sensor_data": {
+        "timestamp": 1761541910.9600194,
+        "oil_temp": 169.02059170687724,
+        "fryer_temp": 174.12475040094847,
+        "elapsed_time": 18.02578902244568
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541911.9604194,
+      "image_path": "potato_20251027_141132/images/t0019.jpg",
+      "sensor_data": {
+        "timestamp": 1761541911.9574614,
+        "oil_temp": 169.4212088065463,
+        "fryer_temp": 174.831719054514,
+        "elapsed_time": 19.023229837417603
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541912.961742,
+      "image_path": "potato_20251027_141132/images/t0020.jpg",
+      "sensor_data": {
+        "timestamp": 1761541912.9586782,
+        "oil_temp": 169.23270197516553,
+        "fryer_temp": 174.19732666325092,
+        "elapsed_time": 20.024446964263916
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541913.9626708,
+      "image_path": "potato_20251027_141132/images/t0021.jpg",
+      "sensor_data": {
+        "timestamp": 1761541913.9596434,
+        "oil_temp": 168.83507379167813,
+        "fryer_temp": 173.78340794422164,
+        "elapsed_time": 21.02541208267212
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541914.963019,
+      "image_path": "potato_20251027_141132/images/t0022.jpg",
+      "sensor_data": {
+        "timestamp": 1761541914.9599013,
+        "oil_temp": 168.37049809855054,
+        "fryer_temp": 174.13564654155843,
+        "elapsed_time": 22.025670289993286
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541915.9641979,
+      "image_path": "potato_20251027_141132/images/t0023.jpg",
+      "sensor_data": {
+        "timestamp": 1761541915.9610476,
+        "oil_temp": 170.06121878475926,
+        "fryer_temp": 174.77311197197025,
+        "elapsed_time": 23.026816368103027
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541916.9651694,
+      "image_path": "potato_20251027_141132/images/t0024.jpg",
+      "sensor_data": {
+        "timestamp": 1761541916.9620156,
+        "oil_temp": 168.59532576097376,
+        "fryer_temp": 174.57966461260102,
+        "elapsed_time": 24.02778458595276
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541917.966211,
+      "image_path": "potato_20251027_141132/images/t0025.jpg",
+      "sensor_data": {
+        "timestamp": 1761541917.9630847,
+        "oil_temp": 168.47567474619353,
+        "fryer_temp": 174.57169516502717,
+        "elapsed_time": 25.02885389328003
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541918.96712,
+      "image_path": "potato_20251027_141132/images/t0026.jpg",
+      "sensor_data": {
+        "timestamp": 1761541918.9640455,
+        "oil_temp": 168.14682239120356,
+        "fryer_temp": 174.2237761387325,
+        "elapsed_time": 26.02981448173523
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541919.9681103,
+      "image_path": "potato_20251027_141132/images/t0027.jpg",
+      "sensor_data": {
+        "timestamp": 1761541919.9650722,
+        "oil_temp": 169.7250005058354,
+        "fryer_temp": 174.37757478974038,
+        "elapsed_time": 27.03084111213684
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1761541920.9690926,
+      "image_path": "potato_20251027_141132/images/t0028.jpg",
+      "sensor_data": {
+        "timestamp": 1761541920.9660778,
+        "oil_temp": 169.2097441972034,
+        "fryer_temp": 173.84381292550955,
+        "elapsed_time": 28.031846523284912
+      },
+      "is_complete": false
+    }
+  ],
+  "notes": "테스트 하는중"
+}

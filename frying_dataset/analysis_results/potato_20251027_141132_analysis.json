@@ -1,0 +1,1090 @@
+{
+  "session_id": "potato_20251027_141132",
+  "total_images": 29,
+  "session_data": {
+    "session_id": "potato_20251027_141132",
+    "food_type": "potato",
+    "start_time": 1761541892.934177,
+    "end_time": 1761541921.9641697,
+    "completion_time": null,
+    "probe_temp": null,
+    "frames": [
+      {
+        "timestamp": 1761541893.3928087,
+        "image_path": "potato_20251027_141132/images/t0000.jpg",
+        "sensor_data": {
+          "timestamp": 1761541893.3872063,
+          "oil_temp": 169.70065619887086,
+          "fryer_temp": 175.10331301963353,
+          "elapsed_time": 0.4529759883880615
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541893.94301,
+        "image_path": "potato_20251027_141132/images/t0001.jpg",
+        "sensor_data": {
+          "timestamp": 1761541893.9397228,
+          "oil_temp": 169.0450039121615,
+          "fryer_temp": 174.44217952324584,
+          "elapsed_time": 1.0054917335510254
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541894.9460502,
+        "image_path": "potato_20251027_141132/images/t0002.jpg",
+        "sensor_data": {
+          "timestamp": 1761541894.941142,
+          "oil_temp": 170.08527101614268,
+          "fryer_temp": 174.86418807922257,
+          "elapsed_time": 2.006911277770996
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541895.9486806,
+        "image_path": "potato_20251027_141132/images/t0003.jpg",
+        "sensor_data": {
+          "timestamp": 1761541895.943518,
+          "oil_temp": 170.03017809300442,
+          "fryer_temp": 174.9453497972171,
+          "elapsed_time": 3.009287118911743
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541896.9504778,
+        "image_path": "potato_20251027_141132/images/t0004.jpg",
+        "sensor_data": {
+          "timestamp": 1761541896.944059,
+          "oil_temp": 169.91976808396905,
+          "fryer_temp": 175.0264476152038,
+          "elapsed_time": 4.009828329086304
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541897.9512415,
+        "image_path": "potato_20251027_141132/images/t0005.jpg",
+        "sensor_data": {
+          "timestamp": 1761541897.9459069,
+          "oil_temp": 170.39254092868185,
+          "fryer_temp": 175.3180442469669,
+          "elapsed_time": 5.011676788330078
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541898.951827,
+        "image_path": "potato_20251027_141132/images/t0006.jpg",
+        "sensor_data": {
+          "timestamp": 1761541898.9463089,
+          "oil_temp": 169.46480025968353,
+          "fryer_temp": 174.49148586192157,
+          "elapsed_time": 6.012077808380127
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541899.9525285,
+        "image_path": "potato_20251027_141132/images/t0007.jpg",
+        "sensor_data": {
+          "timestamp": 1761541899.9473166,
+          "oil_temp": 170.10688800638843,
+          "fryer_temp": 175.10240456285888,
+          "elapsed_time": 7.013085842132568
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541900.9555445,
+        "image_path": "potato_20251027_141132/images/t0008.jpg",
+        "sensor_data": {
+          "timestamp": 1761541900.949255,
+          "oil_temp": 169.32686940767405,
+          "fryer_temp": 174.6061469121326,
+          "elapsed_time": 8.015024185180664
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541901.9566455,
+        "image_path": "potato_20251027_141132/images/t0009.jpg",
+        "sensor_data": {
+          "timestamp": 1761541901.9503183,
+          "oil_temp": 169.116791226056,
+          "fryer_temp": 174.57495111866794,
+          "elapsed_time": 9.016087532043457
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541902.9516454,
+        "image_path": "potato_20251027_141132/images/t0010.jpg",
+        "sensor_data": {
+          "timestamp": 1761541902.9485133,
+          "oil_temp": 169.21623574501663,
+          "fryer_temp": 174.7293756518747,
+          "elapsed_time": 10.014281988143921
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541903.9531152,
+        "image_path": "potato_20251027_141132/images/t0011.jpg",
+        "sensor_data": {
+          "timestamp": 1761541903.9496999,
+          "oil_temp": 169.38219895434204,
+          "fryer_temp": 175.3597072605318,
+          "elapsed_time": 11.01546859741211
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541904.9535599,
+        "image_path": "potato_20251027_141132/images/t0012.jpg",
+        "sensor_data": {
+          "timestamp": 1761541904.9506104,
+          "oil_temp": 169.2141200399864,
+          "fryer_temp": 174.9411296213898,
+          "elapsed_time": 12.016379117965698
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541905.960999,
+        "image_path": "potato_20251027_141132/images/t0013.jpg",
+        "sensor_data": {
+          "timestamp": 1761541905.9549906,
+          "oil_temp": 168.5964913376441,
+          "fryer_temp": 175.29247188607536,
+          "elapsed_time": 13.020760297775269
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541906.9560118,
+        "image_path": "potato_20251027_141132/images/t0014.jpg",
+        "sensor_data": {
+          "timestamp": 1761541906.9527023,
+          "oil_temp": 169.75974328888344,
+          "fryer_temp": 174.61313728191163,
+          "elapsed_time": 14.018471002578735
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541907.957263,
+        "image_path": "potato_20251027_141132/images/t0015.jpg",
+        "sensor_data": {
+          "timestamp": 1761541907.9541686,
+          "oil_temp": 169.38038310187954,
+          "fryer_temp": 174.1869328864157,
+          "elapsed_time": 15.01993727684021
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541908.9592738,
+        "image_path": "potato_20251027_141132/images/t0016.jpg",
+        "sensor_data": {
+          "timestamp": 1761541908.9557855,
+          "oil_temp": 168.7380733436184,
+          "fryer_temp": 174.6110120306616,
+          "elapsed_time": 16.021554231643677
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541909.9598546,
+        "image_path": "potato_20251027_141132/images/t0017.jpg",
+        "sensor_data": {
+          "timestamp": 1761541909.9565732,
+          "oil_temp": 168.89715417525272,
+          "fryer_temp": 174.3385540570227,
+          "elapsed_time": 17.022342205047607
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541910.965511,
+        "image_path": "potato_20251027_141132/images/t0018.jpg",
+        "sensor_data": {
+          "timestamp": 1761541910.9600194,
+          "oil_temp": 169.02059170687724,
+          "fryer_temp": 174.12475040094847,
+          "elapsed_time": 18.02578902244568
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541911.9604194,
+        "image_path": "potato_20251027_141132/images/t0019.jpg",
+        "sensor_data": {
+          "timestamp": 1761541911.9574614,
+          "oil_temp": 169.4212088065463,
+          "fryer_temp": 174.831719054514,
+          "elapsed_time": 19.023229837417603
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541912.961742,
+        "image_path": "potato_20251027_141132/images/t0020.jpg",
+        "sensor_data": {
+          "timestamp": 1761541912.9586782,
+          "oil_temp": 169.23270197516553,
+          "fryer_temp": 174.19732666325092,
+          "elapsed_time": 20.024446964263916
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541913.9626708,
+        "image_path": "potato_20251027_141132/images/t0021.jpg",
+        "sensor_data": {
+          "timestamp": 1761541913.9596434,
+          "oil_temp": 168.83507379167813,
+          "fryer_temp": 173.78340794422164,
+          "elapsed_time": 21.02541208267212
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541914.963019,
+        "image_path": "potato_20251027_141132/images/t0022.jpg",
+        "sensor_data": {
+          "timestamp": 1761541914.9599013,
+          "oil_temp": 168.37049809855054,
+          "fryer_temp": 174.13564654155843,
+          "elapsed_time": 22.025670289993286
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541915.9641979,
+        "image_path": "potato_20251027_141132/images/t0023.jpg",
+        "sensor_data": {
+          "timestamp": 1761541915.9610476,
+          "oil_temp": 170.06121878475926,
+          "fryer_temp": 174.77311197197025,
+          "elapsed_time": 23.026816368103027
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541916.9651694,
+        "image_path": "potato_20251027_141132/images/t0024.jpg",
+        "sensor_data": {
+          "timestamp": 1761541916.9620156,
+          "oil_temp": 168.59532576097376,
+          "fryer_temp": 174.57966461260102,
+          "elapsed_time": 24.02778458595276
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541917.966211,
+        "image_path": "potato_20251027_141132/images/t0025.jpg",
+        "sensor_data": {
+          "timestamp": 1761541917.9630847,
+          "oil_temp": 168.47567474619353,
+          "fryer_temp": 174.57169516502717,
+          "elapsed_time": 25.02885389328003
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541918.96712,
+        "image_path": "potato_20251027_141132/images/t0026.jpg",
+        "sensor_data": {
+          "timestamp": 1761541918.9640455,
+          "oil_temp": 168.14682239120356,
+          "fryer_temp": 174.2237761387325,
+          "elapsed_time": 26.02981448173523
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541919.9681103,
+        "image_path": "potato_20251027_141132/images/t0027.jpg",
+        "sensor_data": {
+          "timestamp": 1761541919.9650722,
+          "oil_temp": 169.7250005058354,
+          "fryer_temp": 174.37757478974038,
+          "elapsed_time": 27.03084111213684
+        },
+        "is_complete": false
+      },
+      {
+        "timestamp": 1761541920.9690926,
+        "image_path": "potato_20251027_141132/images/t0028.jpg",
+        "sensor_data": {
+          "timestamp": 1761541920.9660778,
+          "oil_temp": 169.2097441972034,
+          "fryer_temp": 173.84381292550955,
+          "elapsed_time": 28.031846523284912
+        },
+        "is_complete": false
+      }
+    ],
+    "notes": "테스트 하는중"
+  },
+  "results": [
+    {
+      "image_path": "potato_20251027_141132/images/t0000.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0001.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0002.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0003.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0004.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0005.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0006.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0007.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0008.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0009.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0010.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0011.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0012.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0013.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0014.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0015.jpg",
+      "food_area_ratio": 0.06815104166666666,
+      "color_features": {
+        "mean_hsv": [
+          22.584575213348618,
+          80.07514966246337,
+          77.68800152846771
+        ],
+        "std_hsv": [
+          2.731722812099009,
+          11.2327290641636,
+          9.111393037870828
+        ],
+        "mean_lab": [
+          77.88409119857343,
+          127.10024200738759,
+          140.0019105846389
+        ],
+        "dominant_hue": 24.0,
+        "saturation_mean": 80.07514966246337,
+        "value_mean": 77.68800152846771,
+        "brown_ratio": 0.9119220481467329,
+        "golden_ratio": 0.9762450643230162
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0016.jpg",
+      "food_area_ratio": 0.22813368055555555,
+      "color_features": {
+        "mean_hsv": [
+          23.217723830904454,
+          150.1188691450097,
+          63.43137627944142
+        ],
+        "std_hsv": [
+          1.3670858488990272,
+          14.881046866092897,
+          6.180637287296746
+        ],
+        "mean_lab": [
+          59.27076595258932,
+          127.2629085651231,
+          147.2771964537118
+        ],
+        "dominant_hue": 24.0,
+        "saturation_mean": 150.1188691450097,
+        "value_mean": 63.43137627944142,
+        "brown_ratio": 0.9510102355313724,
+        "golden_ratio": 0.99998097484875
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0017.jpg",
+      "food_area_ratio": 0.04904079861111111,
+      "color_features": {
+        "mean_hsv": [
+          22.335073900345165,
+          187.87105053544562,
+          45.232498451190374
+        ],
+        "std_hsv": [
+          1.825743721739689,
+          15.297061782564326,
+          4.085403729925883
+        ],
+        "mean_lab": [
+          38.112576334188866,
+          128.24311886007612,
+          144.67767059031772
+        ],
+        "dominant_hue": 24.0,
+        "saturation_mean": 187.87105053544562,
+        "value_mean": 45.232498451190374,
+        "brown_ratio": 0.9611470041596601,
+        "golden_ratio": 1.0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0018.jpg",
+      "food_area_ratio": 0.04074652777777778,
+      "color_features": {
+        "mean_hsv": [
+          20.618662121857692,
+          154.1712824882829,
+          43.77215594375799
+        ],
+        "std_hsv": [
+          2.137149106993481,
+          19.139606012025645,
+          5.180689555012259
+        ],
+        "mean_lab": [
+          36.7006817213464,
+          128.93182786536002,
+          140.86631870472945
+        ],
+        "dominant_hue": 22.0,
+        "saturation_mean": 154.1712824882829,
+        "value_mean": 43.77215594375799,
+        "brown_ratio": 0.9923306348530039,
+        "golden_ratio": 0.9966979122283767
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0019.jpg",
+      "food_area_ratio": 0.021749131944444444,
+      "color_features": {
+        "mean_hsv": [
+          22.132308920375173,
+          204.98463380562762,
+          48.61744162841748
+        ],
+        "std_hsv": [
+          1.4436311444477608,
+          23.24978168057878,
+          9.393986574190546
+        ],
+        "mean_lab": [
+          40.531430852125325,
+          128.58591099580923,
+          146.5517860706446
+        ],
+        "dominant_hue": 22.0,
+        "saturation_mean": 204.98463380562762,
+        "value_mean": 48.61744162841748,
+        "brown_ratio": 0.9876272201157453,
+        "golden_ratio": 1.0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0020.jpg",
+      "food_area_ratio": 0.009982638888888888,
+      "color_features": {
+        "mean_hsv": [
+          23.652608695652173,
+          191.25739130434783,
+          48.703478260869566
+        ],
+        "std_hsv": [
+          1.5580693666293197,
+          29.88956211839667,
+          5.157087658658973
+        ],
+        "mean_lab": [
+          42.88695652173913,
+          127.29304347826087,
+          146.77347826086955
+        ],
+        "dominant_hue": 24.0,
+        "saturation_mean": 191.25739130434783,
+        "value_mean": 48.703478260869566,
+        "brown_ratio": 0.9060869565217391,
+        "golden_ratio": 0.9982608695652174
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0021.jpg",
+      "food_area_ratio": 0.08950954861111111,
+      "color_features": {
+        "mean_hsv": [
+          22.50492168937594,
+          166.88474033845705,
+          45.39960238568588
+        ],
+        "std_hsv": [
+          1.852632720565716,
+          19.8413885012429,
+          3.9931685150129974
+        ],
+        "mean_lab": [
+          39.33142607768026,
+          127.99893322988896,
+          143.3354507103719
+        ],
+        "dominant_hue": 24.0,
+        "saturation_mean": 166.88474033845705,
+        "value_mean": 45.39960238568588,
+        "brown_ratio": 0.9560199776948067,
+        "golden_ratio": 0.9999030208989963
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0022.jpg",
+      "food_area_ratio": 0.08643229166666666,
+      "color_features": {
+        "mean_hsv": [
+          22.752987847745306,
+          215.02666465802952,
+          43.97609721803756
+        ],
+        "std_hsv": [
+          1.6754605887176464,
+          18.504755435844203,
+          3.6329165790221394
+        ],
+        "mean_lab": [
+          36.149894546550165,
+          128.2744802651401,
+          145.812192427438
+        ],
+        "dominant_hue": 24.0,
+        "saturation_mean": 215.02666465802952,
+        "value_mean": 43.97609721803756,
+        "brown_ratio": 0.957818620066285,
+        "golden_ratio": 0.999899568143015
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0023.jpg",
+      "food_area_ratio": 0.1095920138888889,
+      "color_features": {
+        "mean_hsv": [
+          21.92150495049505,
+          216.65837623762377,
+          45.518534653465345
+        ],
+        "std_hsv": [
+          1.7139892996406247,
+          19.749874699114876,
+          4.470859778575967
+        ],
+        "mean_lab": [
+          36.655524752475245,
+          129.10419801980197,
+          146.09687128712872
+        ],
+        "dominant_hue": 22.0,
+        "saturation_mean": 216.65837623762377,
+        "value_mean": 45.518534653465345,
+        "brown_ratio": 0.9804752475247525,
+        "golden_ratio": 1.0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0024.jpg",
+      "food_area_ratio": 0.06563368055555556,
+      "color_features": {
+        "mean_hsv": [
+          20.889763258828197,
+          134.33613278666843,
+          43.41588414230922
+        ],
+        "std_hsv": [
+          2.4481832178461236,
+          18.014950728356006,
+          3.4432645747445196
+        ],
+        "mean_lab": [
+          37.65017854781114,
+          128.44960983996825,
+          139.7155799497421
+        ],
+        "dominant_hue": 22.0,
+        "saturation_mean": 134.33613278666843,
+        "value_mean": 43.41588414230922,
+        "brown_ratio": 0.9632323766697527,
+        "golden_ratio": 0.9969580743287925
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0025.jpg",
+      "food_area_ratio": 0.09226128472222223,
+      "color_features": {
+        "mean_hsv": [
+          23.323234699157926,
+          199.73001834689748,
+          43.87016041774474
+        ],
+        "std_hsv": [
+          1.473608675397361,
+          21.251951945852042,
+          3.681155741786361
+        ],
+        "mean_lab": [
+          37.313920120430915,
+          127.59006444935785,
+          145.16987345345063
+        ],
+        "dominant_hue": 24.0,
+        "saturation_mean": 199.73001834689748,
+        "value_mean": 43.87016041774474,
+        "brown_ratio": 0.9422778378886955,
+        "golden_ratio": 1.0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0026.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0027.jpg",
+      "food_area_ratio": 0.0274609375,
+      "color_features": {
+        "mean_hsv": [
+          23.461988304093566,
+          164.43559348822507,
+          41.171329223960804
+        ],
+        "std_hsv": [
+          1.520868386529286,
+          14.352477122399147,
+          1.8850429523990146
+        ],
+        "mean_lab": [
+          35.753753753753756,
+          127.44602497234077,
+          142.214161529951
+        ],
+        "dominant_hue": 24.0,
+        "saturation_mean": 164.43559348822507,
+        "value_mean": 41.171329223960804,
+        "brown_ratio": 0.9353564090406196,
+        "golden_ratio": 1.0
+      }
+    },
+    {
+      "image_path": "potato_20251027_141132/images/t0028.jpg",
+      "food_area_ratio": 0.0,
+      "color_features": {
+        "mean_hsv": [
+          0,
+          0,
+          0
+        ],
+        "std_hsv": [
+          0,
+          0,
+          0
+        ],
+        "mean_lab": [
+          0,
+          0,
+          0
+        ],
+        "dominant_hue": 0,
+        "saturation_mean": 0,
+        "value_mean": 0,
+        "brown_ratio": 0,
+        "golden_ratio": 0
+      }
+    }
+  ]
+}
