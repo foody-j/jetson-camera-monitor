@@ -1,0 +1,55 @@
+{
+  "session_id": "chicken_20251008_150647",
+  "food_type": "chicken",
+  "start_time": 1759903607.046029,
+  "end_time": 1759903609.048554,
+  "completion_time": null,
+  "probe_temp": null,
+  "frames": [
+    {
+      "timestamp": 1759903607.5054018,
+      "image_path": "chicken_20251008_150647/images/t0000.jpg",
+      "sensor_data": {
+        "timestamp": 1759903607.4993572,
+        "oil_temp": 169.50224488149513,
+        "fryer_temp": 174.76434311977602,
+        "elapsed_time": 0.453296422958374
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903607.5556293,
+      "image_path": "chicken_20251008_150647/images/t0001.jpg",
+      "sensor_data": {
+        "timestamp": 1759903607.5509493,
+        "oil_temp": 169.4637042630182,
+        "fryer_temp": 174.9280505560771,
+        "elapsed_time": 0.5048885345458984
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903608.05606,
+      "image_path": "chicken_20251008_150647/images/t0002.jpg",
+      "sensor_data": {
+        "timestamp": 1759903608.051167,
+        "oil_temp": 169.88463060554392,
+        "fryer_temp": 175.30725234309782,
+        "elapsed_time": 1.0051064491271973
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903608.5565782,
+      "image_path": "chicken_20251008_150647/images/t0003.jpg",
+      "sensor_data": {
+        "timestamp": 1759903608.5517302,
+        "oil_temp": 169.73434017303495,
+        "fryer_temp": 175.05613563557327,
+        "elapsed_time": 1.505669355392456
+      },
+      "is_complete": false
+    }
+  ],
+  "notes": "테스트 수집, 170도 설정"
+}

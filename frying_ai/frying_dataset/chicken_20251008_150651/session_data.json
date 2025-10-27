@@ -1,0 +1,781 @@
+{
+  "session_id": "chicken_20251008_150651",
+  "food_type": "chicken",
+  "start_time": 1759903611.6330442,
+  "end_time": 1759903646.6733773,
+  "completion_time": 1759903641.663782,
+  "probe_temp": 75.5,
+  "frames": [
+    {
+      "timestamp": 1759903611.8089087,
+      "image_path": "chicken_20251008_150651/images/t0000.jpg",
+      "sensor_data": {
+        "timestamp": 1759903611.805749,
+        "oil_temp": 171.0115712038232,
+        "fryer_temp": 174.92374918137398,
+        "elapsed_time": 0.17267513275146484
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903612.1411633,
+      "image_path": "chicken_20251008_150651/images/t0001.jpg",
+      "sensor_data": {
+        "timestamp": 1759903612.1374495,
+        "oil_temp": 169.86764100714987,
+        "fryer_temp": 174.689581186293,
+        "elapsed_time": 0.5043759346008301
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903612.6435285,
+      "image_path": "chicken_20251008_150651/images/t0002.jpg",
+      "sensor_data": {
+        "timestamp": 1759903612.6386607,
+        "oil_temp": 169.38479004319387,
+        "fryer_temp": 174.57724688092625,
+        "elapsed_time": 1.0055873394012451
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903613.14409,
+      "image_path": "chicken_20251008_150651/images/t0003.jpg",
+      "sensor_data": {
+        "timestamp": 1759903613.1392858,
+        "oil_temp": 170.29658472522516,
+        "fryer_temp": 175.25760020714614,
+        "elapsed_time": 1.5062124729156494
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903613.6446953,
+      "image_path": "chicken_20251008_150651/images/t0004.jpg",
+      "sensor_data": {
+        "timestamp": 1759903613.6398578,
+        "oil_temp": 170.40941314358722,
+        "fryer_temp": 174.47261433430552,
+        "elapsed_time": 2.006783962249756
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903614.1452043,
+      "image_path": "chicken_20251008_150651/images/t0005.jpg",
+      "sensor_data": {
+        "timestamp": 1759903614.1403875,
+        "oil_temp": 169.7737483111136,
+        "fryer_temp": 174.71849087356074,
+        "elapsed_time": 2.5073142051696777
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903614.645421,
+      "image_path": "chicken_20251008_150651/images/t0006.jpg",
+      "sensor_data": {
+        "timestamp": 1759903614.640841,
+        "oil_temp": 169.4959453962281,
+        "fryer_temp": 174.70781323428946,
+        "elapsed_time": 3.0077669620513916
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903615.1466613,
+      "image_path": "chicken_20251008_150651/images/t0007.jpg",
+      "sensor_data": {
+        "timestamp": 1759903615.141782,
+        "oil_temp": 170.20850144133794,
+        "fryer_temp": 175.0785214143032,
+        "elapsed_time": 3.5087084770202637
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903615.647219,
+      "image_path": "chicken_20251008_150651/images/t0008.jpg",
+      "sensor_data": {
+        "timestamp": 1759903615.6423314,
+        "oil_temp": 169.7034815999039,
+        "fryer_temp": 174.7649923476255,
+        "elapsed_time": 4.009257793426514
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903616.147596,
+      "image_path": "chicken_20251008_150651/images/t0009.jpg",
+      "sensor_data": {
+        "timestamp": 1759903616.143004,
+        "oil_temp": 168.98724193361056,
+        "fryer_temp": 174.9733344611244,
+        "elapsed_time": 4.509930372238159
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903616.648256,
+      "image_path": "chicken_20251008_150651/images/t0010.jpg",
+      "sensor_data": {
+        "timestamp": 1759903616.6434898,
+        "oil_temp": 169.86261186796665,
+        "fryer_temp": 174.6513396050037,
+        "elapsed_time": 5.010416507720947
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903617.1486013,
+      "image_path": "chicken_20251008_150651/images/t0011.jpg",
+      "sensor_data": {
+        "timestamp": 1759903617.1440523,
+        "oil_temp": 169.5466295461572,
+        "fryer_temp": 174.85868151507958,
+        "elapsed_time": 5.510978698730469
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903617.6491463,
+      "image_path": "chicken_20251008_150651/images/t0012.jpg",
+      "sensor_data": {
+        "timestamp": 1759903617.64453,
+        "oil_temp": 169.77755647930277,
+        "fryer_temp": 175.1622029466385,
+        "elapsed_time": 6.0114569664001465
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903618.1500452,
+      "image_path": "chicken_20251008_150651/images/t0013.jpg",
+      "sensor_data": {
+        "timestamp": 1759903618.1452193,
+        "oil_temp": 169.4719885234023,
+        "fryer_temp": 174.74398654553852,
+        "elapsed_time": 6.512145519256592
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903618.650278,
+      "image_path": "chicken_20251008_150651/images/t0014.jpg",
+      "sensor_data": {
+        "timestamp": 1759903618.6456902,
+        "oil_temp": 170.16822773246827,
+        "fryer_temp": 174.94394087822505,
+        "elapsed_time": 7.012616395950317
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903619.1509683,
+      "image_path": "chicken_20251008_150651/images/t0015.jpg",
+      "sensor_data": {
+        "timestamp": 1759903619.146383,
+        "oil_temp": 169.65566042835943,
+        "fryer_temp": 174.38837859774546,
+        "elapsed_time": 7.513309955596924
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903619.6522043,
+      "image_path": "chicken_20251008_150651/images/t0016.jpg",
+      "sensor_data": {
+        "timestamp": 1759903619.6474502,
+        "oil_temp": 170.1191803276767,
+        "fryer_temp": 174.4453307184455,
+        "elapsed_time": 8.014376878738403
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903620.1535323,
+      "image_path": "chicken_20251008_150651/images/t0017.jpg",
+      "sensor_data": {
+        "timestamp": 1759903620.1485314,
+        "oil_temp": 169.97216766728747,
+        "fryer_temp": 174.5359983649511,
+        "elapsed_time": 8.515458106994629
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903620.6537602,
+      "image_path": "chicken_20251008_150651/images/t0018.jpg",
+      "sensor_data": {
+        "timestamp": 1759903620.648816,
+        "oil_temp": 169.96093935002585,
+        "fryer_temp": 175.3896766688815,
+        "elapsed_time": 9.015742778778076
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903621.1541264,
+      "image_path": "chicken_20251008_150651/images/t0019.jpg",
+      "sensor_data": {
+        "timestamp": 1759903621.1492274,
+        "oil_temp": 169.52764017726759,
+        "fryer_temp": 174.90062680486463,
+        "elapsed_time": 9.516153812408447
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903621.654894,
+      "image_path": "chicken_20251008_150651/images/t0020.jpg",
+      "sensor_data": {
+        "timestamp": 1759903621.649995,
+        "oil_temp": 170.0299415928452,
+        "fryer_temp": 174.78677836827666,
+        "elapsed_time": 10.016921520233154
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903622.155763,
+      "image_path": "chicken_20251008_150651/images/t0021.jpg",
+      "sensor_data": {
+        "timestamp": 1759903622.15076,
+        "oil_temp": 169.17199878716417,
+        "fryer_temp": 174.32057974721036,
+        "elapsed_time": 10.517686367034912
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903622.656178,
+      "image_path": "chicken_20251008_150651/images/t0022.jpg",
+      "sensor_data": {
+        "timestamp": 1759903622.651195,
+        "oil_temp": 168.9466087862853,
+        "fryer_temp": 174.4759840555044,
+        "elapsed_time": 11.018121719360352
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903623.1568365,
+      "image_path": "chicken_20251008_150651/images/t0023.jpg",
+      "sensor_data": {
+        "timestamp": 1759903623.151804,
+        "oil_temp": 169.37620854680742,
+        "fryer_temp": 175.23885892082953,
+        "elapsed_time": 11.518730640411377
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903623.6572218,
+      "image_path": "chicken_20251008_150651/images/t0024.jpg",
+      "sensor_data": {
+        "timestamp": 1759903623.652192,
+        "oil_temp": 168.65586387699022,
+        "fryer_temp": 174.39080724331916,
+        "elapsed_time": 12.019118785858154
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903624.157862,
+      "image_path": "chicken_20251008_150651/images/t0025.jpg",
+      "sensor_data": {
+        "timestamp": 1759903624.1528876,
+        "oil_temp": 168.74596486018854,
+        "fryer_temp": 174.71294371881092,
+        "elapsed_time": 12.519814252853394
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903624.6583002,
+      "image_path": "chicken_20251008_150651/images/t0026.jpg",
+      "sensor_data": {
+        "timestamp": 1759903624.6533813,
+        "oil_temp": 170.21420516336238,
+        "fryer_temp": 174.7311259822424,
+        "elapsed_time": 13.020307779312134
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903625.1589675,
+      "image_path": "chicken_20251008_150651/images/t0027.jpg",
+      "sensor_data": {
+        "timestamp": 1759903625.1539474,
+        "oil_temp": 170.24525216883282,
+        "fryer_temp": 174.43575276008946,
+        "elapsed_time": 13.520873785018921
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903625.659424,
+      "image_path": "chicken_20251008_150651/images/t0028.jpg",
+      "sensor_data": {
+        "timestamp": 1759903625.6544228,
+        "oil_temp": 170.08236546531327,
+        "fryer_temp": 174.90285691674165,
+        "elapsed_time": 14.02134919166565
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903626.1598861,
+      "image_path": "chicken_20251008_150651/images/t0029.jpg",
+      "sensor_data": {
+        "timestamp": 1759903626.1550229,
+        "oil_temp": 169.3740637995535,
+        "fryer_temp": 174.72564342823486,
+        "elapsed_time": 14.521949291229248
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903626.6607676,
+      "image_path": "chicken_20251008_150651/images/t0030.jpg",
+      "sensor_data": {
+        "timestamp": 1759903626.6556501,
+        "oil_temp": 168.43520042848888,
+        "fryer_temp": 174.57383557274272,
+        "elapsed_time": 15.022576570510864
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903627.1612225,
+      "image_path": "chicken_20251008_150651/images/t0031.jpg",
+      "sensor_data": {
+        "timestamp": 1759903627.1561549,
+        "oil_temp": 169.63518153509324,
+        "fryer_temp": 174.46684068978274,
+        "elapsed_time": 15.523081302642822
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903627.6618264,
+      "image_path": "chicken_20251008_150651/images/t0032.jpg",
+      "sensor_data": {
+        "timestamp": 1759903627.6567516,
+        "oil_temp": 169.18624323729713,
+        "fryer_temp": 174.7359590858122,
+        "elapsed_time": 16.023678064346313
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903628.1623201,
+      "image_path": "chicken_20251008_150651/images/t0033.jpg",
+      "sensor_data": {
+        "timestamp": 1759903628.1572683,
+        "oil_temp": 169.07408445927408,
+        "fryer_temp": 174.69528440544025,
+        "elapsed_time": 16.524194717407227
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903628.6626446,
+      "image_path": "chicken_20251008_150651/images/t0034.jpg",
+      "sensor_data": {
+        "timestamp": 1759903628.6577344,
+        "oil_temp": 168.79032578186838,
+        "fryer_temp": 174.8122831607824,
+        "elapsed_time": 17.02466106414795
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903629.1635463,
+      "image_path": "chicken_20251008_150651/images/t0035.jpg",
+      "sensor_data": {
+        "timestamp": 1759903629.1584272,
+        "oil_temp": 169.19662321940672,
+        "fryer_temp": 174.27006855892014,
+        "elapsed_time": 17.52535367012024
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903629.6640375,
+      "image_path": "chicken_20251008_150651/images/t0036.jpg",
+      "sensor_data": {
+        "timestamp": 1759903629.6589885,
+        "oil_temp": 169.6664972339915,
+        "fryer_temp": 175.00605717395538,
+        "elapsed_time": 18.025915145874023
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903630.1646547,
+      "image_path": "chicken_20251008_150651/images/t0037.jpg",
+      "sensor_data": {
+        "timestamp": 1759903630.1595316,
+        "oil_temp": 169.49558282024609,
+        "fryer_temp": 174.504431459277,
+        "elapsed_time": 18.526458024978638
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903630.6652348,
+      "image_path": "chicken_20251008_150651/images/t0038.jpg",
+      "sensor_data": {
+        "timestamp": 1759903630.6601164,
+        "oil_temp": 168.70880396910115,
+        "fryer_temp": 174.33156864165147,
+        "elapsed_time": 19.027042865753174
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903631.1657164,
+      "image_path": "chicken_20251008_150651/images/t0039.jpg",
+      "sensor_data": {
+        "timestamp": 1759903631.1606264,
+        "oil_temp": 169.75643600848932,
+        "fryer_temp": 174.5397787822169,
+        "elapsed_time": 19.527552843093872
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903631.666555,
+      "image_path": "chicken_20251008_150651/images/t0040.jpg",
+      "sensor_data": {
+        "timestamp": 1759903631.6611376,
+        "oil_temp": 169.28024411723746,
+        "fryer_temp": 173.94645724803897,
+        "elapsed_time": 20.028064489364624
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903632.1667209,
+      "image_path": "chicken_20251008_150651/images/t0041.jpg",
+      "sensor_data": {
+        "timestamp": 1759903632.16169,
+        "oil_temp": 169.81331266439602,
+        "fryer_temp": 173.72491256161086,
+        "elapsed_time": 20.528616905212402
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903632.6672802,
+      "image_path": "chicken_20251008_150651/images/t0042.jpg",
+      "sensor_data": {
+        "timestamp": 1759903632.6622417,
+        "oil_temp": 169.27783090702414,
+        "fryer_temp": 174.8600230989871,
+        "elapsed_time": 21.029168367385864
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903633.1677334,
+      "image_path": "chicken_20251008_150651/images/t0043.jpg",
+      "sensor_data": {
+        "timestamp": 1759903633.1627204,
+        "oil_temp": 169.15543880655108,
+        "fryer_temp": 174.3212809324108,
+        "elapsed_time": 21.5296471118927
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903633.6682372,
+      "image_path": "chicken_20251008_150651/images/t0044.jpg",
+      "sensor_data": {
+        "timestamp": 1759903633.663258,
+        "oil_temp": 168.99114645017858,
+        "fryer_temp": 174.64127057412068,
+        "elapsed_time": 22.030184507369995
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903634.1690996,
+      "image_path": "chicken_20251008_150651/images/t0045.jpg",
+      "sensor_data": {
+        "timestamp": 1759903634.1639807,
+        "oil_temp": 168.47122320311874,
+        "fryer_temp": 174.50189868824597,
+        "elapsed_time": 22.53090739250183
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903634.669441,
+      "image_path": "chicken_20251008_150651/images/t0046.jpg",
+      "sensor_data": {
+        "timestamp": 1759903634.6644433,
+        "oil_temp": 169.2526955235544,
+        "fryer_temp": 173.78396135837826,
+        "elapsed_time": 23.031369924545288
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903635.1701772,
+      "image_path": "chicken_20251008_150651/images/t0047.jpg",
+      "sensor_data": {
+        "timestamp": 1759903635.1650856,
+        "oil_temp": 169.37064440350673,
+        "fryer_temp": 174.1120541151082,
+        "elapsed_time": 23.53201198577881
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903635.6705687,
+      "image_path": "chicken_20251008_150651/images/t0048.jpg",
+      "sensor_data": {
+        "timestamp": 1759903635.6655588,
+        "oil_temp": 169.49760356060003,
+        "fryer_temp": 174.55061988842263,
+        "elapsed_time": 24.032485246658325
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903636.1711535,
+      "image_path": "chicken_20251008_150651/images/t0049.jpg",
+      "sensor_data": {
+        "timestamp": 1759903636.1660411,
+        "oil_temp": 169.3073557945559,
+        "fryer_temp": 174.56649094457146,
+        "elapsed_time": 24.53296732902527
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903636.671658,
+      "image_path": "chicken_20251008_150651/images/t0050.jpg",
+      "sensor_data": {
+        "timestamp": 1759903636.666636,
+        "oil_temp": 168.79806296145827,
+        "fryer_temp": 173.97707493933973,
+        "elapsed_time": 25.033562421798706
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903637.1723695,
+      "image_path": "chicken_20251008_150651/images/t0051.jpg",
+      "sensor_data": {
+        "timestamp": 1759903637.1673195,
+        "oil_temp": 169.45719536016688,
+        "fryer_temp": 173.81520460433333,
+        "elapsed_time": 25.53424596786499
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903637.6731343,
+      "image_path": "chicken_20251008_150651/images/t0052.jpg",
+      "sensor_data": {
+        "timestamp": 1759903637.6681414,
+        "oil_temp": 167.8880143739451,
+        "fryer_temp": 174.21470039224135,
+        "elapsed_time": 26.035067796707153
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903638.173664,
+      "image_path": "chicken_20251008_150651/images/t0053.jpg",
+      "sensor_data": {
+        "timestamp": 1759903638.168676,
+        "oil_temp": 168.33495238492608,
+        "fryer_temp": 174.1230143652037,
+        "elapsed_time": 26.535602569580078
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903638.674429,
+      "image_path": "chicken_20251008_150651/images/t0054.jpg",
+      "sensor_data": {
+        "timestamp": 1759903638.6694055,
+        "oil_temp": 167.6985221478959,
+        "fryer_temp": 175.0164101996851,
+        "elapsed_time": 27.03633213043213
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903639.175142,
+      "image_path": "chicken_20251008_150651/images/t0055.jpg",
+      "sensor_data": {
+        "timestamp": 1759903639.1700935,
+        "oil_temp": 168.33751940028097,
+        "fryer_temp": 174.1096959784771,
+        "elapsed_time": 27.537019968032837
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903639.6755257,
+      "image_path": "chicken_20251008_150651/images/t0056.jpg",
+      "sensor_data": {
+        "timestamp": 1759903639.6705792,
+        "oil_temp": 168.66879541661936,
+        "fryer_temp": 173.82285123449498,
+        "elapsed_time": 28.037505626678467
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903640.1762705,
+      "image_path": "chicken_20251008_150651/images/t0057.jpg",
+      "sensor_data": {
+        "timestamp": 1759903640.1712239,
+        "oil_temp": 168.0631519018824,
+        "fryer_temp": 173.87189205555094,
+        "elapsed_time": 28.538150310516357
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903640.6767108,
+      "image_path": "chicken_20251008_150651/images/t0058.jpg",
+      "sensor_data": {
+        "timestamp": 1759903640.6717236,
+        "oil_temp": 168.48770250429388,
+        "fryer_temp": 174.02539729242366,
+        "elapsed_time": 29.038650035858154
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903641.1772625,
+      "image_path": "chicken_20251008_150651/images/t0059.jpg",
+      "sensor_data": {
+        "timestamp": 1759903641.1722252,
+        "oil_temp": 168.62822230591956,
+        "fryer_temp": 173.5610274020089,
+        "elapsed_time": 29.539152145385742
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903641.6776237,
+      "image_path": "chicken_20251008_150651/images/t0060.jpg",
+      "sensor_data": {
+        "timestamp": 1759903641.6727626,
+        "oil_temp": 169.08410100792673,
+        "fryer_temp": 174.2091641717033,
+        "elapsed_time": 30.039689302444458
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903642.1779983,
+      "image_path": "chicken_20251008_150651/images/t0061.jpg",
+      "sensor_data": {
+        "timestamp": 1759903642.1730025,
+        "oil_temp": 168.97648078447048,
+        "fryer_temp": 174.15362281208732,
+        "elapsed_time": 30.539928913116455
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903642.6785123,
+      "image_path": "chicken_20251008_150651/images/t0062.jpg",
+      "sensor_data": {
+        "timestamp": 1759903642.6735206,
+        "oil_temp": 168.64131440218813,
+        "fryer_temp": 174.41717650778705,
+        "elapsed_time": 31.040447235107422
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903643.1790879,
+      "image_path": "chicken_20251008_150651/images/t0063.jpg",
+      "sensor_data": {
+        "timestamp": 1759903643.1740813,
+        "oil_temp": 168.71094597760163,
+        "fryer_temp": 173.90253304963346,
+        "elapsed_time": 31.54100799560547
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903643.679536,
+      "image_path": "chicken_20251008_150651/images/t0064.jpg",
+      "sensor_data": {
+        "timestamp": 1759903643.6746194,
+        "oil_temp": 168.50909935292776,
+        "fryer_temp": 174.10160327961648,
+        "elapsed_time": 32.04154562950134
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903644.1804085,
+      "image_path": "chicken_20251008_150651/images/t0065.jpg",
+      "sensor_data": {
+        "timestamp": 1759903644.1752872,
+        "oil_temp": 167.51598394914177,
+        "fryer_temp": 174.02474048378951,
+        "elapsed_time": 32.542213916778564
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903644.6807766,
+      "image_path": "chicken_20251008_150651/images/t0066.jpg",
+      "sensor_data": {
+        "timestamp": 1759903644.675394,
+        "oil_temp": 168.58569707250518,
+        "fryer_temp": 174.40516419283446,
+        "elapsed_time": 33.04232048988342
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903645.1811771,
+      "image_path": "chicken_20251008_150651/images/t0067.jpg",
+      "sensor_data": {
+        "timestamp": 1759903645.1760187,
+        "oil_temp": 168.49460080701647,
+        "fryer_temp": 174.21478780442678,
+        "elapsed_time": 33.54294490814209
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903645.6816862,
+      "image_path": "chicken_20251008_150651/images/t0068.jpg",
+      "sensor_data": {
+        "timestamp": 1759903645.6764832,
+        "oil_temp": 169.12519278427138,
+        "fryer_temp": 174.2124211903731,
+        "elapsed_time": 34.04340958595276
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759903646.1822464,
+      "image_path": "chicken_20251008_150651/images/t0069.jpg",
+      "sensor_data": {
+        "timestamp": 1759903646.1771095,
+        "oil_temp": 168.58368588166022,
+        "fryer_temp": 173.86028456994762,
+        "elapsed_time": 34.54403591156006
+      },
+      "is_complete": false
+    }
+  ],
+  "notes": "테스트 수집, 170도 설정 | 완료: 겉은 황금색, 속은 완전히 익음"
+}

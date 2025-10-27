@@ -1,0 +1,594 @@
+{
+  "session_id": "cken_20251008_151616",
+  "food_type": "cken",
+  "start_time": 1759904176.8323913,
+  "end_time": 1759904229.884613,
+  "completion_time": null,
+  "probe_temp": null,
+  "frames": [
+    {
+      "timestamp": 1759904177.164033,
+      "image_path": "cken_20251008_151616/images/t0000.jpg",
+      "sensor_data": {
+        "timestamp": 1759904177.159091,
+        "oil_temp": 169.91891125282925,
+        "fryer_temp": 175.3376158608654,
+        "elapsed_time": 0.32662153244018555
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904177.842368,
+      "image_path": "cken_20251008_151616/images/t0001.jpg",
+      "sensor_data": {
+        "timestamp": 1759904177.8380702,
+        "oil_temp": 170.12080427593784,
+        "fryer_temp": 175.22476899517238,
+        "elapsed_time": 1.0056004524230957
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904178.8457215,
+      "image_path": "cken_20251008_151616/images/t0002.jpg",
+      "sensor_data": {
+        "timestamp": 1759904178.8403423,
+        "oil_temp": 169.7681301411824,
+        "fryer_temp": 175.3888284573017,
+        "elapsed_time": 2.0078728199005127
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904179.8473287,
+      "image_path": "cken_20251008_151616/images/t0003.jpg",
+      "sensor_data": {
+        "timestamp": 1759904179.841539,
+        "oil_temp": 169.1408944520936,
+        "fryer_temp": 175.51435616676466,
+        "elapsed_time": 3.0090694427490234
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904180.8473146,
+      "image_path": "cken_20251008_151616/images/t0004.jpg",
+      "sensor_data": {
+        "timestamp": 1759904180.8419714,
+        "oil_temp": 169.8164138201022,
+        "fryer_temp": 174.46770142247595,
+        "elapsed_time": 4.009502649307251
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904181.8485246,
+      "image_path": "cken_20251008_151616/images/t0005.jpg",
+      "sensor_data": {
+        "timestamp": 1759904181.843103,
+        "oil_temp": 169.72307848788276,
+        "fryer_temp": 174.97339964072233,
+        "elapsed_time": 5.01063346862793
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904182.8496482,
+      "image_path": "cken_20251008_151616/images/t0006.jpg",
+      "sensor_data": {
+        "timestamp": 1759904182.844222,
+        "oil_temp": 170.93686587760726,
+        "fryer_temp": 174.75408292544398,
+        "elapsed_time": 6.011752367019653
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904183.8501058,
+      "image_path": "cken_20251008_151616/images/t0007.jpg",
+      "sensor_data": {
+        "timestamp": 1759904183.8449252,
+        "oil_temp": 170.77067092453257,
+        "fryer_temp": 174.89472102609767,
+        "elapsed_time": 7.012455701828003
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904184.851174,
+      "image_path": "cken_20251008_151616/images/t0008.jpg",
+      "sensor_data": {
+        "timestamp": 1759904184.8458316,
+        "oil_temp": 169.99552053114638,
+        "fryer_temp": 174.88921756491936,
+        "elapsed_time": 8.013362169265747
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904185.8508997,
+      "image_path": "cken_20251008_151616/images/t0009.jpg",
+      "sensor_data": {
+        "timestamp": 1759904185.8457615,
+        "oil_temp": 169.3780092070301,
+        "fryer_temp": 174.84221660580135,
+        "elapsed_time": 9.013292074203491
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904186.8515284,
+      "image_path": "cken_20251008_151616/images/t0010.jpg",
+      "sensor_data": {
+        "timestamp": 1759904186.8464644,
+        "oil_temp": 169.61301768531808,
+        "fryer_temp": 174.34610800524945,
+        "elapsed_time": 10.013995170593262
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904187.8531444,
+      "image_path": "cken_20251008_151616/images/t0011.jpg",
+      "sensor_data": {
+        "timestamp": 1759904187.8479297,
+        "oil_temp": 169.9764461234824,
+        "fryer_temp": 174.54733156186876,
+        "elapsed_time": 11.01546025276184
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904188.8548489,
+      "image_path": "cken_20251008_151616/images/t0012.jpg",
+      "sensor_data": {
+        "timestamp": 1759904188.849487,
+        "oil_temp": 169.05644802360703,
+        "fryer_temp": 174.90805312019475,
+        "elapsed_time": 12.01701807975769
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904189.8555727,
+      "image_path": "cken_20251008_151616/images/t0013.jpg",
+      "sensor_data": {
+        "timestamp": 1759904189.8501692,
+        "oil_temp": 169.08569719577923,
+        "fryer_temp": 174.94450350956697,
+        "elapsed_time": 13.017699718475342
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904190.8567836,
+      "image_path": "cken_20251008_151616/images/t0014.jpg",
+      "sensor_data": {
+        "timestamp": 1759904190.8513527,
+        "oil_temp": 168.92954045256323,
+        "fryer_temp": 174.646962660291,
+        "elapsed_time": 14.018883466720581
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904191.8579617,
+      "image_path": "cken_20251008_151616/images/t0015.jpg",
+      "sensor_data": {
+        "timestamp": 1759904191.8525407,
+        "oil_temp": 169.0851893455896,
+        "fryer_temp": 174.41047855370107,
+        "elapsed_time": 15.020071268081665
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904192.8592098,
+      "image_path": "cken_20251008_151616/images/t0016.jpg",
+      "sensor_data": {
+        "timestamp": 1759904192.8536894,
+        "oil_temp": 169.07970337803226,
+        "fryer_temp": 174.23720168614418,
+        "elapsed_time": 16.021219968795776
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904193.8599317,
+      "image_path": "cken_20251008_151616/images/t0017.jpg",
+      "sensor_data": {
+        "timestamp": 1759904193.854449,
+        "oil_temp": 168.54646755848714,
+        "fryer_temp": 174.6823683164293,
+        "elapsed_time": 17.021979570388794
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904194.8609114,
+      "image_path": "cken_20251008_151616/images/t0018.jpg",
+      "sensor_data": {
+        "timestamp": 1759904194.8554227,
+        "oil_temp": 167.5177416530669,
+        "fryer_temp": 174.30539778374677,
+        "elapsed_time": 18.022953510284424
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904195.861442,
+      "image_path": "cken_20251008_151616/images/t0019.jpg",
+      "sensor_data": {
+        "timestamp": 1759904195.8560705,
+        "oil_temp": 170.03258316115793,
+        "fryer_temp": 174.42590048199474,
+        "elapsed_time": 19.023601055145264
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904196.862487,
+      "image_path": "cken_20251008_151616/images/t0020.jpg",
+      "sensor_data": {
+        "timestamp": 1759904196.857186,
+        "oil_temp": 168.1996424462864,
+        "fryer_temp": 174.94198724267613,
+        "elapsed_time": 20.02471661567688
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904197.8634055,
+      "image_path": "cken_20251008_151616/images/t0021.jpg",
+      "sensor_data": {
+        "timestamp": 1759904197.8580449,
+        "oil_temp": 169.0810946903699,
+        "fryer_temp": 174.5342922421438,
+        "elapsed_time": 21.025575637817383
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904198.864325,
+      "image_path": "cken_20251008_151616/images/t0022.jpg",
+      "sensor_data": {
+        "timestamp": 1759904198.8590355,
+        "oil_temp": 169.23007113487498,
+        "fryer_temp": 174.247951047144,
+        "elapsed_time": 22.02656650543213
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904199.8653817,
+      "image_path": "cken_20251008_151616/images/t0023.jpg",
+      "sensor_data": {
+        "timestamp": 1759904199.8600237,
+        "oil_temp": 169.14131429923418,
+        "fryer_temp": 174.59760160603236,
+        "elapsed_time": 23.027554273605347
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904200.8664498,
+      "image_path": "cken_20251008_151616/images/t0024.jpg",
+      "sensor_data": {
+        "timestamp": 1759904200.8611054,
+        "oil_temp": 168.81802827187127,
+        "fryer_temp": 174.44738042065126,
+        "elapsed_time": 24.02863621711731
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904201.867284,
+      "image_path": "cken_20251008_151616/images/t0025.jpg",
+      "sensor_data": {
+        "timestamp": 1759904201.8619869,
+        "oil_temp": 168.98432910126002,
+        "fryer_temp": 173.83074961252174,
+        "elapsed_time": 25.02951741218567
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904202.8685331,
+      "image_path": "cken_20251008_151616/images/t0026.jpg",
+      "sensor_data": {
+        "timestamp": 1759904202.8631415,
+        "oil_temp": 168.9246129498499,
+        "fryer_temp": 173.9859469364175,
+        "elapsed_time": 26.030672073364258
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904203.869382,
+      "image_path": "cken_20251008_151616/images/t0027.jpg",
+      "sensor_data": {
+        "timestamp": 1759904203.864065,
+        "oil_temp": 168.04624706340886,
+        "fryer_temp": 173.53146454311053,
+        "elapsed_time": 27.031595468521118
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904204.8706257,
+      "image_path": "cken_20251008_151616/images/t0028.jpg",
+      "sensor_data": {
+        "timestamp": 1759904204.865117,
+        "oil_temp": 168.43490175855453,
+        "fryer_temp": 174.01961213784492,
+        "elapsed_time": 28.032647848129272
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904205.8713136,
+      "image_path": "cken_20251008_151616/images/t0029.jpg",
+      "sensor_data": {
+        "timestamp": 1759904205.8659823,
+        "oil_temp": 168.12293558386241,
+        "fryer_temp": 174.35292358993595,
+        "elapsed_time": 29.033512592315674
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904206.872379,
+      "image_path": "cken_20251008_151616/images/t0030.jpg",
+      "sensor_data": {
+        "timestamp": 1759904206.8670876,
+        "oil_temp": 167.7174537389151,
+        "fryer_temp": 174.16477171523138,
+        "elapsed_time": 30.034618139266968
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904207.8739989,
+      "image_path": "cken_20251008_151616/images/t0031.jpg",
+      "sensor_data": {
+        "timestamp": 1759904207.8686311,
+        "oil_temp": 168.33725242096537,
+        "fryer_temp": 174.11988056049282,
+        "elapsed_time": 31.036161422729492
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904208.8749318,
+      "image_path": "cken_20251008_151616/images/t0032.jpg",
+      "sensor_data": {
+        "timestamp": 1759904208.8695874,
+        "oil_temp": 169.43593446958533,
+        "fryer_temp": 174.02825945333694,
+        "elapsed_time": 32.03711795806885
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904209.8753347,
+      "image_path": "cken_20251008_151616/images/t0033.jpg",
+      "sensor_data": {
+        "timestamp": 1759904209.8700368,
+        "oil_temp": 168.4537593559112,
+        "fryer_temp": 173.71941317960145,
+        "elapsed_time": 33.037567377090454
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904210.8764737,
+      "image_path": "cken_20251008_151616/images/t0034.jpg",
+      "sensor_data": {
+        "timestamp": 1759904210.8710818,
+        "oil_temp": 168.7107938816854,
+        "fryer_temp": 173.75770348911374,
+        "elapsed_time": 34.038612365722656
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904211.8775086,
+      "image_path": "cken_20251008_151616/images/t0035.jpg",
+      "sensor_data": {
+        "timestamp": 1759904211.872118,
+        "oil_temp": 168.24777309970688,
+        "fryer_temp": 174.37821737380978,
+        "elapsed_time": 35.03964829444885
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904212.8785772,
+      "image_path": "cken_20251008_151616/images/t0036.jpg",
+      "sensor_data": {
+        "timestamp": 1759904212.8732421,
+        "oil_temp": 168.51627660935796,
+        "fryer_temp": 173.9412618691766,
+        "elapsed_time": 36.040772676467896
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904213.8786132,
+      "image_path": "cken_20251008_151616/images/t0037.jpg",
+      "sensor_data": {
+        "timestamp": 1759904213.8734577,
+        "oil_temp": 168.55445953701846,
+        "fryer_temp": 174.01014571989123,
+        "elapsed_time": 37.0409882068634
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904214.879742,
+      "image_path": "cken_20251008_151616/images/t0038.jpg",
+      "sensor_data": {
+        "timestamp": 1759904214.8745866,
+        "oil_temp": 167.67311937283418,
+        "fryer_temp": 173.59342033037737,
+        "elapsed_time": 38.04211711883545
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904215.880165,
+      "image_path": "cken_20251008_151616/images/t0039.jpg",
+      "sensor_data": {
+        "timestamp": 1759904215.8751361,
+        "oil_temp": 167.8362118240008,
+        "fryer_temp": 173.61216055750685,
+        "elapsed_time": 39.04266691207886
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904216.8824317,
+      "image_path": "cken_20251008_151616/images/t0040.jpg",
+      "sensor_data": {
+        "timestamp": 1759904216.8771305,
+        "oil_temp": 168.5397190043551,
+        "fryer_temp": 173.5229917173,
+        "elapsed_time": 40.04466104507446
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904217.8831341,
+      "image_path": "cken_20251008_151616/images/t0041.jpg",
+      "sensor_data": {
+        "timestamp": 1759904217.8778307,
+        "oil_temp": 167.69675176623892,
+        "fryer_temp": 173.97782444757163,
+        "elapsed_time": 41.045361280441284
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904218.8827145,
+      "image_path": "cken_20251008_151616/images/t0042.jpg",
+      "sensor_data": {
+        "timestamp": 1759904218.8778257,
+        "oil_temp": 167.72300947688305,
+        "fryer_temp": 173.5217503512289,
+        "elapsed_time": 42.0453565120697
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904219.8839793,
+      "image_path": "cken_20251008_151616/images/t0043.jpg",
+      "sensor_data": {
+        "timestamp": 1759904219.8789806,
+        "oil_temp": 167.0504549811414,
+        "fryer_temp": 173.53801549947505,
+        "elapsed_time": 43.04651093482971
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904220.8851867,
+      "image_path": "cken_20251008_151616/images/t0044.jpg",
+      "sensor_data": {
+        "timestamp": 1759904220.8801262,
+        "oil_temp": 167.37423278912192,
+        "fryer_temp": 173.6028241473738,
+        "elapsed_time": 44.047656774520874
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904221.885934,
+      "image_path": "cken_20251008_151616/images/t0045.jpg",
+      "sensor_data": {
+        "timestamp": 1759904221.881008,
+        "oil_temp": 167.53361772127803,
+        "fryer_temp": 173.44268463522133,
+        "elapsed_time": 45.04853868484497
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904222.8870869,
+      "image_path": "cken_20251008_151616/images/t0046.jpg",
+      "sensor_data": {
+        "timestamp": 1759904222.8820393,
+        "oil_temp": 168.01938358366806,
+        "fryer_temp": 173.88104908452098,
+        "elapsed_time": 46.049569845199585
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904223.8880625,
+      "image_path": "cken_20251008_151616/images/t0047.jpg",
+      "sensor_data": {
+        "timestamp": 1759904223.883199,
+        "oil_temp": 168.05145780042588,
+        "fryer_temp": 173.77566795558735,
+        "elapsed_time": 47.050729274749756
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904224.8891525,
+      "image_path": "cken_20251008_151616/images/t0048.jpg",
+      "sensor_data": {
+        "timestamp": 1759904224.8841248,
+        "oil_temp": 166.77019279716666,
+        "fryer_temp": 173.53713872267832,
+        "elapsed_time": 48.051655530929565
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904225.8899226,
+      "image_path": "cken_20251008_151616/images/t0049.jpg",
+      "sensor_data": {
+        "timestamp": 1759904225.8849719,
+        "oil_temp": 167.3790839180647,
+        "fryer_temp": 173.60444698263467,
+        "elapsed_time": 49.052502155303955
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904226.8912127,
+      "image_path": "cken_20251008_151616/images/t0050.jpg",
+      "sensor_data": {
+        "timestamp": 1759904226.8862438,
+        "oil_temp": 167.8334239959334,
+        "fryer_temp": 173.3196280386788,
+        "elapsed_time": 50.05377435684204
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904227.892232,
+      "image_path": "cken_20251008_151616/images/t0051.jpg",
+      "sensor_data": {
+        "timestamp": 1759904227.8872216,
+        "oil_temp": 167.93314047789704,
+        "fryer_temp": 173.49711477480895,
+        "elapsed_time": 51.05475211143494
+      },
+      "is_complete": false
+    },
+    {
+      "timestamp": 1759904228.8933568,
+      "image_path": "cken_20251008_151616/images/t0052.jpg",
+      "sensor_data": {
+        "timestamp": 1759904228.8882837,
+        "oil_temp": 167.33941351192436,
+        "fryer_temp": 173.0996468135797,
+        "elapsed_time": 52.055814266204834
+      },
+      "is_complete": false
+    }
+  ],
+  "notes": "test"
+}

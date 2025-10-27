@@ -1,0 +1,30 @@
+{
+  "system": {
+    "timezone": "Asia/Seoul",
+    "log_timezone": true
+  },
+  "camera": {
+    "index": 0,
+    "resolution": {
+      "width": 640,
+      "height": 360
+    },
+    "fps": 30,
+    "name": "Default Camera"
+  },
+  "recording": {
+    "codec": "MJPG",
+    "output_dir": "recordings",
+    "auto_start": false
+  },
+  "motion_detection": {
+    "enabled": false,
+    "threshold": 1000,
+    "min_area": 500
+  },
+  "screenshot": {
+    "output_dir": "screenshots",
+    "format": "jpg",
+    "auto_capture_on_motion": true
+  }
+}
