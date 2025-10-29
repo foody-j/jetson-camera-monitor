@@ -1,0 +1,29 @@
+# Monitoring Dashboard Requirements
+# Install with: pip install -r requirements_monitoring.txt
+
+# Web Framework
+flask>=2.0.0
+
+# Dash Framework (Beautiful Dashboards)
+dash>=2.14.0
+dash-bootstrap-components>=1.5.0
+plotly>=5.17.0
+
+# Serial Communication (RS485)
+pyserial>=3.5
+
+# Data Analysis
+numpy>=1.19.0
+
+# Computer Vision (if camera monitoring is used)
+opencv-python>=4.5.0
+
+# Optional: Enhanced logging
+colorlog>=6.6.0
+
+# Optional: Configuration validation
+jsonschema>=4.0.0
+
+# Optional: Database support (future)
+# sqlalchemy>=1.4.0
+# pymongo>=4.0.0

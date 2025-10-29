@@ -31,11 +31,20 @@ services:
       - /tmp/.docker.xauth:/tmp/.docker.xauth:rw
    # 디바이스 접근 권한 (카메라 및 GPU 사용시)
     devices:
+      # GPU 디바이스
       - /dev/nvhost-ctrl-gpu:/dev/nvhost-ctrl-gpu  # GPU 제어
       - /dev/nvmap:/dev/nvmap  # NVIDIA 메모리 맵
       - /dev/nvhost-prof-gpu:/dev/nvhost-prof-gpu  # GPU 프로파일링
       - /dev/nvhost-gpu:/dev/nvhost-gpu  # GPU 디바이스
       - /dev/nvhost-as-gpu:/dev/nvhost-as-gpu  # GPU 주소 공간
+      # 카메라 디바이스 (USB 카메라)
+      - /dev/video1:/dev/video1  # 메인 카메라
+      - /dev/video2:/dev/video2  # 카메라 메타데이터
+    # 카메라 접근을 위한 추가 권한
+    privileged: false
+    # video 그룹 권한 추가
+    group_add:
+      - video
     # 네트워크 설정 (X11 포워딩 최적화)
     network_mode: host 
     # NVIDIA GPU를 사용하기 위한 필수 설정입니다.

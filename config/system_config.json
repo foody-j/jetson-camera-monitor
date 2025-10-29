@@ -1,0 +1,60 @@
+{
+  "vibration": {
+    "enabled": true,
+    "sensor": {
+      "port": "/dev/ttyUSB0",
+      "baudrate": 9600,
+      "protocol": "modbus",
+      "slave_address": 1,
+      "timeout": 1.0
+    },
+    "analyzer": {
+      "window_size": 100,
+      "alert_thresholds": {
+        "low": 2.0,
+        "medium": 5.0,
+        "high": 10.0,
+        "critical": 20.0
+      }
+    },
+    "log_directory": "data/vibration_logs",
+    "sampling_rate": 10.0
+  },
+  "camera": {
+    "enabled": true,
+    "index": 0,
+    "resolution": {
+      "width": 640,
+      "height": 360
+    },
+    "fps": 30,
+    "name": "Default Camera"
+  },
+  "frying_ai": {
+    "enabled": true,
+    "fps": 2,
+    "log_directory": "data/frying_dataset"
+  },
+  "scheduler": {
+    "enabled": true,
+    "work_hours": {
+      "start": "08:30",
+      "end": "19:00",
+      "enabled_days": [0, 1, 2, 3, 4, 5, 6]
+    },
+    "grace_period_minutes": 5,
+    "auto_start_enabled": true,
+    "auto_stop_enabled": true,
+    "timezone": "Asia/Seoul"
+  },
+  "web_server": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "debug": false
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "log_directory": "logs"
+  }
+}

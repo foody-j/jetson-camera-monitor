@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoring Dashboard - Frying AI System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🤖 Frying AI Monitoring System</h1>
+            <div class="header-info">
+                <span id="current-time">--:--:--</span>
+                <span id="system-status" class="status-badge">Initializing</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Scheduler Panel -->
+            <section class="panel scheduler-panel">
+                <h2>⏰ Work Scheduler</h2>
+                <div class="panel-content">
+                    <div class="scheduler-info">
+                        <div class="info-row">
+                            <span class="label">Status:</span>
+                            <span id="scheduler-status" class="value">--</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Work Hours:</span>
+                            <span id="work-hours" class="value">--</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Is Work Time:</span>
+                            <span id="is-work-time" class="value">--</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Auto Mode:</span>
+                            <span id="auto-mode" class="value">--</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Next Event:</span>
+                            <span id="next-event" class="value">--</span>
+                        </div>
+                    </div>
+                    <div class="scheduler-controls">
+                        <button id="toggle-override-btn" class="btn btn-secondary">Manual Override</button>
+                        <button id="edit-schedule-btn" class="btn btn-secondary">Edit Schedule</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Services Control Panel -->
+            <section class="panel services-panel">
+                <h2>🎛️ Services Control</h2>
+                <div class="panel-content">
+                    <div class="services-grid">
+                        <!-- Camera Service -->
+                        <div class="service-card" data-service="camera">
+                            <div class="service-header">
+                                <span class="service-icon">📷</span>
+                                <span class="service-name">Camera Monitoring</span>
+                            </div>
+                            <div class="service-status">
+                                <span class="status-indicator" id="camera-status-indicator"></span>
+                                <span id="camera-status-text">Stopped</span>
+                            </div>
+                            <div class="service-controls">
+                                <button class="btn btn-sm btn-success service-start" data-service="camera">Start</button>
+                                <button class="btn btn-sm btn-danger service-stop" data-service="camera">Stop</button>
+                            </div>
+                        </div>
+
+                        <!-- Vibration Service -->
+                        <div class="service-card" data-service="vibration">
+                            <div class="service-header">
+                                <span class="service-icon">📊</span>
+                                <span class="service-name">Vibration Monitoring</span>
+                            </div>
+                            <div class="service-status">
+                                <span class="status-indicator" id="vibration-status-indicator"></span>
+                                <span id="vibration-status-text">Stopped</span>
+                            </div>
+                            <div class="service-controls">
+                                <button class="btn btn-sm btn-success service-start" data-service="vibration">Start</button>
+                                <button class="btn btn-sm btn-danger service-stop" data-service="vibration">Stop</button>
+                            </div>
+                        </div>
+
+                        <!-- Frying AI Service -->
+                        <div class="service-card" data-service="frying">
+                            <div class="service-header">
+                                <span class="service-icon">🍟</span>
+                                <span class="service-name">Frying AI</span>
+                            </div>
+                            <div class="service-status">
+                                <span class="status-indicator" id="frying-status-indicator"></span>
+                                <span id="frying-status-text">Stopped</span>
+                            </div>
+                            <div class="service-controls">
+                                <button class="btn btn-sm btn-success service-start" data-service="frying">Start</button>
+                                <button class="btn btn-sm btn-danger service-stop" data-service="frying">Stop</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bulk-controls">
+                        <button id="start-all-btn" class="btn btn-primary">Start All Services</button>
+                        <button id="stop-all-btn" class="btn btn-danger">Stop All Services</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Vibration Monitoring Panel -->
+            <section class="panel vibration-panel">
+                <h2>📊 Vibration Monitoring</h2>
+                <div class="panel-content">
+                    <div class="vibration-grid">
+                        <div class="metric-card">
+                            <div class="metric-label">Current Magnitude</div>
+                            <div class="metric-value" id="vib-current">0.00 m/s²</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Mean Magnitude</div>
+                            <div class="metric-value" id="vib-mean">0.00 m/s²</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Max Magnitude</div>
+                            <div class="metric-value" id="vib-max">0.00 m/s²</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">RMS Value</div>
+                            <div class="metric-value" id="vib-rms">0.00 m/s²</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Trend</div>
+                            <div class="metric-value" id="vib-trend">--</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Sample Count</div>
+                            <div class="metric-value" id="vib-samples">0</div>
+                        </div>
+                    </div>
+
+                    <div class="vibration-chart">
+                        <h3>Axis Values</h3>
+                        <div class="axis-bars">
+                            <div class="axis-bar">
+                                <span class="axis-label">X:</span>
+                                <div class="bar-container">
+                                    <div class="bar" id="x-axis-bar" style="width: 0%"></div>
+                                </div>
+                                <span class="axis-value" id="x-axis-value">0.00</span>
+                            </div>
+                            <div class="axis-bar">
+                                <span class="axis-label">Y:</span>
+                                <div class="bar-container">
+                                    <div class="bar" id="y-axis-bar" style="width: 0%"></div>
+                                </div>
+                                <span class="axis-value" id="y-axis-value">0.00</span>
+                            </div>
+                            <div class="axis-bar">
+                                <span class="axis-label">Z:</span>
+                                <div class="bar-container">
+                                    <div class="bar" id="z-axis-bar" style="width: 0%"></div>
+                                </div>
+                                <span class="axis-value" id="z-axis-value">0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Alerts Panel -->
+            <section class="panel alerts-panel">
+                <h2>⚠️ Recent Alerts</h2>
+                <div class="panel-content">
+                    <div id="alerts-list" class="alerts-list">
+                        <div class="no-alerts">No alerts</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Frying AI Automation System | Jetson Orin Nano | Last Update: <span id="last-update">--</span></p>
+        </footer>
+    </div>
+
+    <!-- Schedule Edit Modal -->
+    <div id="schedule-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Edit Work Schedule</h2>
+            <form id="schedule-form">
+                <div class="form-group">
+                    <label>Start Time:</label>
+                    <input type="time" id="schedule-start" value="08:30">
+                </div>
+                <div class="form-group">
+                    <label>End Time:</label>
+                    <input type="time" id="schedule-end" value="19:00">
+                </div>
+                <div class="form-group">
+                    <label>Enabled Days:</label>
+                    <div class="days-selector">
+                        <label><input type="checkbox" name="day" value="0" checked> Mon</label>
+                        <label><input type="checkbox" name="day" value="1" checked> Tue</label>
+                        <label><input type="checkbox" name="day" value="2" checked> Wed</label>
+                        <label><input type="checkbox" name="day" value="3" checked> Thu</label>
+                        <label><input type="checkbox" name="day" value="4" checked> Fri</label>
+                        <label><input type="checkbox" name="day" value="5" checked> Sat</label>
+                        <label><input type="checkbox" name="day" value="6" checked> Sun</label>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
