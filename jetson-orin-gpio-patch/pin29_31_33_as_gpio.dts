@@ -1,0 +1,44 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    jetson-header-name = "Jetson 40pin Header";
+    overlay-name = "Pin 29, 31, 33 gpio bidirectional";
+    compatible = "nvidia,p3768-0000+p3767-0000\0nvidia,p3768-0000+p3767-0001\0nvidia,p3768-0000+p3767-0003\0nvidia,p3768-0000+p3767-0004\0nvidia,p3768-0000+p3767-0005\0nvidia,p3768-0000+p3767-0000-super\0nvidia,p3768-0000+p3767-0001-super\0nvidia,p3768-0000+p3767-0003-super\0nvidia,p3768-0000+p3767-0004-super\0nvidia,p3768-0000+p3767-0005-super\0nvidia,p3509-0000+p3767-0000\0nvidia,p3509-0000+p3767-0001\0nvidia,p3509-0000+p3767-0003\0nvidia,p3509-0000+p3767-0004\0nvidia,p3509-0000+p3767-0005";
+
+
+    fragment@0 {
+        target = <&pinmux>;
+
+        __overlay__ {
+            pinctrl-names = "default";
+            pinctrl-0 = <&jetson_io_pinmux>;
+
+            jetson_io_pinmux: exp-header-pinmux {
+                hdr40-pin29 {
+                    nvidia,pins = "soc_gpio26_pq6";
+                    nvidia,function = "gp";
+                    nvidia,tristate = <0x0>;
+                    nvidia,enable-input = <0x1>;
+                    nvidia,pull = <0x0>;
+                };
+
+                hdr40-pin31 {
+                    nvidia,pins = "soc_gpio27_pq7";
+                    nvidia,function = "gp";
+                    nvidia,tristate = <0x0>;
+                    nvidia,enable-input = <0x1>;
+                    nvidia,pull = <0x0>;
+                };
+
+                hdr40-pin33 {
+                    nvidia,pins = "soc_gpio00_pp4";
+                    nvidia,function = "gp";
+                    nvidia,tristate = <0x0>;
+                    nvidia,enable-input = <0x1>;
+                    nvidia,pull = <0x0>;
+                };
+            };
+        };
+    };
+};
