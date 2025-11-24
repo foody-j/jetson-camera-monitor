@@ -38,6 +38,9 @@ from gst_camera import GstCamera
 # Import Frying AI segmenter
 from frying_segmenter import FoodSegmenter
 
+# Import GPIO for Relay control
+import Jetson.GPIO as GPIO
+
 # Import psutil for system monitoring
 try:
     import psutil
@@ -236,6 +239,11 @@ class JetsonIntegratedApp:
         # System info
         self.sys_info = SystemInfo(device_name="Jetson2", location="Kitchen")
 
+        # GPIO relay control
+        self.relay_enabled = False
+        self.relay_mode = config.get('relay_mode', 'pulse')
+        self.init_gpio()
+
         # MQTT client
         self.mqtt_client = None
         if MQTT_ENABLED:
@@ -397,6 +405,69 @@ class JetsonIntegratedApp:
         # Cleanup on close
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
+    def init_gpio(self):
+        """Initialize GPIO for 24V Omron Relay control (via ULN2803)"""
+        try:
+            GPIO.setmode(GPIO.BOARD)
+            GPIO.setup(29, GPIO.OUT, initial=GPIO.LOW)  # Pin 29 for Relay control
+            GPIO.setup(31, GPIO.OUT, initial=GPIO.LOW)  # Pin 31 for Relay control
+            print(f"[GPIO] Pin 29, 31 initialized for Relay control (초기 상태: OFF)")
+            print(f"[GPIO] Relay mode: {self.relay_mode}")
+        except Exception as e:
+            print(f"[GPIO] 초기화 실패: {e}")
+
+    def relay_turn_on(self):
+        """Turn on 24V Omron Relay (자체 장비 ON)"""
+        if not self.relay_enabled:
+            try:
+                if self.relay_mode == 'pulse':
+                    # Pulse mode: HIGH -> wait -> LOW
+                    GPIO.output(29, GPIO.HIGH)
+                    GPIO.output(31, GPIO.HIGH)
+                    time.sleep(0.2)  # 200ms pulse
+                    GPIO.output(29, GPIO.LOW)
+                    GPIO.output(31, GPIO.LOW)
+                    print("=" * 50)
+                    print("Jetson #2 장비 ON (펄스 신호)")
+                    print("=" * 50)
+                else:
+                    # Continuous mode: Keep HIGH
+                    GPIO.output(29, GPIO.HIGH)
+                    GPIO.output(31, GPIO.HIGH)
+                    print("=" * 50)
+                    print("Jetson #2 장비 ON (계속 HIGH)")
+                    print("=" * 50)
+
+                self.relay_enabled = True
+            except Exception as e:
+                print(f"[GPIO] Relay ON 실패: {e}")
+
+    def relay_turn_off(self):
+        """Turn off 24V Omron Relay (자체 장비 OFF)"""
+        if self.relay_enabled:
+            try:
+                if self.relay_mode == 'pulse':
+                    # Pulse mode: HIGH -> wait -> LOW
+                    GPIO.output(29, GPIO.HIGH)
+                    GPIO.output(31, GPIO.HIGH)
+                    time.sleep(0.2)  # 200ms pulse
+                    GPIO.output(29, GPIO.LOW)
+                    GPIO.output(31, GPIO.LOW)
+                    print("=" * 50)
+                    print("Jetson #2 장비 OFF (펄스 신호)")
+                    print("=" * 50)
+                else:
+                    # Continuous mode: Set LOW
+                    GPIO.output(29, GPIO.LOW)
+                    GPIO.output(31, GPIO.LOW)
+                    print("=" * 50)
+                    print("Jetson #2 장비 OFF (LOW)")
+                    print("=" * 50)
+
+                self.relay_enabled = False
+            except Exception as e:
+                print(f"[GPIO] Relay OFF 실패: {e}")
+
     def init_mqtt(self):
         """Initialize MQTT client"""
         try:
@@ -425,6 +496,10 @@ class JetsonIntegratedApp:
             # Subscribe to vibration control topic
             self.mqtt_client.subscribe("calibration/vibration/control", self.on_vibration_control)
 
+            # Subscribe to Jetson #1 relay status (for synchronization)
+            jetson1_relay_topic = config.get('mqtt_topic_jetson1_relay', 'jetson1/relay/status')
+            self.mqtt_client.subscribe(jetson1_relay_topic, self.on_jetson1_relay_status)
+
             self.mqtt_client.connect()
             print(f"[MQTT] 연결 성공: {MQTT_BROKER}:{MQTT_PORT}")
             print(f"[MQTT] Device: {DEVICE_ID} ({DEVICE_NAME}) @ {get_ip_address()}")
@@ -439,6 +514,7 @@ class JetsonIntegratedApp:
             print(f"  - {MQTT_TOPIC_FRYING_POT2_CONTROL}")
             print(f"  - {MQTT_TOPIC_FOOD_TYPE} (LEGACY)")
             print(f"  - calibration/vibration/control")
+            print(f"  - {jetson1_relay_topic} (Jetson #1 릴레이 동기화)")
             print(f"[MQTT] 발행 토픽 (Jetson→로봇):")
             print(f"  - {MQTT_TOPIC_OBSERVE}")
             print(f"  - {MQTT_TOPIC_FRYING}")
@@ -1872,6 +1948,46 @@ class JetsonIntegratedApp:
 
         print("[PC상태] PC 상태 창 열림")
 
+    def on_jetson1_relay_status(self, client, userdata, message):
+        """MQTT callback for Jetson #1 relay status synchronization"""
+        try:
+            raw_message = message.payload.decode('utf-8')
+            print("=" * 60)
+            print(f"[릴레이 동기화] Jetson #1 릴레이 상태 수신:")
+            print(f"  Raw: {raw_message}")
+
+            # Parse JSON
+            try:
+                data = json.loads(raw_message)
+                relay_status = data.get('relay_status', '').upper()
+                source = data.get('source', 'unknown')
+                timestamp = data.get('timestamp', '')
+
+                print(f"  상태: {relay_status}")
+                print(f"  소스: {source}")
+                print(f"  시각: {timestamp}")
+
+                # Control Jetson #2 relay based on Jetson #1 status
+                if relay_status == 'ON':
+                    print("[릴레이 동기화] Jetson #1 ON 감지 → Jetson #2 릴레이 ON")
+                    self.relay_turn_on()
+                elif relay_status == 'OFF':
+                    print("[릴레이 동기화] Jetson #1 OFF 감지 → Jetson #2 릴레이 OFF")
+                    self.relay_turn_off()
+                else:
+                    print(f"[릴레이 동기화] 알 수 없는 상태: {relay_status}")
+
+                print("=" * 60)
+
+            except json.JSONDecodeError:
+                print(f"[릴레이 동기화] JSON 파싱 실패: {raw_message}")
+                print("=" * 60)
+
+        except Exception as e:
+            print(f"[릴레이 동기화] 오류: {e}")
+            import traceback
+            traceback.print_exc()
+
     def on_vibration_control(self, client, userdata, message):
         """MQTT callback for vibration control - robust parsing"""
         try:
@@ -2545,6 +2661,24 @@ class JetsonIntegratedApp:
                             self.mqtt_client.disconnect()
                         except:
                             pass
+
+                    # Cleanup GPIO
+                    try:
+                        print("[종료] GPIO 정리 중...")
+                        # Set pins to LOW before cleanup
+                        GPIO.output(29, GPIO.LOW)
+                        GPIO.output(31, GPIO.LOW)
+                        time.sleep(0.1)
+
+                        # Change to input mode with pull-down for clean shutdown
+                        GPIO.setup(29, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+                        GPIO.setup(31, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+                        time.sleep(0.1)
+
+                        GPIO.cleanup()
+                        print("[종료] GPIO 정리 완료")
+                    except Exception as e:
+                        print(f"[종료] GPIO 정리 오류: {e}")
 
                 except Exception as e:
                     print(f"[종료] 정리 중 오류: {e}")

@@ -5,13 +5,13 @@ See accompanying article on JetsonHacks: [Device Tree Overlays on Jetson - Scary
 ## Putting the Output into General Purpose Input/Output
 In the default JetPack 6.2 distribution, GPIO pins are not marked as bidirectional. In order to change that, here is an example device tree overlay file. This is for Pin 7, which is GPIO9/AUD_MCLK. This pin translates to Linux name soc_gpio59_pac6. In order to use the overlay, compile the .dts file, copy the result to the /boot directory, and then use jetson-io.py to add it to the /boot/extlinux/extlinux.conf file. The name of the overlays is 'Pin 7 gpio bidirectional':
 ```bash
-dtc -O dtb -o pin7_as_gpio.dtbo pin7_as_gpio.dts 
+dtc -O dtb -o pin7_as_gpio.dtbo pin7_as_gpio.dts
 sudo cp pin7_as_gpio.dtbo /boot
 sudo /opt/nvidia/jetson-io/jetson-io.py
 ```
 
 ## Test examples
-You will need to reboot for the changes to take effect. There are sample programs taken from the Jetson.GPIO library in the examples directory, which use Pin 7 as an output and Pin 15 as in input.
+You will need to reboot for the changes to take effeifct. There are sample programs taken from the Jetson.GPIO library in the examples directory, which use Pin 7 as an output and Pin 15 as in input.
 
 The example test script should product 3.3V on pin 7. To install the Jetson.GPIO library:
 ```bash

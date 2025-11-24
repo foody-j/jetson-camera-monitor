@@ -136,6 +136,10 @@ MQTT_PUBLISH_INTERVAL = config.get('mqtt_publish_interval', 5)  # seconds
 # AI Mode Setting
 AI_MODE_ENABLED = config.get('ai_mode_enabled', False)
 
+# Relay Control Settings
+RELAY_MODE = config.get('relay_mode', 'pulse')
+AUTO_RELAY_ENABLED = config.get('auto_relay_enabled', True)
+
 # Stir-fry monitoring configuration - TWO CAMERAS
 STIRFRY_LEFT_ENABLED = config.get('stirfry_left_enabled', True)
 STIRFRY_LEFT_CAMERA_TYPE = config.get('stirfry_left_camera_type', 'usb')
@@ -739,37 +743,78 @@ class IntegratedMonitorApp:
     # Initialization
     # =========================
     def init_gpio(self):
-        """Initialize GPIO for SSR control"""
+        """Initialize GPIO for 24V Omron Relay control (via ULN2803)"""
         try:
             GPIO.setmode(GPIO.BOARD)
-            GPIO.setup(7, GPIO.OUT, initial=GPIO.LOW)  # Pin 7 for SSR control, initially OFF
-            print("[GPIO] Pin 7 initialized for SSR control (초기 상태: OFF)")
+            GPIO.setup(29, GPIO.OUT, initial=GPIO.LOW)  # Pin 29 for Relay control
+            GPIO.setup(31, GPIO.OUT, initial=GPIO.LOW)  # Pin 31 for Relay control
+            print("[GPIO] Pin 29, 31 initialized for Relay control (초기 상태: OFF)")
+
+            # Relay control mode: 'pulse' or 'continuous'
+            self.relay_mode = config.get('relay_mode', 'pulse')  # Default: pulse mode
+            print(f"[GPIO] Relay mode: {self.relay_mode}")
         except Exception as e:
             print(f"[GPIO] 초기화 실패: {e}")
 
     def ssr_turn_on(self):
-        """Turn on SSR (heater/equipment)"""
+        """Turn on 24V Omron Relay (제어 PC ON)"""
         if not self.ssr_enabled:
             try:
-                GPIO.output(7, GPIO.HIGH)
+                if self.relay_mode == 'pulse':
+                    # Pulse mode: HIGH -> wait -> LOW
+                    GPIO.output(29, GPIO.HIGH)
+                    GPIO.output(31, GPIO.HIGH)
+                    time.sleep(0.2)  # 200ms pulse
+                    GPIO.output(29, GPIO.LOW)
+                    GPIO.output(31, GPIO.LOW)
+                    print("=" * 50)
+                    print("제어 PC ON (펄스 신호)")
+                    print("=" * 50)
+                else:
+                    # Continuous mode: Keep HIGH
+                    GPIO.output(29, GPIO.HIGH)
+                    GPIO.output(31, GPIO.HIGH)
+                    print("=" * 50)
+                    print("제어 PC ON (계속 HIGH)")
+                    print("=" * 50)
+
                 self.ssr_enabled = True
-                print("=" * 50)
-                print("제어 PC ON")
-                print("=" * 50)
+
+                # Publish relay status to MQTT for Jetson #2
+                self.publish_relay_status("ON")
+
             except Exception as e:
-                print(f"[GPIO] SSR ON 실패: {e}")
+                print(f"[GPIO] Relay ON 실패: {e}")
 
     def ssr_turn_off(self):
-        """Turn off SSR (heater/equipment)"""
+        """Turn off 24V Omron Relay (제어 PC OFF)"""
         if self.ssr_enabled:
             try:
-                GPIO.output(7, GPIO.LOW)
+                if self.relay_mode == 'pulse':
+                    # Pulse mode: HIGH -> wait -> LOW
+                    GPIO.output(29, GPIO.HIGH)
+                    GPIO.output(31, GPIO.HIGH)
+                    time.sleep(0.2)  # 200ms pulse
+                    GPIO.output(29, GPIO.LOW)
+                    GPIO.output(31, GPIO.LOW)
+                    print("=" * 50)
+                    print("제어 PC OFF (펄스 신호)")
+                    print("=" * 50)
+                else:
+                    # Continuous mode: Set LOW
+                    GPIO.output(29, GPIO.LOW)
+                    GPIO.output(31, GPIO.LOW)
+                    print("=" * 50)
+                    print("제어 PC OFF (LOW)")
+                    print("=" * 50)
+
                 self.ssr_enabled = False
-                print("=" * 50)
-                print("제어 PC OFF")
-                print("=" * 50)
+
+                # Publish relay status to MQTT for Jetson #2
+                self.publish_relay_status("OFF")
+
             except Exception as e:
-                print(f"[GPIO] SSR OFF 실패: {e}")
+                print(f"[GPIO] Relay OFF 실패: {e}")
 
     def init_mqtt(self):
         """Initialize MQTT connection with new centralized client"""
@@ -1151,7 +1196,13 @@ class IntegratedMonitorApp:
                     print("=" * 50)
                     self.publish_mqtt("ON")
                     self.on_triggered = True
-                    self.ssr_turn_on()  # Turn on SSR when person detected during work hours
+
+                    # Turn on relay only if auto relay is enabled
+                    if AUTO_RELAY_ENABLED:
+                        self.ssr_turn_on()
+                    else:
+                        print("[릴레이] 자동 제어 비활성화됨 (config.json: auto_relay_enabled=false)")
+
                     self.auto_detection_label.config(text="감지: ON 전송 완료", fg=COLOR_OK)
         else:
             # No person detected
@@ -1200,7 +1251,13 @@ class IntegratedMonitorApp:
                     print("=" * 50)
                     self.publish_mqtt("OFF")
                     self.off_triggered_once = True
-                    self.ssr_turn_off()  # Turn off SSR after 10min no person detection
+
+                    # Turn off relay only if auto relay is enabled
+                    if AUTO_RELAY_ENABLED:
+                        self.ssr_turn_off()
+                    else:
+                        print("[릴레이] 자동 제어 비활성화됨 (config.json: auto_relay_enabled=false)")
+
                     self.auto_detection_label.config(text="감지: OFF 전송 ✓", fg=COLOR_OK)
                 self.night_check_active = False
                 self.night_no_person_deadline = None
@@ -1549,6 +1606,32 @@ class IntegratedMonitorApp:
         today_start = now.replace(hour=DAY_START.hour, minute=DAY_START.minute, second=0, microsecond=0)
         today_end = now.replace(hour=DAY_END.hour, minute=DAY_END.minute, second=0, microsecond=0)
         return today_start <= now <= today_end
+
+    def publish_relay_status(self, status):
+        """Publish relay status to MQTT for Jetson #2 synchronization"""
+        if self.mqtt_client is not None and self.mqtt_client.is_connected():
+            try:
+                payload = {
+                    "relay_status": status,  # "ON" or "OFF"
+                    "source": "jetson1",
+                    "timestamp": datetime.now().isoformat()
+                }
+
+                # Publish to jetson1/relay/status topic for Jetson #2
+                success = self.mqtt_client.publish(
+                    topic_suffix="relay/status",
+                    payload=payload,
+                    qos=1,  # QoS 1 for guaranteed delivery
+                    retain=True  # Retain last status for late subscribers
+                )
+
+                if success:
+                    print(f"[MQTT] 릴레이 상태 발행: {status} (Jetson #2용)")
+                else:
+                    print(f"[MQTT] 릴레이 상태 발행 실패")
+
+            except Exception as e:
+                print(f"[MQTT] 릴레이 상태 발행 오류: {e}")
 
     def publish_mqtt(self, message):
         """Publish message to MQTT broker with enhanced data"""
@@ -1998,12 +2081,59 @@ class IntegratedMonitorApp:
         showinfo_topmost("녹화 완료",
                           f"세션: {self.stirfry_session_id}\n음식: {self.current_stirfry_food_type}\n왼쪽: {self.stirfry_left_frame_count}장\n오른쪽: {self.stirfry_right_frame_count}장\n총: {total_frames}장")
 
+    def toggle_auto_relay(self, window, status_label):
+        """Toggle automatic relay control mode"""
+        global AUTO_RELAY_ENABLED
+
+        # Toggle the value
+        AUTO_RELAY_ENABLED = not AUTO_RELAY_ENABLED
+
+        # Update config.json
+        try:
+            config['auto_relay_enabled'] = AUTO_RELAY_ENABLED
+            with open('config.json', 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+
+            # Update UI
+            auto_mode_text = "활성화 (ON)" if AUTO_RELAY_ENABLED else "비활성화 (OFF)"
+            auto_mode_color = COLOR_OK if AUTO_RELAY_ENABLED else COLOR_ERROR
+            status_label.config(text=auto_mode_text, fg=auto_mode_color)
+
+            mode_str = "활성화" if AUTO_RELAY_ENABLED else "비활성화"
+            showinfo_topmost("자동 모드", f"자동 릴레이 제어가 {mode_str}되었습니다")
+            print(f"[릴레이] 자동 제어 모드: {mode_str}")
+
+        except Exception as e:
+            showerror_topmost("오류", f"설정 저장 실패: {e}")
+            print(f"[릴레이] 자동 모드 토글 오류: {e}")
+
+    def manual_relay_control(self, action, window, status_label):
+        """Manual relay control (ON/OFF)"""
+        try:
+            if action == 'ON':
+                if not self.ssr_enabled:
+                    self.ssr_turn_on()
+                    status_label.config(text="현재 상태: 켜짐 (ON)", fg=COLOR_OK)
+                    showinfo_topmost("AI 모드", "AI 모드가 켜졌습니다 (릴레이 ON)")
+                else:
+                    showinfo_topmost("AI 모드", "이미 켜져 있습니다")
+            elif action == 'OFF':
+                if self.ssr_enabled:
+                    self.ssr_turn_off()
+                    status_label.config(text="현재 상태: 꺼짐 (OFF)", fg=COLOR_ERROR)
+                    showinfo_topmost("AI 모드", "AI 모드가 꺼졌습니다 (릴레이 OFF)")
+                else:
+                    showinfo_topmost("AI 모드", "이미 꺼져 있습니다")
+        except Exception as e:
+            showerror_topmost("오류", f"릴레이 제어 실패: {e}")
+            print(f"[릴레이] 수동 제어 오류: {e}")
+
     def open_pc_status(self):
         """Open PC/Jetson status monitoring dialog"""
         # Create popup window
         status_window = tk.Toplevel(self.root)
         status_window.title("PC 상태 모니터링")
-        status_window.geometry("700x600")
+        status_window.geometry("700x800")
         status_window.configure(bg=COLOR_BG)
 
         # Center the window
@@ -2089,6 +2219,69 @@ class IntegratedMonitorApp:
         except Exception as e:
             tk.Label(info_frame, text=f"시스템 정보 읽기 실패: {e}", font=NORMAL_FONT,
                     bg=COLOR_PANEL, fg=COLOR_ERROR).pack(pady=20)
+
+        # AI Mode (Relay) Control Section
+        control_frame = tk.Frame(status_window, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
+        control_frame.pack(pady=10, padx=40, fill=tk.X)
+
+        tk.Label(control_frame, text="[ AI 모드 제어 ]", font=LARGE_FONT,
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(pady=10)
+
+        # Auto relay mode toggle
+        auto_mode_frame = tk.Frame(control_frame, bg=COLOR_PANEL)
+        auto_mode_frame.pack(pady=10, fill=tk.X, padx=20)
+
+        tk.Label(auto_mode_frame, text="자동 제어 모드:", font=MEDIUM_FONT,
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(side=tk.LEFT)
+
+        auto_mode_text = "활성화 (ON)" if AUTO_RELAY_ENABLED else "비활성화 (OFF)"
+        auto_mode_color = COLOR_OK if AUTO_RELAY_ENABLED else COLOR_ERROR
+
+        auto_mode_status = tk.Label(auto_mode_frame, text=auto_mode_text,
+                                    font=("Noto Sans CJK KR", 20, "bold"),
+                                    bg=COLOR_PANEL, fg=auto_mode_color)
+        auto_mode_status.pack(side=tk.RIGHT)
+
+        # Toggle button
+        toggle_frame = tk.Frame(control_frame, bg=COLOR_PANEL)
+        toggle_frame.pack(pady=5)
+
+        tk.Button(toggle_frame, text="[ 자동 모드 토글 ]", font=MEDIUM_FONT,
+                 command=lambda: self.toggle_auto_relay(status_window, auto_mode_status),
+                 width=20, bg=COLOR_INFO, fg="white",
+                 relief=tk.FLAT, bd=0, padx=10, pady=8).pack()
+
+        tk.Label(control_frame, text="※ 자동 모드: 출근/퇴근 시간에 자동으로 릴레이 ON/OFF",
+                font=("Noto Sans CJK KR", 14), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT).pack(pady=5)
+
+        # Separator
+        tk.Frame(control_frame, height=2, bg=COLOR_PANEL_BORDER).pack(fill=tk.X, padx=20, pady=10)
+
+        # Current relay status
+        relay_status_text = "켜짐 (ON)" if self.ssr_enabled else "꺼짐 (OFF)"
+        relay_status_color = COLOR_OK if self.ssr_enabled else COLOR_ERROR
+
+        status_label = tk.Label(control_frame, text=f"현재 상태: {relay_status_text}",
+                               font=MEDIUM_FONT, bg=COLOR_PANEL, fg=relay_status_color)
+        status_label.pack(pady=10)
+
+        # Control buttons
+        button_frame = tk.Frame(control_frame, bg=COLOR_PANEL)
+        button_frame.pack(pady=15)
+
+        tk.Button(button_frame, text="[ AI 모드 ON ]", font=MEDIUM_FONT,
+                 command=lambda: self.manual_relay_control('ON', status_window, status_label),
+                 width=15, bg=COLOR_OK, fg="white",
+                 relief=tk.FLAT, bd=0, padx=10, pady=8).pack(side=tk.LEFT, padx=10)
+
+        tk.Button(button_frame, text="[ AI 모드 OFF ]", font=MEDIUM_FONT,
+                 command=lambda: self.manual_relay_control('OFF', status_window, status_label),
+                 width=15, bg=COLOR_ERROR, fg="white",
+                 relief=tk.FLAT, bd=0, padx=10, pady=8).pack(side=tk.LEFT, padx=10)
+
+        # Warning label
+        tk.Label(control_frame, text="※ 수동으로 제어하면 자동 모드가 재개됩니다",
+                font=NORMAL_FONT, bg=COLOR_PANEL, fg=COLOR_WARNING).pack(pady=5)
 
         # Close button
         tk.Button(status_window, text="[ 닫기 ]", font=MEDIUM_FONT,
@@ -2357,6 +2550,16 @@ class IntegratedMonitorApp:
                     # Cleanup GPIO
                     try:
                         print("[종료] GPIO 정리 중...")
+                        # Set pins to LOW before cleanup
+                        GPIO.output(29, GPIO.LOW)
+                        GPIO.output(31, GPIO.LOW)
+                        time.sleep(0.1)
+
+                        # Change to input mode with pull-down for clean shutdown
+                        GPIO.setup(29, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+                        GPIO.setup(31, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+                        time.sleep(0.1)
+
                         GPIO.cleanup()
                         print("[종료] GPIO 정리 완료")
                     except Exception as e:
