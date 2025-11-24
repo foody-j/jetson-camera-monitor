@@ -2,9 +2,9 @@
 
 NVIDIA Jetson Orin Nano 기반 실시간 GMSL 카메라 모니터링 및 AI 분석 시스템
 
-**버전**: 2.1
+**버전**: 2.2
 **대상**: Jetson Orin Nano (JetPack 6.2)
-**업데이트**: 2025-01-05
+**업데이트**: 2025-11-24
 
 ---
 
@@ -222,6 +222,12 @@ sudo ./system_check.sh
 ---
 
 ## 📝 버전 히스토리
+
+### v2.2 (2025-11-24)
+- ✅ GPIO relay control 업그레이드 (24V Omron Relay, dual-pin setup)
+- ✅ MQTT 통합 상태 메시지 (jetson1/status, jetson2/status)
+- ✅ Jetson1-Jetson2 relay 동기화 기능 추가
+- ✅ GPIO Pin 29, 31, 33 overlay 설정
 
 ### v2.1 (2025-01-05)
 - ✅ 데이터 디렉토리 홈 기준 통일

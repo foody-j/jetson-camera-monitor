@@ -5,14 +5,14 @@ Wants=graphical.target
 
 [Service]
 Type=simple
-User=dkuyj
-Group=dkuyj
-WorkingDirectory=/home/dkuyj/jetson-camera-monitor/autostart_autodown
+User=hr_dku_001
+Group=hr_dku_001
+WorkingDirectory=/home/hr_dku_001/jetson-food-ai/jetson1_monitoring
 Environment="DISPLAY=:0"
-Environment="XAUTHORITY=/home/dkuyj/.Xauthority"
+Environment="XAUTHORITY=/home/hr_dku_001/.Xauthority"
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=/usr/bin/python3 /home/dkuyj/jetson-camera-monitor/autostart_autodown/JETSON1_INTEGRATED.py
+ExecStart=/usr/bin/python3 /home/hr_dku_001/jetson-food-ai/jetson1_monitoring/JETSON1_INTEGRATED.py
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal

@@ -138,8 +138,12 @@ MQTT_ENABLED = config.get('mqtt_enabled', False)
 MQTT_BROKER = config.get('mqtt_broker', 'localhost')
 MQTT_PORT = config.get('mqtt_port', 1883)
 # MQTT Topics (published by Jetson)
+MQTT_TOPIC_STATUS = f"{DEVICE_ID}/" + config.get('mqtt_topic_status', 'status')  # Unified status topic
+# Legacy topics (deprecated - kept for backward compatibility)
 MQTT_TOPIC_FRYING = f"{DEVICE_ID}/" + config.get('mqtt_topic_frying', 'frying/status')
 MQTT_TOPIC_OBSERVE = f"{DEVICE_ID}/" + config.get('mqtt_topic_observe', 'observe/status')
+MQTT_TOPIC_POT1_POT_STATUS = f"{DEVICE_ID}/" + config.get('mqtt_topic_pot1_pot_status', 'pot1/pot_status')
+MQTT_TOPIC_POT2_POT_STATUS = f"{DEVICE_ID}/" + config.get('mqtt_topic_pot2_pot_status', 'pot2/pot_status')
 MQTT_TOPIC_SYSTEM_AI_MODE = config.get('mqtt_topic_ai_mode', f"{DEVICE_ID}/system/ai_mode")
 MQTT_TOPIC_FRYING_COMPLETION = f"{DEVICE_ID}/frying/completion"
 # Subscribed topics (no prefix - shared from robot)
@@ -324,6 +328,10 @@ class JetsonIntegratedApp:
         self.observe_left_state = None
         self.observe_right_state = None
 
+        # Pot status (for MQTT publishing - will be updated by pot detection AI later)
+        self.pot1_pot_status = "EMPTY"  # "HAS_FOOD" or "EMPTY"
+        self.pot2_pot_status = "EMPTY"  # "HAS_FOOD" or "EMPTY"
+
         # Temperature data (from MQTT)
         self.oil_temp_left = 0.0
         self.oil_temp_right = 0.0
@@ -361,6 +369,9 @@ class JetsonIntegratedApp:
         self.pot1_completion_marked = False
         self.pot1_completion_time = None
         self.pot1_completion_info = {}
+        # POT1 timeout (auto-stop if no message for N seconds)
+        self.pot1_timeout_id = None
+        self.pot1_timeout_seconds = 5  # 5초 동안 메시지 없으면 자동 중지
 
         # POT2 data collection (cameras 2, 3)
         self.pot2_collecting = False
@@ -373,6 +384,9 @@ class JetsonIntegratedApp:
         self.pot2_completion_marked = False
         self.pot2_completion_time = None
         self.pot2_completion_info = {}
+        # POT2 timeout (auto-stop if no message for N seconds)
+        self.pot2_timeout_id = None
+        self.pot2_timeout_seconds = 5  # 5초 동안 메시지 없으면 자동 중지
 
         # Latest frames for data collection
         self.latest_frying_left_frame = None
@@ -717,6 +731,11 @@ class JetsonIntegratedApp:
             self.pot1_food_type = message.payload.decode()
             print(f"[MQTT POT1] 음식 종류 수신: {self.pot1_food_type}")
 
+            # Cancel previous timeout timer
+            if self.pot1_timeout_id is not None:
+                self.root.after_cancel(self.pot1_timeout_id)
+                self.pot1_timeout_id = None
+
             if not self.pot1_collecting:
                 print(f"[MQTT POT1] 자동 수집 시작 - 음식: {self.pot1_food_type}")
                 self.root.after(0, self.start_pot1_collection)
@@ -728,18 +747,30 @@ class JetsonIntegratedApp:
                     "type": "food_type_change",
                     "value": self.pot1_food_type
                 })
+                print(f"[MQTT POT1] 이미 수집 중 (타이머 리셋)")
+
+            # Start new timeout timer
+            timeout_ms = self.pot1_timeout_seconds * 1000
+            self.pot1_timeout_id = self.root.after(timeout_ms, self.on_pot1_timeout)
+            print(f"[MQTT POT1] 타임아웃 {self.pot1_timeout_seconds}초 시작")
+
         except Exception as e:
             print(f"[MQTT POT1] 음식 종류 수신 오류: {e}")
 
     def on_frying_pot1_control(self, client, userdata, message):
-        """MQTT callback for pot1 control commands"""
+        """MQTT callback for pot1 control commands (optional - timeout auto-stops)"""
         try:
             command = message.payload.decode().strip().lower()
             print(f"[MQTT POT1] 제어 명령 수신: {command}")
 
             if command == "stop":
+                # Cancel timeout timer
+                if self.pot1_timeout_id is not None:
+                    self.root.after_cancel(self.pot1_timeout_id)
+                    self.pot1_timeout_id = None
+
                 if self.pot1_collecting:
-                    print(f"[MQTT POT1] 자동 수집 중지")
+                    print(f"[MQTT POT1] 명시적 중지")
                     self.root.after(0, self.stop_pot1_collection)
                 else:
                     print(f"[MQTT POT1] 수집 중이 아님 - 무시")
@@ -752,6 +783,11 @@ class JetsonIntegratedApp:
             self.pot2_food_type = message.payload.decode()
             print(f"[MQTT POT2] 음식 종류 수신: {self.pot2_food_type}")
 
+            # Cancel previous timeout timer
+            if self.pot2_timeout_id is not None:
+                self.root.after_cancel(self.pot2_timeout_id)
+                self.pot2_timeout_id = None
+
             if not self.pot2_collecting:
                 print(f"[MQTT POT2] 자동 수집 시작 - 음식: {self.pot2_food_type}")
                 self.root.after(0, self.start_pot2_collection)
@@ -763,40 +799,89 @@ class JetsonIntegratedApp:
                     "type": "food_type_change",
                     "value": self.pot2_food_type
                 })
+                print(f"[MQTT POT2] 이미 수집 중 (타이머 리셋)")
+
+            # Start new timeout timer
+            timeout_ms = self.pot2_timeout_seconds * 1000
+            self.pot2_timeout_id = self.root.after(timeout_ms, self.on_pot2_timeout)
+            print(f"[MQTT POT2] 타임아웃 {self.pot2_timeout_seconds}초 시작")
+
         except Exception as e:
             print(f"[MQTT POT2] 음식 종류 수신 오류: {e}")
 
     def on_frying_pot2_control(self, client, userdata, message):
-        """MQTT callback for pot2 control commands"""
+        """MQTT callback for pot2 control commands (optional - timeout auto-stops)"""
         try:
             command = message.payload.decode().strip().lower()
             print(f"[MQTT POT2] 제어 명령 수신: {command}")
 
             if command == "stop":
+                # Cancel timeout timer
+                if self.pot2_timeout_id is not None:
+                    self.root.after_cancel(self.pot2_timeout_id)
+                    self.pot2_timeout_id = None
+
                 if self.pot2_collecting:
-                    print(f"[MQTT POT2] 자동 수집 중지")
+                    print(f"[MQTT POT2] 명시적 중지")
                     self.root.after(0, self.stop_pot2_collection)
                 else:
                     print(f"[MQTT POT2] 수집 중이 아님 - 무시")
         except Exception as e:
             print(f"[MQTT POT2] 제어 명령 수신 오류: {e}")
 
+    # Timeout callbacks
+    def on_pot1_timeout(self):
+        """POT1 timeout - auto-stop if no food_type message for N seconds"""
+        try:
+            if self.pot1_collecting:
+                print(f"[POT1 타임아웃] {self.pot1_timeout_seconds}초 동안 메시지 없음 → 자동 중지")
+                self.stop_pot1_collection()
+            self.pot1_timeout_id = None
+        except Exception as e:
+            print(f"[POT1 타임아웃] 오류: {e}")
+
+    def on_pot2_timeout(self):
+        """POT2 timeout - auto-stop if no food_type message for N seconds"""
+        try:
+            if self.pot2_collecting:
+                print(f"[POT2 타임아웃] {self.pot2_timeout_seconds}초 동안 메시지 없음 → 자동 중지")
+                self.stop_pot2_collection()
+            self.pot2_timeout_id = None
+        except Exception as e:
+            print(f"[POT2 타임아웃] 오류: {e}")
+
     def publish_mqtt_periodic(self):
-        """Periodically publish current observe state to MQTT"""
+        """Periodically publish unified status to MQTT"""
         if not self.running:
             return
 
         if self.mqtt_client and MQTT_ENABLED:
             try:
-                # Publish left bucket status
-                if self.observe_left_state is not None:
-                    left_msg = f"LEFT:{self.observe_left_state}"
-                    self.send_mqtt_message(MQTT_TOPIC_OBSERVE, left_msg, include_device_info=True)
+                # Build unified status message
+                status_data = {
+                    "device_id": DEVICE_ID,
+                    "device_name": DEVICE_NAME,
+                    "device_location": DEVICE_LOCATION,
+                    "ip_address": get_ip_address(),
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "basket": {
+                        "left": self.observe_left_state if self.observe_left_state is not None else "UNKNOWN",
+                        "right": self.observe_right_state if self.observe_right_state is not None else "UNKNOWN"
+                    },
+                    "pot": {
+                        "pot1": self.pot1_pot_status,
+                        "pot2": self.pot2_pot_status
+                    },
+                    "ai_mode": AI_MODE_ENABLED
+                }
 
-                # Publish right bucket status
-                if self.observe_right_state is not None:
-                    right_msg = f"RIGHT:{self.observe_right_state}"
-                    self.send_mqtt_message(MQTT_TOPIC_OBSERVE, right_msg, include_device_info=True)
+                # Publish unified status
+                payload = json.dumps(status_data, ensure_ascii=False)
+                self.mqtt_client.publish(
+                    topic_suffix="status",
+                    payload=payload,
+                    qos=MQTT_QOS
+                )
 
             except Exception as e:
                 print(f"[MQTT 주기발행] 오류: {e}")

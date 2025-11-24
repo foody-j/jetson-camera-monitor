@@ -31,7 +31,7 @@ from src.core.system_info import SystemInfo
 # Import GStreamer camera wrapper (optimized for UYVY format)
 from gst_camera import GstCamera
 
-# Import GPIO for SSR control
+# Import GPIO for Relay control
 import Jetson.GPIO as GPIO
 
 # =========================
@@ -127,6 +127,8 @@ MQTT_TOPIC_STIRFRY_POT1_CONTROL = config.get('mqtt_topic_stirfry_pot1_control', 
 MQTT_TOPIC_STIRFRY_POT2_FOOD_TYPE = config.get('mqtt_topic_stirfry_pot2_food_type', 'stirfry/pot2/food_type')
 MQTT_TOPIC_STIRFRY_POT2_CONTROL = config.get('mqtt_topic_stirfry_pot2_control', 'stirfry/pot2/control')
 # MQTT Topics (published by Jetson)
+MQTT_TOPIC_STATUS = f"{DEVICE_ID}/" + config.get('mqtt_topic_status', 'status')  # Unified status topic
+# Legacy topics (deprecated - kept for backward compatibility)
 MQTT_TOPIC_SYSTEM_AI_MODE = config.get('mqtt_topic_ai_mode', f"{DEVICE_ID}/system/ai_mode")
 MQTT_TOPIC_STIRFRY_STATUS = f"{DEVICE_ID}/stirfry/status"
 MQTT_TOPIC = config.get('mqtt_topic', 'robot/control')  # Legacy topic (robot control)
@@ -274,6 +276,15 @@ class IntegratedMonitorApp:
         self.stirfry_pot2_metadata = []
         self.stirfry_pot2_session_id = None
         self.stirfry_pot2_session_start_time = None
+
+        # POT1 timeout (auto-stop if no message for N seconds)
+        self.pot1_timeout_id = None
+        self.pot1_timeout_seconds = 5  # 5초 동안 메시지 없으면 자동 중지
+
+        # POT2 timeout (auto-stop if no message for N seconds)
+        self.pot2_timeout_id = None
+        self.pot2_timeout_seconds = 5  # 5초 동안 메시지 없으면 자동 중지
+
         self.developer_mode = False
         self.snapshot_count = 0
         self.shutdown_tap_count = 0
@@ -297,8 +308,8 @@ class IntegratedMonitorApp:
         self.person_detected = False
         self.motion_detected = False
 
-        # SSR control via GPIO
-        self.ssr_enabled = False  # SSR current state
+        # Relay control via GPIO
+        self.relay_enabled = False  # Relay current state
 
         # OpenCV background subtractor
         self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
@@ -312,8 +323,8 @@ class IntegratedMonitorApp:
         self.detect_screen_size()
         self.create_gui()
 
-        # Initialize GPIO for SSR control
-        print("[초기화] GPIO SSR 제어 초기화 중...")
+        # Initialize GPIO for Relay control
+        print("[초기화] GPIO 릴레이 제어 초기화 중...")
         self.init_gpio()
 
         # Initialize cameras and YOLO
@@ -756,9 +767,14 @@ class IntegratedMonitorApp:
         except Exception as e:
             print(f"[GPIO] 초기화 실패: {e}")
 
-    def ssr_turn_on(self):
-        """Turn on 24V Omron Relay (제어 PC ON)"""
-        if not self.ssr_enabled:
+    def relay_turn_on(self, publish_to_jetson2=True):
+        """Turn on 24V Omron Relay (제어 PC ON)
+
+        Args:
+            publish_to_jetson2: If True, publish relay status to Jetson #2 immediately.
+                               If False, caller must manually call publish_relay_status() later.
+        """
+        if not self.relay_enabled:
             try:
                 if self.relay_mode == 'pulse':
                     # Pulse mode: HIGH -> wait -> LOW
@@ -778,17 +794,18 @@ class IntegratedMonitorApp:
                     print("제어 PC ON (계속 HIGH)")
                     print("=" * 50)
 
-                self.ssr_enabled = True
+                self.relay_enabled = True
 
-                # Publish relay status to MQTT for Jetson #2
-                self.publish_relay_status("ON")
+                # Publish relay status to MQTT for Jetson #2 (optional)
+                if publish_to_jetson2:
+                    self.publish_relay_status("ON")
 
             except Exception as e:
                 print(f"[GPIO] Relay ON 실패: {e}")
 
-    def ssr_turn_off(self):
+    def relay_turn_off(self):
         """Turn off 24V Omron Relay (제어 PC OFF)"""
-        if self.ssr_enabled:
+        if self.relay_enabled:
             try:
                 if self.relay_mode == 'pulse':
                     # Pulse mode: HIGH -> wait -> LOW
@@ -808,7 +825,7 @@ class IntegratedMonitorApp:
                     print("제어 PC OFF (LOW)")
                     print("=" * 50)
 
-                self.ssr_enabled = False
+                self.relay_enabled = False
 
                 # Publish relay status to MQTT for Jetson #2
                 self.publish_relay_status("OFF")
@@ -878,6 +895,11 @@ class IntegratedMonitorApp:
             self.stirfry_pot1_food_type = message.payload.decode()
             print(f"[MQTT POT1] 볶음 음식 종류 수신: {self.stirfry_pot1_food_type}")
 
+            # Cancel previous timeout timer
+            if self.pot1_timeout_id is not None:
+                self.root.after_cancel(self.pot1_timeout_id)
+                self.pot1_timeout_id = None
+
             # AUTO START: If not recording, start automatically
             if not self.stirfry_pot1_recording:
                 print(f"[MQTT POT1] 자동 녹화 시작 - 음식: {self.stirfry_pot1_food_type}")
@@ -890,19 +912,30 @@ class IntegratedMonitorApp:
                     "type": "food_type_change",
                     "value": self.stirfry_pot1_food_type
                 })
-                print(f"[MQTT POT1] 녹화 중 음식 종류 변경: {self.stirfry_pot1_food_type}")
+                print(f"[MQTT POT1] 이미 녹화 중 (타이머 리셋)")
+
+            # Start new timeout timer
+            timeout_ms = self.pot1_timeout_seconds * 1000
+            self.pot1_timeout_id = self.root.after(timeout_ms, self.on_pot1_timeout)
+            print(f"[MQTT POT1] 타임아웃 {self.pot1_timeout_seconds}초 시작")
+
         except Exception as e:
             print(f"[MQTT POT1] 음식 종류 수신 오류: {e}")
 
     def on_stirfry_pot1_control(self, client, userdata, message):
-        """MQTT callback for pot1 control commands - AUTO STOP"""
+        """MQTT callback for pot1 control commands (optional - timeout auto-stops)"""
         try:
             command = message.payload.decode().strip().lower()
             print(f"[MQTT POT1] 볶음 제어 명령 수신: {command}")
 
             if command == "stop":
+                # Cancel timeout timer
+                if self.pot1_timeout_id is not None:
+                    self.root.after_cancel(self.pot1_timeout_id)
+                    self.pot1_timeout_id = None
+
                 if self.stirfry_pot1_recording:
-                    print(f"[MQTT POT1] 자동 녹화 중지")
+                    print(f"[MQTT POT1] 명시적 중지")
                     self.root.after(0, self.stop_stirfry_pot1_recording)
                 else:
                     print(f"[MQTT POT1] 녹화 중이 아님 - 무시")
@@ -914,6 +947,11 @@ class IntegratedMonitorApp:
         try:
             self.stirfry_pot2_food_type = message.payload.decode()
             print(f"[MQTT POT2] 볶음 음식 종류 수신: {self.stirfry_pot2_food_type}")
+
+            # Cancel previous timeout timer
+            if self.pot2_timeout_id is not None:
+                self.root.after_cancel(self.pot2_timeout_id)
+                self.pot2_timeout_id = None
 
             # AUTO START: If not recording, start automatically
             if not self.stirfry_pot2_recording:
@@ -927,24 +965,55 @@ class IntegratedMonitorApp:
                     "type": "food_type_change",
                     "value": self.stirfry_pot2_food_type
                 })
-                print(f"[MQTT POT2] 녹화 중 음식 종류 변경: {self.stirfry_pot2_food_type}")
+                print(f"[MQTT POT2] 이미 녹화 중 (타이머 리셋)")
+
+            # Start new timeout timer
+            timeout_ms = self.pot2_timeout_seconds * 1000
+            self.pot2_timeout_id = self.root.after(timeout_ms, self.on_pot2_timeout)
+            print(f"[MQTT POT2] 타임아웃 {self.pot2_timeout_seconds}초 시작")
+
         except Exception as e:
             print(f"[MQTT POT2] 음식 종류 수신 오류: {e}")
 
     def on_stirfry_pot2_control(self, client, userdata, message):
-        """MQTT callback for pot2 control commands - AUTO STOP"""
+        """MQTT callback for pot2 control commands (optional - timeout auto-stops)"""
         try:
             command = message.payload.decode().strip().lower()
             print(f"[MQTT POT2] 볶음 제어 명령 수신: {command}")
 
             if command == "stop":
+                # Cancel timeout timer
+                if self.pot2_timeout_id is not None:
+                    self.root.after_cancel(self.pot2_timeout_id)
+                    self.pot2_timeout_id = None
+
                 if self.stirfry_pot2_recording:
-                    print(f"[MQTT POT2] 자동 녹화 중지")
+                    print(f"[MQTT POT2] 명시적 중지")
                     self.root.after(0, self.stop_stirfry_pot2_recording)
                 else:
                     print(f"[MQTT POT2] 녹화 중이 아님 - 무시")
         except Exception as e:
             print(f"[MQTT POT2] 제어 명령 수신 오류: {e}")
+
+    def on_pot1_timeout(self):
+        """POT1 timeout - auto-stop if no food_type message for N seconds"""
+        try:
+            if self.stirfry_pot1_recording:
+                print(f"[POT1 타임아웃] {self.pot1_timeout_seconds}초 동안 메시지 없음 → 자동 중지")
+                self.stop_stirfry_pot1_recording()
+            self.pot1_timeout_id = None
+        except Exception as e:
+            print(f"[POT1 타임아웃] 오류: {e}")
+
+    def on_pot2_timeout(self):
+        """POT2 timeout - auto-stop if no food_type message for N seconds"""
+        try:
+            if self.stirfry_pot2_recording:
+                print(f"[POT2 타임아웃] {self.pot2_timeout_seconds}초 동안 메시지 없음 → 자동 중지")
+                self.stop_stirfry_pot2_recording()
+            self.pot2_timeout_id = None
+        except Exception as e:
+            print(f"[POT2 타임아웃] 오류: {e}")
 
     def init_cameras(self):
         """Initialize cameras based on enabled settings"""
@@ -1192,17 +1261,31 @@ class IntegratedMonitorApp:
 
                 if hold_sec >= DETECTION_HOLD_SEC and not self.on_triggered:
                     print("=" * 50)
-                    print("ON !!!")
+                    print("주간 모드 시작 시퀀스")
                     print("=" * 50)
-                    self.publish_mqtt("ON")
-                    self.on_triggered = True
 
                     # Turn on relay only if auto relay is enabled
                     if AUTO_RELAY_ENABLED:
-                        self.ssr_turn_on()
-                    else:
-                        print("[릴레이] 자동 제어 비활성화됨 (config.json: auto_relay_enabled=false)")
+                        # Step 1: Turn on Jetson #1 first (MQTT broker needs to boot)
+                        print("[1/3] Jetson #1 제어 PC 부팅 중...")
+                        self.relay_turn_on(publish_to_jetson2=False)  # Don't publish to Jetson 2 yet
+                        print("[1/3] Jetson #1 릴레이 ON (브로커 부팅 시작)")
 
+                        # Step 2: Wait for MQTT broker to boot up
+                        print("[2/3] MQTT 브로커 부팅 대기 중... (10초)")
+                        time.sleep(10)  # Wait 10 seconds for broker to start
+
+                        # Step 3: Now turn on Jetson #2 and Robot PC
+                        print("[3/3] Jetson #2 및 로봇 PC 시작 중...")
+                        self.publish_relay_status("ON")  # Turn on Jetson #2's control PC
+                        self.publish_mqtt("ON")          # Turn on Robot PC
+                        print("[3/3] 전체 시작 완료")
+                    else:
+                        # If auto relay is disabled, just send MQTT ON
+                        print("[릴레이] 자동 제어 비활성화됨 - MQTT ON만 전송")
+                        self.publish_mqtt("ON")
+
+                    self.on_triggered = True
                     self.auto_detection_label.config(text="감지: ON 전송 완료", fg=COLOR_OK)
         else:
             # No person detected
@@ -1247,17 +1330,30 @@ class IntegratedMonitorApp:
             if self.night_no_person_deadline is not None and now >= self.night_no_person_deadline:
                 if not self.off_triggered_once:
                     print("=" * 50)
-                    print("OFF !!!")
+                    print("야간 모드 종료 시퀀스 시작")
                     print("=" * 50)
-                    self.publish_mqtt("OFF")
-                    self.off_triggered_once = True
 
-                    # Turn off relay only if auto relay is enabled
+                    # Step 1: Turn off Jetson #2 first (via MQTT relay sync)
                     if AUTO_RELAY_ENABLED:
-                        self.ssr_turn_off()
-                    else:
-                        print("[릴레이] 자동 제어 비활성화됨 (config.json: auto_relay_enabled=false)")
+                        print("[1/3] Jetson #2 제어 PC 종료 신호 전송 중...")
+                        self.publish_relay_status("OFF")
+                        print("[1/3] Jetson #2에 OFF 신호 전송 완료")
 
+                        # Step 2: Wait for Jetson #2 to receive and shutdown
+                        print("[2/3] Jetson #2 종료 대기 중... (3초)")
+                        time.sleep(3)  # Wait 3 seconds for Jetson #2 to process
+
+                        # Step 3: Turn off Robot PC and Jetson #1
+                        print("[3/3] 로봇 PC 및 Jetson #1 제어 PC 종료 중...")
+                        self.publish_mqtt("OFF")  # Turn off Robot PC
+                        self.relay_turn_off()     # Turn off Jetson #1's control PC
+                        print("[3/3] 전체 종료 완료")
+                    else:
+                        # If auto relay is disabled, just send MQTT OFF
+                        print("[릴레이] 자동 제어 비활성화됨 - MQTT OFF만 전송")
+                        self.publish_mqtt("OFF")
+
+                    self.off_triggered_once = True
                     self.auto_detection_label.config(text="감지: OFF 전송 ✓", fg=COLOR_OK)
                 self.night_check_active = False
                 self.night_no_person_deadline = None
@@ -1662,30 +1758,53 @@ class IntegratedMonitorApp:
                 print(f"[MQTT] 전송 오류: {e}")
 
     def publish_mqtt_periodic(self):
-        """Periodically publish current state to MQTT"""
+        """Periodically publish unified status to MQTT"""
         if not self.running:
             return
 
         if self.mqtt_client is not None and self.mqtt_client.is_connected():
             try:
-                # Determine current state
-                current_state = "ON" if self.person_detected else "OFF"
+                # Build unified status message
+                status_data = {
+                    "device_id": DEVICE_ID,
+                    "device_name": DEVICE_NAME,
+                    "device_location": DEVICE_LOCATION,
+                    "ip_address": get_ip_address(),
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "person_detected": self.person_detected,
+                    "motion_detected": self.motion_detected,
+                    "relay_enabled": self.relay_enabled,
+                    "ai_mode": AI_MODE_ENABLED,
+                    "recording": {
+                        "pot1": self.stirfry_pot1_recording,
+                        "pot2": self.stirfry_pot2_recording
+                    },
+                    "system_metrics": self.system_info.get_dynamic_info()
+                }
 
-                # Enhanced payload with system metrics
-                payload = {
+                # Publish unified status
+                payload = json.dumps(status_data, ensure_ascii=False)
+                self.mqtt_client.publish(
+                    topic_suffix="status",
+                    payload=payload,
+                    qos=MQTT_QOS
+                )
+
+                # Also publish to legacy robot/control topic for backward compatibility
+                current_state = "ON" if self.person_detected else "OFF"
+                legacy_payload = {
                     "command": current_state,
                     "source": "auto_start_system_periodic",
                     "person_detected": self.person_detected,
                     "motion_detected": self.motion_detected,
                     "system_metrics": self.system_info.get_dynamic_info()
                 }
-
-                # Publish to robot/control topic
                 self.mqtt_client.publish(
                     topic_suffix="robot/control",
-                    payload=payload,
+                    payload=legacy_payload,
                     qos=MQTT_QOS
                 )
+
             except Exception as e:
                 print(f"[MQTT 주기발행] 오류: {e}")
 
@@ -2111,15 +2230,15 @@ class IntegratedMonitorApp:
         """Manual relay control (ON/OFF)"""
         try:
             if action == 'ON':
-                if not self.ssr_enabled:
-                    self.ssr_turn_on()
+                if not self.relay_enabled:
+                    self.relay_turn_on()
                     status_label.config(text="현재 상태: 켜짐 (ON)", fg=COLOR_OK)
                     showinfo_topmost("AI 모드", "AI 모드가 켜졌습니다 (릴레이 ON)")
                 else:
                     showinfo_topmost("AI 모드", "이미 켜져 있습니다")
             elif action == 'OFF':
-                if self.ssr_enabled:
-                    self.ssr_turn_off()
+                if self.relay_enabled:
+                    self.relay_turn_off()
                     status_label.config(text="현재 상태: 꺼짐 (OFF)", fg=COLOR_ERROR)
                     showinfo_topmost("AI 모드", "AI 모드가 꺼졌습니다 (릴레이 OFF)")
                 else:
@@ -2258,8 +2377,8 @@ class IntegratedMonitorApp:
         tk.Frame(control_frame, height=2, bg=COLOR_PANEL_BORDER).pack(fill=tk.X, padx=20, pady=10)
 
         # Current relay status
-        relay_status_text = "켜짐 (ON)" if self.ssr_enabled else "꺼짐 (OFF)"
-        relay_status_color = COLOR_OK if self.ssr_enabled else COLOR_ERROR
+        relay_status_text = "켜짐 (ON)" if self.relay_enabled else "꺼짐 (OFF)"
+        relay_status_color = COLOR_OK if self.relay_enabled else COLOR_ERROR
 
         status_label = tk.Label(control_frame, text=f"현재 상태: {relay_status_text}",
                                font=MEDIUM_FONT, bg=COLOR_PANEL, fg=relay_status_color)
