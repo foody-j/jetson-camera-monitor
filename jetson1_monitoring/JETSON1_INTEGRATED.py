@@ -777,21 +777,18 @@ class IntegratedMonitorApp:
         if not self.relay_enabled:
             try:
                 if self.relay_mode == 'pulse':
-                    # Pulse mode: HIGH -> wait -> LOW
-                    GPIO.output(29, GPIO.HIGH)
+                    # Pulse mode: Pin 31 (ON signal) -> HIGH -> wait -> LOW
                     GPIO.output(31, GPIO.HIGH)
                     time.sleep(0.2)  # 200ms pulse
-                    GPIO.output(29, GPIO.LOW)
                     GPIO.output(31, GPIO.LOW)
                     print("=" * 50)
-                    print("제어 PC ON (펄스 신호)")
+                    print("제어 PC ON (Pin 31 펄스 신호)")
                     print("=" * 50)
                 else:
                     # Continuous mode: Keep HIGH
-                    GPIO.output(29, GPIO.HIGH)
                     GPIO.output(31, GPIO.HIGH)
                     print("=" * 50)
-                    print("제어 PC ON (계속 HIGH)")
+                    print("제어 PC ON (Pin 31 계속 HIGH)")
                     print("=" * 50)
 
                 self.relay_enabled = True
@@ -808,21 +805,18 @@ class IntegratedMonitorApp:
         if self.relay_enabled:
             try:
                 if self.relay_mode == 'pulse':
-                    # Pulse mode: HIGH -> wait -> LOW
+                    # Pulse mode: Pin 29 (OFF signal) -> HIGH -> wait -> LOW
                     GPIO.output(29, GPIO.HIGH)
-                    GPIO.output(31, GPIO.HIGH)
                     time.sleep(0.2)  # 200ms pulse
                     GPIO.output(29, GPIO.LOW)
-                    GPIO.output(31, GPIO.LOW)
                     print("=" * 50)
-                    print("제어 PC OFF (펄스 신호)")
+                    print("제어 PC OFF (Pin 29 펄스 신호)")
                     print("=" * 50)
                 else:
                     # Continuous mode: Set LOW
                     GPIO.output(29, GPIO.LOW)
-                    GPIO.output(31, GPIO.LOW)
                     print("=" * 50)
-                    print("제어 PC OFF (LOW)")
+                    print("제어 PC OFF (Pin 29 LOW)")
                     print("=" * 50)
 
                 self.relay_enabled = False
@@ -2233,16 +2227,16 @@ class IntegratedMonitorApp:
                 if not self.relay_enabled:
                     self.relay_turn_on()
                     status_label.config(text="현재 상태: 켜짐 (ON)", fg=COLOR_OK)
-                    showinfo_topmost("AI 모드", "AI 모드가 켜졌습니다 (릴레이 ON)")
+                    showinfo_topmost("릴레이 제어", "릴레이가 켜졌습니다 (ON)")
                 else:
-                    showinfo_topmost("AI 모드", "이미 켜져 있습니다")
+                    showinfo_topmost("릴레이 제어", "이미 켜져 있습니다")
             elif action == 'OFF':
                 if self.relay_enabled:
                     self.relay_turn_off()
                     status_label.config(text="현재 상태: 꺼짐 (OFF)", fg=COLOR_ERROR)
-                    showinfo_topmost("AI 모드", "AI 모드가 꺼졌습니다 (릴레이 OFF)")
+                    showinfo_topmost("릴레이 제어", "릴레이가 꺼졌습니다 (OFF)")
                 else:
-                    showinfo_topmost("AI 모드", "이미 꺼져 있습니다")
+                    showinfo_topmost("릴레이 제어", "이미 꺼져 있습니다")
         except Exception as e:
             showerror_topmost("오류", f"릴레이 제어 실패: {e}")
             print(f"[릴레이] 수동 제어 오류: {e}")
@@ -2343,7 +2337,7 @@ class IntegratedMonitorApp:
         control_frame = tk.Frame(status_window, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
         control_frame.pack(pady=10, padx=40, fill=tk.X)
 
-        tk.Label(control_frame, text="[ AI 모드 제어 ]", font=LARGE_FONT,
+        tk.Label(control_frame, text="[ 릴레이 제어 ]", font=LARGE_FONT,
                 bg=COLOR_PANEL, fg=COLOR_TEXT).pack(pady=10)
 
         # Auto relay mode toggle
@@ -2388,12 +2382,12 @@ class IntegratedMonitorApp:
         button_frame = tk.Frame(control_frame, bg=COLOR_PANEL)
         button_frame.pack(pady=15)
 
-        tk.Button(button_frame, text="[ AI 모드 ON ]", font=MEDIUM_FONT,
+        tk.Button(button_frame, text="[ 릴레이 ON ]", font=MEDIUM_FONT,
                  command=lambda: self.manual_relay_control('ON', status_window, status_label),
                  width=15, bg=COLOR_OK, fg="white",
                  relief=tk.FLAT, bd=0, padx=10, pady=8).pack(side=tk.LEFT, padx=10)
 
-        tk.Button(button_frame, text="[ AI 모드 OFF ]", font=MEDIUM_FONT,
+        tk.Button(button_frame, text="[ 릴레이 OFF ]", font=MEDIUM_FONT,
                  command=lambda: self.manual_relay_control('OFF', status_window, status_label),
                  width=15, bg=COLOR_ERROR, fg="white",
                  relief=tk.FLAT, bd=0, padx=10, pady=8).pack(side=tk.LEFT, padx=10)

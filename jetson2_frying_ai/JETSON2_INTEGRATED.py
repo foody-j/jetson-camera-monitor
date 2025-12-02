@@ -164,6 +164,10 @@ MQTT_PUBLISH_INTERVAL = config.get('mqtt_publish_interval', 5)  # seconds
 # AI Mode Setting
 AI_MODE_ENABLED = config.get('ai_mode_enabled', False)
 
+# Relay Control Settings
+RELAY_MODE = config.get('relay_mode', 'pulse')
+AUTO_RELAY_ENABLED = config.get('auto_relay_enabled', False)
+
 # Data Collection Configuration
 SAVE_RESOLUTION = config.get('save_resolution', {'width': 1280, 'height': 720})
 SAVE_WIDTH = SAVE_RESOLUTION['width']
@@ -435,21 +439,18 @@ class JetsonIntegratedApp:
         if not self.relay_enabled:
             try:
                 if self.relay_mode == 'pulse':
-                    # Pulse mode: HIGH -> wait -> LOW
-                    GPIO.output(29, GPIO.HIGH)
+                    # Pulse mode: Pin 31 (ON signal) -> HIGH -> wait -> LOW
                     GPIO.output(31, GPIO.HIGH)
                     time.sleep(0.2)  # 200ms pulse
-                    GPIO.output(29, GPIO.LOW)
                     GPIO.output(31, GPIO.LOW)
                     print("=" * 50)
-                    print("Jetson #2 장비 ON (펄스 신호)")
+                    print("Jetson #2 장비 ON (Pin 31 펄스 신호)")
                     print("=" * 50)
                 else:
                     # Continuous mode: Keep HIGH
-                    GPIO.output(29, GPIO.HIGH)
                     GPIO.output(31, GPIO.HIGH)
                     print("=" * 50)
-                    print("Jetson #2 장비 ON (계속 HIGH)")
+                    print("Jetson #2 장비 ON (Pin 31 계속 HIGH)")
                     print("=" * 50)
 
                 self.relay_enabled = True
@@ -461,21 +462,18 @@ class JetsonIntegratedApp:
         if self.relay_enabled:
             try:
                 if self.relay_mode == 'pulse':
-                    # Pulse mode: HIGH -> wait -> LOW
+                    # Pulse mode: Pin 29 (OFF signal) -> HIGH -> wait -> LOW
                     GPIO.output(29, GPIO.HIGH)
-                    GPIO.output(31, GPIO.HIGH)
                     time.sleep(0.2)  # 200ms pulse
                     GPIO.output(29, GPIO.LOW)
-                    GPIO.output(31, GPIO.LOW)
                     print("=" * 50)
-                    print("Jetson #2 장비 OFF (펄스 신호)")
+                    print("Jetson #2 장비 OFF (Pin 29 펄스 신호)")
                     print("=" * 50)
                 else:
                     # Continuous mode: Set LOW
                     GPIO.output(29, GPIO.LOW)
-                    GPIO.output(31, GPIO.LOW)
                     print("=" * 50)
-                    print("Jetson #2 장비 OFF (LOW)")
+                    print("Jetson #2 장비 OFF (Pin 29 LOW)")
                     print("=" * 50)
 
                 self.relay_enabled = False
@@ -1918,12 +1916,59 @@ class JetsonIntegratedApp:
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{ts}] 바켓 {side} -> {state}")
 
+    def toggle_auto_relay(self, window, status_label):
+        """Toggle automatic relay control mode"""
+        global AUTO_RELAY_ENABLED
+
+        # Toggle the value
+        AUTO_RELAY_ENABLED = not AUTO_RELAY_ENABLED
+
+        # Update config_jetson2.json
+        try:
+            config['auto_relay_enabled'] = AUTO_RELAY_ENABLED
+            with open('config_jetson2.json', 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+
+            # Update UI
+            auto_mode_text = "활성화 (ON)" if AUTO_RELAY_ENABLED else "비활성화 (OFF)"
+            auto_mode_color = COLOR_OK if AUTO_RELAY_ENABLED else COLOR_ERROR
+            status_label.config(text=auto_mode_text, fg=auto_mode_color)
+
+            mode_str = "활성화" if AUTO_RELAY_ENABLED else "비활성화"
+            showinfo_topmost("자동 모드", f"자동 릴레이 제어가 {mode_str}되었습니다")
+            print(f"[릴레이] 자동 제어 모드: {mode_str}")
+
+        except Exception as e:
+            showerror_topmost("오류", f"설정 저장 실패: {e}")
+            print(f"[릴레이] 자동 모드 토글 오류: {e}")
+
+    def manual_relay_control(self, action, window, status_label):
+        """Manual relay control (ON/OFF)"""
+        try:
+            if action == 'ON':
+                if not self.relay_enabled:
+                    self.relay_turn_on()
+                    status_label.config(text="현재 상태: 켜짐 (ON)", fg=COLOR_OK)
+                    showinfo_topmost("릴레이 제어", "릴레이가 켜졌습니다 (ON)")
+                else:
+                    showinfo_topmost("릴레이 제어", "이미 켜져 있습니다")
+            elif action == 'OFF':
+                if self.relay_enabled:
+                    self.relay_turn_off()
+                    status_label.config(text="현재 상태: 꺼짐 (OFF)", fg=COLOR_ERROR)
+                    showinfo_topmost("릴레이 제어", "릴레이가 꺼졌습니다 (OFF)")
+                else:
+                    showinfo_topmost("릴레이 제어", "이미 꺼져 있습니다")
+        except Exception as e:
+            showerror_topmost("오류", f"릴레이 제어 실패: {e}")
+            print(f"[릴레이] 수동 제어 오류: {e}")
+
     def open_pc_status(self):
         """Open PC status dialog (matching Jetson #1)"""
         # Create popup window
         status_window = tk.Toplevel(self.root)
         status_window.title("PC 상태")
-        status_window.geometry("600x650")
+        status_window.geometry("700x900")
         status_window.configure(bg=COLOR_BG)
 
         # Center the window
@@ -2025,6 +2070,69 @@ class JetsonIntegratedApp:
             except Exception as e:
                 tk.Label(info_frame, text=f"시스템 정보 읽기 실패: {e}", font=NORMAL_FONT,
                         bg=COLOR_PANEL, fg=COLOR_ERROR).pack(pady=20)
+
+        # Relay Control Section
+        control_frame = tk.Frame(status_window, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
+        control_frame.pack(pady=10, padx=40, fill=tk.X)
+
+        tk.Label(control_frame, text="[ 릴레이 제어 ]", font=LARGE_FONT,
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(pady=10)
+
+        # Auto relay mode toggle
+        auto_mode_frame = tk.Frame(control_frame, bg=COLOR_PANEL)
+        auto_mode_frame.pack(pady=10, fill=tk.X, padx=20)
+
+        tk.Label(auto_mode_frame, text="자동 제어 모드:", font=MEDIUM_FONT,
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(side=tk.LEFT)
+
+        auto_mode_text = "활성화 (ON)" if AUTO_RELAY_ENABLED else "비활성화 (OFF)"
+        auto_mode_color = COLOR_OK if AUTO_RELAY_ENABLED else COLOR_ERROR
+
+        auto_mode_status = tk.Label(auto_mode_frame, text=auto_mode_text,
+                                    font=("Noto Sans CJK KR", 20, "bold"),
+                                    bg=COLOR_PANEL, fg=auto_mode_color)
+        auto_mode_status.pack(side=tk.RIGHT)
+
+        # Toggle button
+        toggle_frame = tk.Frame(control_frame, bg=COLOR_PANEL)
+        toggle_frame.pack(pady=5)
+
+        tk.Button(toggle_frame, text="[ 자동 모드 토글 ]", font=MEDIUM_FONT,
+                 command=lambda: self.toggle_auto_relay(status_window, auto_mode_status),
+                 width=20, bg=COLOR_INFO, fg="white",
+                 relief=tk.FLAT, bd=0, padx=10, pady=8).pack()
+
+        tk.Label(control_frame, text="※ 자동 모드: Jetson #1과 동기화 (MQTT)",
+                font=("Noto Sans CJK KR", 14), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT).pack(pady=5)
+
+        # Separator
+        tk.Frame(control_frame, height=2, bg=COLOR_PANEL_BORDER).pack(fill=tk.X, padx=20, pady=10)
+
+        # Current relay status
+        relay_status_text = "켜짐 (ON)" if self.relay_enabled else "꺼짐 (OFF)"
+        relay_status_color = COLOR_OK if self.relay_enabled else COLOR_ERROR
+
+        status_label = tk.Label(control_frame, text=f"현재 상태: {relay_status_text}",
+                               font=MEDIUM_FONT, bg=COLOR_PANEL, fg=relay_status_color)
+        status_label.pack(pady=10)
+
+        # Control buttons
+        button_frame = tk.Frame(control_frame, bg=COLOR_PANEL)
+        button_frame.pack(pady=15)
+
+        tk.Button(button_frame, text="[ 릴레이 ON ]", font=MEDIUM_FONT,
+                 command=lambda: self.manual_relay_control('ON', status_window, status_label),
+                 width=15, bg=COLOR_OK, fg="white",
+                 relief=tk.FLAT, bd=0, padx=10, pady=8).pack(side=tk.LEFT, padx=10)
+
+        tk.Button(button_frame, text="[ 릴레이 OFF ]", font=MEDIUM_FONT,
+                 command=lambda: self.manual_relay_control('OFF', status_window, status_label),
+                 width=15, bg=COLOR_ERROR, fg="white",
+                 relief=tk.FLAT, bd=0, padx=10, pady=8).pack(side=tk.LEFT, padx=10)
+
+        # Warning label
+        tk.Label(control_frame, text="※ 수동으로 제어하면 자동 모드가 재개됩니다",
+                font=NORMAL_FONT, bg=COLOR_PANEL, fg=COLOR_WARNING).pack(pady=5)
 
         # Close button
         tk.Button(status_window, text="[ 닫기 ]", font=MEDIUM_FONT,

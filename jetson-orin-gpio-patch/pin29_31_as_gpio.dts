@@ -17,17 +17,15 @@
             jetson_io_pinmux: exp-header-pinmux {
                 hdr40-pin29 {
                     nvidia,pins = "soc_gpio32_pq5";
-                    nvidia,function = "gp";
                     nvidia,tristate = <0x0>;
-                    nvidia,enable-input = <0x0>;
+                    nvidia,enable-input = <0x1>;
                     nvidia,pull = <0x0>;
                 };
 
                 hdr40-pin31 {
                     nvidia,pins = "soc_gpio33_pq6";
-                    nvidia,function = "gp";
                     nvidia,tristate = <0x0>;
-                    nvidia,enable-input = <0x0>;
+                    nvidia,enable-input = <0x1>;
                     nvidia,pull = <0x0>;
                 };
             };

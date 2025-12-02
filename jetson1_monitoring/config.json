@@ -3,14 +3,11 @@
   "device_id": "jetson1",
   "device_name": "Jetson1_StirFry_Station",
   "device_location": "kitchen_stirfry",
-
   "_comment_mode": "auto=자동, day=항상 주간, night=항상 야간",
   "mode": "auto",
-
   "_comment_time": "주간 모드 시작/종료 시간 (HH:MM 형식)",
   "day_start": "07:30",
   "day_end": "14:00",
-
   "_comment_camera": "사람 감지 카메라 (gmsl 또는 usb)",
   "camera_type": "gmsl",
   "camera_index": 3,
@@ -19,7 +16,6 @@
     "height": 1536
   },
   "camera_fps": 30,
-
   "_comment_yolo": "YOLO 사람 감지 설정",
   "yolo_model": "yolo12n.pt",
   "_comment_yolo_confidence": "신뢰도 임계값 (낮을수록 민감, 멀리 있는 사람도 감지, 권장: 0.5~0.7)",
@@ -27,7 +23,6 @@
   "_comment_yolo_imgsz": "YOLO 입력 이미지 크기 (높을수록 정확하지만 느림, 권장: 416~640)",
   "yolo_imgsz": 416,
   "detection_hold_sec": 2,
-
   "_comment_night": "야간 모드 설정 - 스냅샷 민감도 조정",
   "night_check_minutes": 10,
   "_comment_motion_area": "모션 감지 최소 면적 (픽셀) - 높을수록 덜 민감 (권장: 1000~3000)",
@@ -39,7 +34,6 @@
   "snapshot_dir": "~/Detection",
   "_comment_cooldown": "스냅샷 저장 간격 (초) - 높을수록 저장 빈도 감소 (권장: 5~20초)",
   "snapshot_cooldown_sec": 10,
-
   "_comment_display": "디스플레이 설정 (768x1024 세로 모드)",
   "display_window": false,
   "window_width": 768,
@@ -54,7 +48,6 @@
   "font_normal": 16,
   "font_status": 18,
   "font_button": 20,
-
   "_comment_mqtt": "MQTT 통신 설정",
   "mqtt_enabled": false,
   "mqtt_broker": "localhost",
@@ -73,26 +66,21 @@
   "mqtt_publish_interval": 2,
   "_comment_ai_mode": "AI 장착 여부 (true=AI 완성됨, false=AI 미완성)",
   "ai_mode_enabled": false,
-
   "_comment_relay": "24V 옴론 릴레이 제어 (ULN2803 경유, Pin 29, 31)",
   "relay_mode": "pulse",
   "_comment_relay_mode": "pulse=펄스 신호(HIGH->LOW, 자기유지 릴레이용), continuous=계속 HIGH(일반 릴레이용)",
-  "auto_relay_enabled": true,
+  "auto_relay_enabled": false,
   "_comment_auto_relay": "자동 릴레이 제어 활성화 (true=자동 ON/OFF, false=수동 제어만)",
-
   "_comment_camera_person_enabled": "사람 감지 카메라 사용 여부 (true=사용, false=미사용)",
   "camera_person_enabled": true,
-
   "_comment_stirfry_left": "볶음 모니터링 왼쪽 카메라",
   "stirfry_left_enabled": true,
   "stirfry_left_camera_type": "gmsl",
   "stirfry_left_camera_index": 0,
-
   "_comment_stirfry_right": "볶음 모니터링 오른쪽 카메라",
   "stirfry_right_enabled": true,
   "stirfry_right_camera_type": "gmsl",
   "stirfry_right_camera_index": 1,
-
   "_comment_stirfry_save": "볶음 데이터 저장 설정",
   "stirfry_save_dir": "AI_Data/StirFryData",
   "stirfry_save_resolution": {
@@ -103,7 +91,6 @@
   "stirfry_jpeg_quality": 100,
   "_comment_frame_skip": "프레임 스킵 (90 = 30fps에서 3초마다 저장)",
   "stirfry_frame_skip": 90,
-
   "_comment_preview": "프리뷰 자동 숨김 시간 (초, 999999=항상 표시)",
   "preview_hide_delay": 999999
 }
