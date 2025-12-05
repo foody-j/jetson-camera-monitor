@@ -11,6 +11,7 @@ Designed for kitchen staff (40-50 years old) - Large, clear, simple interface
 
 import tkinter as tk
 from tkinter import ttk, messagebox
+import tkinter.font as tkfont
 import cv2
 from PIL import Image, ImageTk
 from ultralytics import YOLO
@@ -321,6 +322,11 @@ class IntegratedMonitorApp:
 
         # Detect screen size and build GUI
         self.detect_screen_size()
+
+        # Pre-load fonts to avoid Segfault
+        print("[초기화] 폰트 사전 로딩...")
+        self._init_fonts()
+
         self.create_gui()
 
         # Initialize GPIO for Relay control
@@ -393,6 +399,43 @@ class IntegratedMonitorApp:
               f"대형={self.large_font_size}pt, "
               f"중간={self.medium_font_size}pt, "
               f"버튼={self.button_font_size}pt")
+
+    def _init_fonts(self):
+        """Pre-load fonts to avoid Segfault on first Label creation"""
+        try:
+            # Force font system initialization
+            self.root.update_idletasks()
+
+            # Try to find available Korean font
+            available_fonts = list(tkfont.families())
+
+            # Preferred fonts in order
+            korean_fonts = ["Noto Sans CJK KR", "NanumGothic", "DejaVu Sans", "Sans"]
+            self.default_font = None
+
+            for font_name in korean_fonts:
+                if font_name in available_fonts:
+                    self.default_font = font_name
+                    break
+
+            if not self.default_font:
+                self.default_font = "TkDefaultFont"
+
+            # Pre-create font objects to cache them
+            self.fonts = {
+                'header': tkfont.Font(family=self.default_font, size=16, weight="bold"),
+                'normal': tkfont.Font(family=self.default_font, size=12),
+                'small': tkfont.Font(family=self.default_font, size=11),
+                'tiny': tkfont.Font(family=self.default_font, size=10),
+                'mini': tkfont.Font(family=self.default_font, size=8),
+            }
+
+            print(f"[폰트] 사용 폰트: {self.default_font}")
+
+        except Exception as e:
+            print(f"[폰트] 초기화 실패, 기본 폰트 사용: {e}")
+            self.default_font = "TkDefaultFont"
+            self.fonts = {}
 
     def create_gui(self):
         """Create the main GUI layout - AUTO-ADAPTIVE for any screen"""
@@ -1681,8 +1724,8 @@ class IntegratedMonitorApp:
             return elapsed < self.preview_hide_delay
 
         elif camera_type in ["stirfry_left", "stirfry_right"]:
-            # Stir-fry cameras: only show when recording
-            return self.stirfry_recording
+            # Stir-fry cameras: always show preview (상시 표시)
+            return True
 
         return True
 

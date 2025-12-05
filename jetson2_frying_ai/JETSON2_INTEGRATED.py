@@ -13,6 +13,7 @@ Designed for kitchen staff (40-50 years old) - Large, clear, simple interface
 
 import tkinter as tk
 from tkinter import ttk, messagebox
+import tkinter.font as tkfont
 import cv2
 from PIL import Image, ImageTk
 from ultralytics import YOLO
@@ -261,7 +262,16 @@ class JetsonIntegratedApp:
         print("[모델] AI 모델 로딩 중...")
 
         # Check CUDA availability
+        import gc
         import torch
+
+        # GPU 메모리 정리 (이전 실행 잔여물 제거)
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            print("[GPU] 이전 GPU 메모리 정리 완료")
+
         self.use_cuda = torch.cuda.is_available()
         if self.use_cuda:
             print(f"[GPU] CUDA 사용 가능! GPU 가속 활성화")
@@ -294,6 +304,7 @@ class JetsonIntegratedApp:
         self.observe_cls_names = getattr(self.observe_cls_model.model, "names", None) or \
                                  getattr(self.observe_cls_model, "names", None)
         print(f"[모델] Observe 분류 클래스: {self.observe_cls_names}")
+        print(f"[DEBUG] 모델 로딩 완료, Queue 초기화 시작...")
 
         # AI processing queues (백그라운드 스레드)
         self.frying_left_queue = Queue(maxsize=1)
@@ -398,11 +409,19 @@ class JetsonIntegratedApp:
         self.latest_observe_left_frame = None
         self.latest_observe_right_frame = None
 
+        # Pre-load fonts to avoid Segfault
+        print(f"[DEBUG] 폰트 사전 로딩...")
+        self._init_fonts()
+
         # Build GUI
+        print(f"[DEBUG] GUI 빌드 시작...")
         self.build_gui()
+        print(f"[DEBUG] GUI 빌드 완료")
 
         # Initialize cameras
+        print(f"[DEBUG] 카메라 초기화 시작...")
         self.init_cameras()
+        print(f"[DEBUG] 카메라 초기화 완료")
 
         # Start update loops
         self.update_frying_left()
@@ -910,8 +929,46 @@ class JetsonIntegratedApp:
             except Exception as e:
                 print(f"[MQTT] 전송 실패: {e}")
 
+    def _init_fonts(self):
+        """Pre-load fonts to avoid Segfault on first Label creation"""
+        try:
+            # Force font system initialization
+            self.root.update_idletasks()
+
+            # Try to find available Korean font
+            available_fonts = list(tkfont.families())
+
+            # Preferred fonts in order
+            korean_fonts = ["Noto Sans CJK KR", "NanumGothic", "DejaVu Sans", "Sans"]
+            self.default_font = None
+
+            for font_name in korean_fonts:
+                if font_name in available_fonts:
+                    self.default_font = font_name
+                    break
+
+            if not self.default_font:
+                self.default_font = "TkDefaultFont"
+
+            # Pre-create font objects to cache them
+            self.fonts = {
+                'header': tkfont.Font(family=self.default_font, size=16, weight="bold"),
+                'normal': tkfont.Font(family=self.default_font, size=12),
+                'small': tkfont.Font(family=self.default_font, size=11),
+                'tiny': tkfont.Font(family=self.default_font, size=10),
+                'mini': tkfont.Font(family=self.default_font, size=8),
+            }
+
+            print(f"[폰트] 사용 폰트: {self.default_font}")
+
+        except Exception as e:
+            print(f"[폰트] 초기화 실패, 기본 폰트 사용: {e}")
+            self.default_font = "TkDefaultFont"
+            self.fonts = {}
+
     def build_gui(self):
         """Build the main GUI layout - WHITE MODE with Jetson #1 header"""
+        print(f"[DEBUG] build_gui: header_frame 생성...")
         # Top header - matching Jetson #1 (세로 모드 최적화 - 높이 축소)
         header_height = 80
         header_frame = tk.Frame(self.root, bg=COLOR_PANEL, height=header_height, bd=1, relief=tk.FLAT)
@@ -927,6 +984,7 @@ class JetsonIntegratedApp:
         left_frame = tk.Frame(header_frame, bg=COLOR_PANEL)
         left_frame.grid(row=0, column=0, sticky="w", padx=5, pady=3)
 
+        print(f"[DEBUG] build_gui: 첫 번째 Label 생성 (폰트 로딩)...")
         self.system_status_label = tk.Label(left_frame, text="시스템 정상",
                                            font=("Noto Sans CJK KR", 12), bg=COLOR_PANEL, fg=COLOR_OK)
         self.system_status_label.pack(anchor="w")
@@ -2391,19 +2449,14 @@ class JetsonIntegratedApp:
         print("[바켓 감지] 중지됨")
 
     def start_data_collection(self):
-        """Start manual data collection (Production version - MQTT only)"""
+        """Start manual data collection"""
         from datetime import datetime
         import os
 
-        # Production: food_type comes from MQTT only
+        # If no food type from MQTT, use "manual" as default
         if self.current_food_type == "unknown":
-            showwarning_topmost(
-                "경고",
-                "음식 종류가 설정되지 않았습니다.\n\n"
-                "로봇 PC에서 MQTT로 음식 종류를 전송해주세요.\n"
-                f"Topic: {MQTT_TOPIC_FOOD_TYPE}"
-            )
-            return
+            self.current_food_type = "manual"
+            print(f"[수집] 음식 종류 미설정 - 'manual'로 수집 시작")
 
         # Create session ID
         self.collection_session_id = datetime.now().strftime("session_%Y%m%d_%H%M%S")
