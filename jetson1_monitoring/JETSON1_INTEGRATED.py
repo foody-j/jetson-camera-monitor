@@ -142,6 +142,7 @@ AI_MODE_ENABLED = config.get('ai_mode_enabled', False)
 # Relay Control Settings
 RELAY_MODE = config.get('relay_mode', 'pulse')
 AUTO_RELAY_ENABLED = config.get('auto_relay_enabled', True)
+JETSON2_SHUTDOWN_DELAY_SEC = config.get('jetson2_shutdown_delay_sec', 3)
 
 # Stir-fry monitoring configuration - TWO CAMERAS
 STIRFRY_LEFT_ENABLED = config.get('stirfry_left_enabled', True)
@@ -1382,8 +1383,8 @@ class IntegratedMonitorApp:
                         print("[1/3] Jetson #2에 OFF 신호 전송 완료")
 
                         # Step 2: Wait for Jetson #2 to receive and shutdown
-                        print("[2/3] Jetson #2 종료 대기 중... (3초)")
-                        time.sleep(3)  # Wait 3 seconds for Jetson #2 to process
+                        print(f"[2/3] Jetson #2 종료 대기 중... ({JETSON2_SHUTDOWN_DELAY_SEC}초)")
+                        time.sleep(JETSON2_SHUTDOWN_DELAY_SEC)
 
                         # Step 3: Turn off Robot PC and Jetson #1
                         print("[3/3] 로봇 PC 및 Jetson #1 제어 PC 종료 중...")
