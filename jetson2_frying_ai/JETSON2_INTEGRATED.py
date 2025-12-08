@@ -935,17 +935,22 @@ class JetsonIntegratedApp:
             # Force font system initialization
             self.root.update_idletasks()
 
-            # Try to find available Korean font
-            available_fonts = list(tkfont.families())
-
-            # Preferred fonts in order
+            # Skip tkfont.families() - it causes freezing on Jetson
+            # Just try to create fonts directly with preferred font names
             korean_fonts = ["Noto Sans CJK KR", "NanumGothic", "DejaVu Sans", "Sans"]
             self.default_font = None
 
             for font_name in korean_fonts:
-                if font_name in available_fonts:
-                    self.default_font = font_name
-                    break
+                try:
+                    # Try creating a font - if it fails, try next
+                    test_font = tkfont.Font(family=font_name, size=12)
+                    actual_family = test_font.actual()['family']
+                    # Check if the font was actually found (not substituted)
+                    if actual_family and font_name.lower() in actual_family.lower():
+                        self.default_font = font_name
+                        break
+                except:
+                    continue
 
             if not self.default_font:
                 self.default_font = "TkDefaultFont"
