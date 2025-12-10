@@ -1039,11 +1039,11 @@ class IntegratedMonitorApp:
 
             # 솥 번호 추출
             pot_num = data.get("PTNum", "")
-            device_num = data.get("DeviceNum", "")  # 0: 스팀솥, 1: 가스솥
+            device_num = data.get("DeviceNum", "")  # 0: 왼쪽, 1: 오른쪽
 
             # TODO: 필터링 필요시 활성화
-            # if device_num != "0":  # Jetson1은 스팀솥(DeviceNum=0)만 처리
-            #     return
+            # Jetson1은 볶음솥 (Status[1])
+            # DeviceNum으로 좌/우 구분: "0"=왼쪽, "1"=오른쪽
 
             # 필요한 정보 추출
             recipe = data.get("NowRecipe", "")

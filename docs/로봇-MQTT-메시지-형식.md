@@ -7,8 +7,8 @@
 
 | 토픽 | 설명 |
 |------|------|
-| `Status/[0]` | 0번솥 상태 |
-| `Status/[1]` | 1번솥 상태 |
+| `Status/[0]` | 튀김솥 상태 (Jetson2) |
+| `Status/[1]` | 볶음솥 상태 (Jetson1) |
 
 Jetson에서 구독: `Status/#`
 
@@ -61,14 +61,14 @@ Jetson에서 구독: `Status/#`
 
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| `Status` | Array | 솥 정보 배열 ([0]: 0번솥, [1]: 1번솥) |
+| `Status` | Array | 솥 정보 배열 ([0]: 튀김솥/Jetson2, [1]: 볶음솥/Jetson1) |
 | `RBMotion` | Number | 쉐이킹 상태 (1: 1번솥 쉐이킹, 2: 2번솥 쉐이킹) |
 
 ### Status 배열 항목
 
 | 필드 | 타입 | 설명 | 값 예시 |
 |------|------|------|---------|
-| `DeviceNum` | String | Rack 번호 | "0": 스팀솥, "1": 가스솥 |
+| `DeviceNum` | String | 솥 위치 | "0": 왼쪽, "1": 오른쪽 |
 | `PTNum` | String | 솥 번호 | "0": 0번솥, "1": 1번솥 |
 | `RBstatus` | String | 로봇 연결 상태 | "연결상태(구동중)" |
 | `TotalTime` | String | 총 시간 | "00:14:39" |
