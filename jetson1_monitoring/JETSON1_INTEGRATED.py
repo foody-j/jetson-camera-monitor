@@ -127,6 +127,8 @@ MQTT_TOPIC_STIRFRY_POT1_FOOD_TYPE = config.get('mqtt_topic_stirfry_pot1_food_typ
 MQTT_TOPIC_STIRFRY_POT1_CONTROL = config.get('mqtt_topic_stirfry_pot1_control', 'stirfry/pot1/control')
 MQTT_TOPIC_STIRFRY_POT2_FOOD_TYPE = config.get('mqtt_topic_stirfry_pot2_food_type', 'stirfry/pot2/food_type')
 MQTT_TOPIC_STIRFRY_POT2_CONTROL = config.get('mqtt_topic_stirfry_pot2_control', 'stirfry/pot2/control')
+# 로봇 PC 상태 토픽 (구독)
+MQTT_TOPIC_ROBOT_STATUS = config.get('mqtt_topic_robot_status', 'Status/#')
 # MQTT Topics (published by Jetson)
 MQTT_TOPIC_STATUS = f"{DEVICE_ID}/" + config.get('mqtt_topic_status', 'status')  # Unified status topic
 # Legacy topics (deprecated - kept for backward compatibility)
@@ -228,10 +230,10 @@ class IntegratedMonitorApp:
 
         # Set window size and position
         if FULLSCREEN_MODE:
-            # Fullscreen mode
+            # Fullscreen mode - 진짜 전체화면 속성 설정
+            self.root.attributes('-fullscreen', True)
             screen_width = self.root.winfo_screenwidth()
             screen_height = self.root.winfo_screenheight()
-            self.root.geometry(f"{screen_width}x{screen_height}+0+0")
             print(f"[디스플레이] 전체화면 모드 ({screen_width}x{screen_height})")
         else:
             # Windowed mode
@@ -403,45 +405,11 @@ class IntegratedMonitorApp:
 
     def _init_fonts(self):
         """Pre-load fonts to avoid Segfault on first Label creation"""
-        try:
-            # Force font system initialization
-            self.root.update_idletasks()
-
-            # Skip tkfont.families() - it causes freezing on Jetson
-            # Just try to create fonts directly with preferred font names
-            korean_fonts = ["Noto Sans CJK KR", "NanumGothic", "DejaVu Sans", "Sans"]
-            self.default_font = None
-
-            for font_name in korean_fonts:
-                try:
-                    # Try creating a font - if it fails, try next
-                    test_font = tkfont.Font(family=font_name, size=12)
-                    actual_family = test_font.actual()['family']
-                    # Check if the font was actually found (not substituted)
-                    if actual_family and font_name.lower() in actual_family.lower():
-                        self.default_font = font_name
-                        break
-                except:
-                    continue
-
-            if not self.default_font:
-                self.default_font = "TkDefaultFont"
-
-            # Pre-create font objects to cache them
-            self.fonts = {
-                'header': tkfont.Font(family=self.default_font, size=16, weight="bold"),
-                'normal': tkfont.Font(family=self.default_font, size=12),
-                'small': tkfont.Font(family=self.default_font, size=11),
-                'tiny': tkfont.Font(family=self.default_font, size=10),
-                'mini': tkfont.Font(family=self.default_font, size=8),
-            }
-
-            print(f"[폰트] 사용 폰트: {self.default_font}")
-
-        except Exception as e:
-            print(f"[폰트] 초기화 실패, 기본 폰트 사용: {e}")
-            self.default_font = "TkDefaultFont"
-            self.fonts = {}
+        # 폰트 시스템 초기화를 완전히 건너뛰고 기본 폰트만 사용
+        # tkfont.Font() 호출 자체가 Jetson에서 세그폴트를 일으킬 수 있음
+        self.default_font = "TkDefaultFont"
+        self.fonts = {}
+        print(f"[폰트] 기본 폰트 사용: {self.default_font}")
 
     def create_gui(self):
         """Create the main GUI layout - AUTO-ADAPTIVE for any screen"""
@@ -904,6 +872,9 @@ class IntegratedMonitorApp:
             # Subscribe to vibration control topic
             self.mqtt_client.subscribe("calibration/vibration/control", self.on_vibration_control)
 
+            # Subscribe to robot PC status topic (로봇 PC 상태)
+            self.mqtt_client.subscribe(MQTT_TOPIC_ROBOT_STATUS, self.on_robot_status)
+
             # Connect to broker
             if self.mqtt_client.connect(blocking=True, timeout=5.0):
                 print(f"[MQTT] 연결 성공: {MQTT_BROKER}:{MQTT_PORT}")
@@ -914,6 +885,7 @@ class IntegratedMonitorApp:
                 print(f"  - {MQTT_TOPIC_STIRFRY_POT2_FOOD_TYPE}")
                 print(f"  - {MQTT_TOPIC_STIRFRY_POT2_CONTROL}")
                 print(f"  - calibration/vibration/control")
+                print(f"  - {MQTT_TOPIC_ROBOT_STATUS} (로봇 PC 상태)")
                 print(f"[MQTT] 발행 토픽 (Jetson→로봇):")
                 print(f"  - {MQTT_TOPIC_SYSTEM_AI_MODE}")
                 print(f"  - {MQTT_TOPIC_STIRFRY_STATUS}")
@@ -1057,6 +1029,45 @@ class IntegratedMonitorApp:
             self.pot2_timeout_id = None
         except Exception as e:
             print(f"[POT2 타임아웃] 오류: {e}")
+
+    def on_robot_status(self, client, userdata, message):
+        """로봇 PC 상태 메시지 파싱"""
+        try:
+            topic = message.topic
+            payload = message.payload.decode()
+            data = json.loads(payload)
+
+            # 솥 번호 추출
+            pot_num = data.get("PTNum", "")
+            device_num = data.get("DeviceNum", "")  # 0: 스팀솥, 1: 가스솥
+
+            # TODO: 필터링 필요시 활성화
+            # if device_num != "0":  # Jetson1은 스팀솥(DeviceNum=0)만 처리
+            #     return
+
+            # 필요한 정보 추출
+            recipe = data.get("NowRecipe", "")
+            process_type = data.get("ProcessType", "")  # 투입/조리/배출
+            rb_status = data.get("RBstatus", "")
+            running_time = data.get("RunningTime", "")
+
+            # Potstatus 정보
+            pot_status = data.get("Potstatus", {})
+            temp = pot_status.get("PT_Temp", 0)
+            power = pot_status.get("PT_Power", "False")
+
+            print(f"[로봇상태] POT{pot_num} | {process_type} | {recipe} | 온도:{temp} | {running_time}")
+
+            # TODO: 트리거 처리 (필요시 구현)
+            # if process_type == "투입":
+            #     self.start_recording(pot_num, recipe)
+            # elif process_type == "배출":
+            #     self.stop_recording(pot_num)
+
+        except json.JSONDecodeError as e:
+            print(f"[로봇상태] JSON 파싱 오류: {e}")
+        except Exception as e:
+            print(f"[로봇상태] 처리 오류: {e}")
 
     def init_cameras(self):
         """Initialize cameras based on enabled settings"""

@@ -159,6 +159,8 @@ MQTT_TOPIC_FRYING_POT1_FOOD_TYPE = config.get('mqtt_topic_frying_pot1_food_type'
 MQTT_TOPIC_FRYING_POT1_CONTROL = config.get('mqtt_topic_frying_pot1_control', 'frying/pot1/control')
 MQTT_TOPIC_FRYING_POT2_FOOD_TYPE = config.get('mqtt_topic_frying_pot2_food_type', 'frying/pot2/food_type')
 MQTT_TOPIC_FRYING_POT2_CONTROL = config.get('mqtt_topic_frying_pot2_control', 'frying/pot2/control')
+# 로봇 PC 상태 토픽 (구독)
+MQTT_TOPIC_ROBOT_STATUS = config.get('mqtt_topic_robot_status', 'Status/#')
 MQTT_QOS = config.get('mqtt_qos', 1)
 MQTT_CLIENT_ID = config.get('mqtt_client_id', 'jetson2_ai')
 MQTT_PUBLISH_INTERVAL = config.get('mqtt_publish_interval', 5)  # seconds
@@ -235,10 +237,10 @@ class JetsonIntegratedApp:
 
         # Set window size and position
         if FULLSCREEN_MODE:
-            # Fullscreen mode
+            # Fullscreen mode - 진짜 전체화면 속성 설정
+            self.root.attributes('-fullscreen', True)
             screen_width = self.root.winfo_screenwidth()
             screen_height = self.root.winfo_screenheight()
-            self.root.geometry(f"{screen_width}x{screen_height}+0+0")
             print(f"[디스플레이] 전체화면 모드 ({screen_width}x{screen_height})")
         else:
             # Windowed mode
@@ -531,6 +533,9 @@ class JetsonIntegratedApp:
             jetson1_relay_topic = config.get('mqtt_topic_jetson1_relay', 'jetson1/relay/status')
             self.mqtt_client.subscribe(jetson1_relay_topic, self.on_jetson1_relay_status)
 
+            # Subscribe to robot PC status topic (로봇 PC 상태)
+            self.mqtt_client.subscribe(MQTT_TOPIC_ROBOT_STATUS, self.on_robot_status)
+
             self.mqtt_client.connect()
             print(f"[MQTT] 연결 성공: {MQTT_BROKER}:{MQTT_PORT}")
             print(f"[MQTT] Device: {DEVICE_ID} ({DEVICE_NAME}) @ {get_ip_address()}")
@@ -546,6 +551,7 @@ class JetsonIntegratedApp:
             print(f"  - {MQTT_TOPIC_FOOD_TYPE} (LEGACY)")
             print(f"  - calibration/vibration/control")
             print(f"  - {jetson1_relay_topic} (Jetson #1 릴레이 동기화)")
+            print(f"  - {MQTT_TOPIC_ROBOT_STATUS} (로봇 PC 상태)")
             print(f"[MQTT] 발행 토픽 (Jetson→로봇):")
             print(f"  - {MQTT_TOPIC_OBSERVE}")
             print(f"  - {MQTT_TOPIC_FRYING}")
@@ -867,6 +873,45 @@ class JetsonIntegratedApp:
         except Exception as e:
             print(f"[POT2 타임아웃] 오류: {e}")
 
+    def on_robot_status(self, client, userdata, message):
+        """로봇 PC 상태 메시지 파싱"""
+        try:
+            topic = message.topic
+            payload = message.payload.decode()
+            data = json.loads(payload)
+
+            # 솥 번호 추출
+            pot_num = data.get("PTNum", "")
+            device_num = data.get("DeviceNum", "")  # 0: 스팀솥, 1: 가스솥
+
+            # TODO: 필터링 필요시 활성화
+            # if device_num != "1":  # Jetson2는 가스솥(DeviceNum=1)만 처리
+            #     return
+
+            # 필요한 정보 추출
+            recipe = data.get("NowRecipe", "")
+            process_type = data.get("ProcessType", "")  # 투입/조리/배출
+            rb_status = data.get("RBstatus", "")
+            running_time = data.get("RunningTime", "")
+
+            # Potstatus 정보
+            pot_status = data.get("Potstatus", {})
+            temp = pot_status.get("PT_Temp", 0)
+            power = pot_status.get("PT_Power", "False")
+
+            print(f"[로봇상태] POT{pot_num} | {process_type} | {recipe} | 온도:{temp} | {running_time}")
+
+            # TODO: 트리거 처리 (필요시 구현)
+            # if process_type == "투입":
+            #     self.start_collection(pot_num, recipe)
+            # elif process_type == "배출":
+            #     self.stop_collection(pot_num)
+
+        except json.JSONDecodeError as e:
+            print(f"[로봇상태] JSON 파싱 오류: {e}")
+        except Exception as e:
+            print(f"[로봇상태] 처리 오류: {e}")
+
     def publish_mqtt_periodic(self):
         """Periodically publish unified status to MQTT"""
         if not self.running:
@@ -931,45 +976,11 @@ class JetsonIntegratedApp:
 
     def _init_fonts(self):
         """Pre-load fonts to avoid Segfault on first Label creation"""
-        try:
-            # Force font system initialization
-            self.root.update_idletasks()
-
-            # Skip tkfont.families() - it causes freezing on Jetson
-            # Just try to create fonts directly with preferred font names
-            korean_fonts = ["Noto Sans CJK KR", "NanumGothic", "DejaVu Sans", "Sans"]
-            self.default_font = None
-
-            for font_name in korean_fonts:
-                try:
-                    # Try creating a font - if it fails, try next
-                    test_font = tkfont.Font(family=font_name, size=12)
-                    actual_family = test_font.actual()['family']
-                    # Check if the font was actually found (not substituted)
-                    if actual_family and font_name.lower() in actual_family.lower():
-                        self.default_font = font_name
-                        break
-                except:
-                    continue
-
-            if not self.default_font:
-                self.default_font = "TkDefaultFont"
-
-            # Pre-create font objects to cache them
-            self.fonts = {
-                'header': tkfont.Font(family=self.default_font, size=16, weight="bold"),
-                'normal': tkfont.Font(family=self.default_font, size=12),
-                'small': tkfont.Font(family=self.default_font, size=11),
-                'tiny': tkfont.Font(family=self.default_font, size=10),
-                'mini': tkfont.Font(family=self.default_font, size=8),
-            }
-
-            print(f"[폰트] 사용 폰트: {self.default_font}")
-
-        except Exception as e:
-            print(f"[폰트] 초기화 실패, 기본 폰트 사용: {e}")
-            self.default_font = "TkDefaultFont"
-            self.fonts = {}
+        # 폰트 시스템 초기화를 완전히 건너뛰고 기본 폰트만 사용
+        # tkfont.Font() 호출 자체가 Jetson에서 세그폴트를 일으킬 수 있음
+        self.default_font = "TkDefaultFont"
+        self.fonts = {}
+        print(f"[폰트] 기본 폰트 사용: {self.default_font}")
 
     def build_gui(self):
         """Build the main GUI layout - WHITE MODE with Jetson #1 header"""
