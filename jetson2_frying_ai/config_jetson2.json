@@ -56,7 +56,7 @@
 
   "_comment_mqtt": "MQTT 통신 설정",
   "mqtt_enabled": false,
-  "mqtt_broker": "localhost",
+  "mqtt_broker": "192.168.0.100",
   "mqtt_port": 1883,
   "_comment_mqtt_publish": "MQTT 발행 토픽 (Jetson → Robot PC)",
   "mqtt_topic_frying": "frying/status",
