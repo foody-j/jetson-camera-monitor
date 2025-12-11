@@ -29,15 +29,20 @@
       "RunningTime": "0분 8초"
     }
   ],
-  "RBMotion": 1
+  "RBMotion": 1,
+  "VibrationRequest": false
 }
 ```
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `VibrationRequest` | bool | 진동센서 측정 요청 (true=측정 요청) |
 
 ---
 
 ## 2. Jetson → 로봇PC (Jetson이 발행, 로봇팀이 구독)
 
-### jetson1/status (볶음 스테이션)
+### jetson1/status
 ```json
 {
   "device_id": "jetson1",
@@ -50,6 +55,9 @@
   "recording": {
     "left": false,
     "right": false
+  },
+  "vibration": {
+    "status": "IDLE"
   },
   "system": {
     "cpu_percent": 45.2,
@@ -68,10 +76,19 @@
 | `relay_enabled` | bool | 릴레이 활성화 상태 |
 | `recording.left` | bool | 왼쪽 볶음솥 녹화 중 |
 | `recording.right` | bool | 오른쪽 볶음솥 녹화 중 |
+| `vibration.status` | string | 진동센서 상태 |
+
+#### vibration 상태값 (공통)
+| 값 | 설명 |
+|----|------|
+| `IDLE` | 대기 중 |
+| `MEASURING` | 측정 중 |
+| `NORMAL` | 정상 |
+| `ABNORMAL` | 이상 감지 |
 
 ---
 
-### jetson2/status (튀김 스테이션)
+### jetson2/status
 ```json
 {
   "device_id": "jetson2",
@@ -86,6 +103,9 @@
   "observe": {
     "left": "EMPTY",
     "right": "FILLED"
+  },
+  "vibration": {
+    "status": "IDLE"
   },
   "system": {
     "cpu_percent": 50.1,
@@ -104,12 +124,14 @@
 | `frying.right` | string | 오른쪽 튀김솥 AI 상태 |
 | `observe.left` | string | 왼쪽 관찰 AI 상태 |
 | `observe.right` | string | 오른쪽 관찰 AI 상태 |
+| `vibration.status` | string | 진동센서 상태 (위 참조) |
 
 #### frying 상태값
 | 값 | 설명 |
 |----|------|
 | `IDLE` | 대기 중 |
 | `COOKING` | 조리 중 |
+| `UNKNOWN` | AI 판단 불가 (ai_mode=false일 때) |
 
 #### observe 상태값
 | 값 | 설명 |
