@@ -13,11 +13,8 @@
 **Jetson → 로봇 PC (발행)**
 | 토픽 | 발행자 | 설명 |
 |------|--------|------|
-| `jetson1/system/ai_mode` | Jetson1 | AI 모드 상태 |
-| `jetson1/relay/status` | Jetson1 | 릴레이 상태 |
-| `jetson2/system/ai_mode` | Jetson2 | AI 모드 상태 |
-| `frying/status` | Jetson2 | 튀김 AI 상태 |
-| `observe/status` | Jetson2 | 관찰 AI 상태 |
+| `jetson1/status` | Jetson1 | Jetson1 통합 상태 (AI모드, 릴레이, 녹화 등) |
+| `jetson2/status` | Jetson2 | Jetson2 통합 상태 (AI모드, 튀김AI, 관찰AI 등) |
 
 ## JSON 구조
 

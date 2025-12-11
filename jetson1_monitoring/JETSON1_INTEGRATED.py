@@ -118,26 +118,35 @@ DEVICE_ID = config.get('device_id', 'jetson1')
 DEVICE_NAME = config.get('device_name', 'Jetson1_StirFry_Station')
 DEVICE_LOCATION = config.get('device_location', 'kitchen_stirfry')
 
+# ==============================================================================
+# MQTT 토픽 정리
+# ==============================================================================
+# [발행] Jetson1 → 로봇PC
+#   - jetson1/status : Jetson1 통합 상태 (AI모드, 릴레이, 볶음 등)
+#
+# [구독] 로봇PC → Jetson1
+#   - HR/Status : 로봇 PC 상태 (솥 온도, 레시피, 프로세스 등)
+#   - stirfry/pot1/food_type, stirfry/pot1/control : 볶음솥1 제어
+#   - stirfry/pot2/food_type, stirfry/pot2/control : 볶음솥2 제어
+# ==============================================================================
+
 # MQTT Configuration
 MQTT_ENABLED = config.get('mqtt_enabled', False)
 MQTT_BROKER = config.get('mqtt_broker', 'localhost')
 MQTT_PORT = config.get('mqtt_port', 1883)
-# MQTT Topics (subscribed by Jetson) - Pot1 and Pot2 separately
+MQTT_QOS = config.get('mqtt_qos', 1)
+MQTT_CLIENT_ID = config.get('mqtt_client_id', 'jetson1_ai')
+MQTT_PUBLISH_INTERVAL = config.get('mqtt_publish_interval', 5)  # seconds
+
+# MQTT 발행 토픽 (Jetson1 → 로봇PC) - 단일 토픽으로 통합
+MQTT_TOPIC_STATUS = config.get('mqtt_topic_status', 'jetson1/status')
+
+# MQTT 구독 토픽 (로봇PC → Jetson1)
+MQTT_TOPIC_ROBOT_STATUS = config.get('mqtt_topic_robot_status', 'HR/Status')
 MQTT_TOPIC_STIRFRY_POT1_FOOD_TYPE = config.get('mqtt_topic_stirfry_pot1_food_type', 'stirfry/pot1/food_type')
 MQTT_TOPIC_STIRFRY_POT1_CONTROL = config.get('mqtt_topic_stirfry_pot1_control', 'stirfry/pot1/control')
 MQTT_TOPIC_STIRFRY_POT2_FOOD_TYPE = config.get('mqtt_topic_stirfry_pot2_food_type', 'stirfry/pot2/food_type')
 MQTT_TOPIC_STIRFRY_POT2_CONTROL = config.get('mqtt_topic_stirfry_pot2_control', 'stirfry/pot2/control')
-# 로봇 PC 상태 토픽 (구독)
-MQTT_TOPIC_ROBOT_STATUS = config.get('mqtt_topic_robot_status', 'Status/#')
-# MQTT Topics (published by Jetson)
-MQTT_TOPIC_STATUS = f"{DEVICE_ID}/" + config.get('mqtt_topic_status', 'status')  # Unified status topic
-# Legacy topics (deprecated - kept for backward compatibility)
-MQTT_TOPIC_SYSTEM_AI_MODE = config.get('mqtt_topic_ai_mode', f"{DEVICE_ID}/system/ai_mode")
-MQTT_TOPIC_STIRFRY_STATUS = f"{DEVICE_ID}/stirfry/status"
-MQTT_TOPIC = config.get('mqtt_topic', 'robot/control')  # Legacy topic (robot control)
-MQTT_QOS = config.get('mqtt_qos', 1)
-MQTT_CLIENT_ID = config.get('mqtt_client_id', 'robotcam_jetson')
-MQTT_PUBLISH_INTERVAL = config.get('mqtt_publish_interval', 5)  # seconds
 # AI Mode Setting
 AI_MODE_ENABLED = config.get('ai_mode_enabled', False)
 
@@ -887,13 +896,11 @@ class IntegratedMonitorApp:
                 print(f"  - calibration/vibration/control")
                 print(f"  - {MQTT_TOPIC_ROBOT_STATUS} (로봇 PC 상태)")
                 print(f"[MQTT] 발행 토픽 (Jetson→로봇):")
-                print(f"  - {MQTT_TOPIC_SYSTEM_AI_MODE}")
-                print(f"  - {MQTT_TOPIC_STIRFRY_STATUS}")
+                print(f"  - {MQTT_TOPIC_STATUS}")
 
-                # Publish AI mode status from config
-                ai_mode_status = "ON" if AI_MODE_ENABLED else "OFF"
-                self.send_mqtt_message(MQTT_TOPIC_SYSTEM_AI_MODE, ai_mode_status)
-                print(f"[MQTT] AI 모드 발행: {ai_mode_status} (config: ai_mode_enabled={AI_MODE_ENABLED})")
+                # Publish initial status
+                self.publish_status()
+                print(f"[MQTT] 초기 상태 발행 완료")
 
                 self.auto_mqtt_label.config(text="MQTT: 연결됨", fg=COLOR_OK)
             else:
@@ -1811,56 +1818,39 @@ class IntegratedMonitorApp:
             except Exception as e:
                 print(f"[MQTT] 전송 오류: {e}")
 
+    def publish_status(self):
+        """Publish unified status to single topic: jetson1/status"""
+        if self.mqtt_client is None or not self.mqtt_client.is_connected():
+            return
+
+        try:
+            status_data = {
+                "device_id": DEVICE_ID,
+                "device_name": DEVICE_NAME,
+                "ip_address": get_ip_address(),
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "ai_mode": AI_MODE_ENABLED,
+                "person_detected": self.person_detected,
+                "relay_enabled": self.relay_enabled,
+                "recording": {
+                    "left": self.stirfry_pot1_recording,
+                    "right": self.stirfry_pot2_recording
+                },
+                "system": self.system_info.get_dynamic_info()
+            }
+
+            payload = json.dumps(status_data, ensure_ascii=False)
+            self.mqtt_client.client.publish(MQTT_TOPIC_STATUS, payload, qos=MQTT_QOS)
+
+        except Exception as e:
+            print(f"[MQTT] 상태 발행 오류: {e}")
+
     def publish_mqtt_periodic(self):
         """Periodically publish unified status to MQTT"""
         if not self.running:
             return
 
-        if self.mqtt_client is not None and self.mqtt_client.is_connected():
-            try:
-                # Build unified status message
-                status_data = {
-                    "device_id": DEVICE_ID,
-                    "device_name": DEVICE_NAME,
-                    "device_location": DEVICE_LOCATION,
-                    "ip_address": get_ip_address(),
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "person_detected": self.person_detected,
-                    "motion_detected": self.motion_detected,
-                    "relay_enabled": self.relay_enabled,
-                    "ai_mode": AI_MODE_ENABLED,
-                    "recording": {
-                        "pot1": self.stirfry_pot1_recording,
-                        "pot2": self.stirfry_pot2_recording
-                    },
-                    "system_metrics": self.system_info.get_dynamic_info()
-                }
-
-                # Publish unified status
-                payload = json.dumps(status_data, ensure_ascii=False)
-                self.mqtt_client.publish(
-                    topic_suffix="status",
-                    payload=payload,
-                    qos=MQTT_QOS
-                )
-
-                # Also publish to legacy robot/control topic for backward compatibility
-                current_state = "ON" if self.person_detected else "OFF"
-                legacy_payload = {
-                    "command": current_state,
-                    "source": "auto_start_system_periodic",
-                    "person_detected": self.person_detected,
-                    "motion_detected": self.motion_detected,
-                    "system_metrics": self.system_info.get_dynamic_info()
-                }
-                self.mqtt_client.publish(
-                    topic_suffix="robot/control",
-                    payload=legacy_payload,
-                    qos=MQTT_QOS
-                )
-
-            except Exception as e:
-                print(f"[MQTT 주기발행] 오류: {e}")
+        self.publish_status()
 
         # Schedule next publish
         interval_ms = int(MQTT_PUBLISH_INTERVAL * 1000)

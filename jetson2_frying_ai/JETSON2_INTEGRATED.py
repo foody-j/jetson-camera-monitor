@@ -134,36 +134,41 @@ DEVICE_ID = config.get('device_id', 'jetson2')
 DEVICE_NAME = config.get('device_name', 'Jetson2_Frying_Station')
 DEVICE_LOCATION = config.get('device_location', 'kitchen_frying')
 
+# ==============================================================================
+# MQTT 토픽 정리
+# ==============================================================================
+# [발행] Jetson2 → 로봇PC
+#   - jetson2/status : Jetson2 통합 상태 (AI모드, 튀김AI, 관찰AI 등)
+#
+# [구독] 로봇PC → Jetson2
+#   - HR/Status : 로봇 PC 상태 (솥 온도, 레시피, 프로세스 등)
+#   - frying/pot1/food_type, frying/pot1/control : 튀김솥1 제어
+#   - frying/pot2/food_type, frying/pot2/control : 튀김솥2 제어
+#   - frying/pot1/oil_temp, frying/pot1/probe_temp : 튀김솥1 온도
+#   - frying/pot2/oil_temp, frying/pot2/probe_temp : 튀김솥2 온도
+# ==============================================================================
+
 # MQTT Configuration
 MQTT_ENABLED = config.get('mqtt_enabled', False)
 MQTT_BROKER = config.get('mqtt_broker', 'localhost')
 MQTT_PORT = config.get('mqtt_port', 1883)
-# MQTT Topics (published by Jetson)
-MQTT_TOPIC_STATUS = f"{DEVICE_ID}/" + config.get('mqtt_topic_status', 'status')  # Unified status topic
-# Legacy topics (deprecated - kept for backward compatibility)
-MQTT_TOPIC_FRYING = f"{DEVICE_ID}/" + config.get('mqtt_topic_frying', 'frying/status')
-MQTT_TOPIC_OBSERVE = f"{DEVICE_ID}/" + config.get('mqtt_topic_observe', 'observe/status')
-MQTT_TOPIC_POT1_POT_STATUS = f"{DEVICE_ID}/" + config.get('mqtt_topic_pot1_pot_status', 'pot1/pot_status')
-MQTT_TOPIC_POT2_POT_STATUS = f"{DEVICE_ID}/" + config.get('mqtt_topic_pot2_pot_status', 'pot2/pot_status')
-MQTT_TOPIC_SYSTEM_AI_MODE = config.get('mqtt_topic_ai_mode', f"{DEVICE_ID}/system/ai_mode")
-MQTT_TOPIC_FRYING_COMPLETION = f"{DEVICE_ID}/frying/completion"
-# Subscribed topics (no prefix - shared from robot)
+MQTT_QOS = config.get('mqtt_qos', 1)
+MQTT_CLIENT_ID = config.get('mqtt_client_id', 'jetson2_ai')
+MQTT_PUBLISH_INTERVAL = config.get('mqtt_publish_interval', 5)  # seconds
+
+# MQTT 발행 토픽 (Jetson2 → 로봇PC) - 단일 토픽으로 통합
+MQTT_TOPIC_STATUS = config.get('mqtt_topic_status', 'jetson2/status')
+
+# MQTT 구독 토픽 (로봇PC → Jetson2)
+MQTT_TOPIC_ROBOT_STATUS = config.get('mqtt_topic_robot_status', 'HR/Status')
 MQTT_TOPIC_POT1_OIL_TEMP = config.get('mqtt_topic_pot1_oil_temp', 'frying/pot1/oil_temp')
 MQTT_TOPIC_POT1_PROBE_TEMP = config.get('mqtt_topic_pot1_probe_temp', 'frying/pot1/probe_temp')
 MQTT_TOPIC_POT2_OIL_TEMP = config.get('mqtt_topic_pot2_oil_temp', 'frying/pot2/oil_temp')
 MQTT_TOPIC_POT2_PROBE_TEMP = config.get('mqtt_topic_pot2_probe_temp', 'frying/pot2/probe_temp')
-MQTT_TOPIC_FOOD_TYPE = config.get('mqtt_topic_food_type', 'frying/food_type')
-MQTT_TOPIC_FRYING_CONTROL = config.get('mqtt_topic_frying_control', 'frying/control')
-# POT1/POT2 Separate Control Topics (subscribed by Jetson)
 MQTT_TOPIC_FRYING_POT1_FOOD_TYPE = config.get('mqtt_topic_frying_pot1_food_type', 'frying/pot1/food_type')
 MQTT_TOPIC_FRYING_POT1_CONTROL = config.get('mqtt_topic_frying_pot1_control', 'frying/pot1/control')
 MQTT_TOPIC_FRYING_POT2_FOOD_TYPE = config.get('mqtt_topic_frying_pot2_food_type', 'frying/pot2/food_type')
 MQTT_TOPIC_FRYING_POT2_CONTROL = config.get('mqtt_topic_frying_pot2_control', 'frying/pot2/control')
-# 로봇 PC 상태 토픽 (구독)
-MQTT_TOPIC_ROBOT_STATUS = config.get('mqtt_topic_robot_status', 'Status/#')
-MQTT_QOS = config.get('mqtt_qos', 1)
-MQTT_CLIENT_ID = config.get('mqtt_client_id', 'jetson2_ai')
-MQTT_PUBLISH_INTERVAL = config.get('mqtt_publish_interval', 5)  # seconds
 # AI Mode Setting
 AI_MODE_ENABLED = config.get('ai_mode_enabled', False)
 
@@ -553,15 +558,11 @@ class JetsonIntegratedApp:
             print(f"  - {jetson1_relay_topic} (Jetson #1 릴레이 동기화)")
             print(f"  - {MQTT_TOPIC_ROBOT_STATUS} (로봇 PC 상태)")
             print(f"[MQTT] 발행 토픽 (Jetson→로봇):")
-            print(f"  - {MQTT_TOPIC_OBSERVE}")
-            print(f"  - {MQTT_TOPIC_FRYING}")
-            print(f"  - {MQTT_TOPIC_SYSTEM_AI_MODE}")
-            print(f"  - {MQTT_TOPIC_FRYING_COMPLETION}")
+            print(f"  - {MQTT_TOPIC_STATUS}")
 
-            # Publish AI mode status from config
-            ai_mode_status = "ON" if AI_MODE_ENABLED else "OFF"
-            self.send_mqtt_message(MQTT_TOPIC_SYSTEM_AI_MODE, ai_mode_status)
-            print(f"[MQTT] AI 모드 발행: {ai_mode_status} (config: ai_mode_enabled={AI_MODE_ENABLED})")
+            # Publish initial status
+            self.publish_status()
+            print(f"[MQTT] 초기 상태 발행 완료")
         except Exception as e:
             print(f"[MQTT] 연결 실패: {e}")
             self.mqtt_client = None
@@ -912,41 +913,41 @@ class JetsonIntegratedApp:
         except Exception as e:
             print(f"[로봇상태] 처리 오류: {e}")
 
+    def publish_status(self):
+        """Publish unified status to single topic: jetson2/status"""
+        if not self.mqtt_client or not MQTT_ENABLED:
+            return
+
+        try:
+            status_data = {
+                "device_id": DEVICE_ID,
+                "device_name": DEVICE_NAME,
+                "ip_address": get_ip_address(),
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "ai_mode": AI_MODE_ENABLED,
+                "frying": {
+                    "left": self.pot1_pot_status,
+                    "right": self.pot2_pot_status
+                },
+                "observe": {
+                    "left": self.observe_left_state if self.observe_left_state is not None else "UNKNOWN",
+                    "right": self.observe_right_state if self.observe_right_state is not None else "UNKNOWN"
+                },
+                "system": self.system_info.get_dynamic_info() if hasattr(self, 'system_info') else {}
+            }
+
+            payload = json.dumps(status_data, ensure_ascii=False)
+            self.mqtt_client.client.publish(MQTT_TOPIC_STATUS, payload, qos=MQTT_QOS)
+
+        except Exception as e:
+            print(f"[MQTT] 상태 발행 오류: {e}")
+
     def publish_mqtt_periodic(self):
         """Periodically publish unified status to MQTT"""
         if not self.running:
             return
 
-        if self.mqtt_client and MQTT_ENABLED:
-            try:
-                # Build unified status message
-                status_data = {
-                    "device_id": DEVICE_ID,
-                    "device_name": DEVICE_NAME,
-                    "device_location": DEVICE_LOCATION,
-                    "ip_address": get_ip_address(),
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "basket": {
-                        "left": self.observe_left_state if self.observe_left_state is not None else "UNKNOWN",
-                        "right": self.observe_right_state if self.observe_right_state is not None else "UNKNOWN"
-                    },
-                    "pot": {
-                        "pot1": self.pot1_pot_status,
-                        "pot2": self.pot2_pot_status
-                    },
-                    "ai_mode": AI_MODE_ENABLED
-                }
-
-                # Publish unified status
-                payload = json.dumps(status_data, ensure_ascii=False)
-                self.mqtt_client.publish(
-                    topic_suffix="status",
-                    payload=payload,
-                    qos=MQTT_QOS
-                )
-
-            except Exception as e:
-                print(f"[MQTT 주기발행] 오류: {e}")
+        self.publish_status()
 
         # Schedule next publish
         interval_ms = int(MQTT_PUBLISH_INTERVAL * 1000)
