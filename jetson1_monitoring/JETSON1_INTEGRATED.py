@@ -496,8 +496,8 @@ class IntegratedMonitorApp:
         # Configure rows for 2-level layout (optimized for 768x1024)
         # Row 0: Auto panel (전체 너비)
         # Row 1: Stir-fry LEFT | RIGHT (2칸으로 나눔)
-        self.content_frame.rowconfigure(0, weight=1)  # Auto panel (사람 감시)
-        self.content_frame.rowconfigure(1, weight=1)  # Stir-fry row
+        self.content_frame.rowconfigure(0, weight=2)  # Auto panel (사람 감시) - 줄임
+        self.content_frame.rowconfigure(1, weight=3)  # Stir-fry row - 늘림
         self.content_frame.rowconfigure(2, weight=0)  # Dev panel (hidden by default)
         self.content_frame.columnconfigure(0, weight=1)  # Left column
         self.content_frame.columnconfigure(1, weight=1)  # Right column
@@ -526,7 +526,7 @@ class IntegratedMonitorApp:
         """Panel 1: Auto-start/down system - ROW 0 (전체 너비) - 세로 모드 최적화"""
         pad = int(6 * self.scale_factor)
         panel = tk.LabelFrame(parent, text="자동 ON/OFF (사람 감시)",
-                             font=("Noto Sans CJK KR", int(self.large_font_size * 0.75), "bold"),
+                             font=("Noto Sans CJK KR", int(self.large_font_size * 0.5), "bold"),
                              bg=COLOR_PANEL, fg=COLOR_ACCENT, bd=2, relief=tk.FLAT,
                              highlightbackground=COLOR_PANEL_BORDER, highlightthickness=1)
         panel.grid(row=0, column=0, columnspan=2, padx=pad, pady=int(pad/2), sticky="nsew")
@@ -556,7 +556,7 @@ class IntegratedMonitorApp:
         self.auto_mqtt_label.grid(row=1, column=1, sticky="w", padx=5, pady=2)
 
         # Camera preview area with camera number overlay - FIXED HEIGHT for 768x1024
-        preview_height = int(350 * self.scale_factor)  # Fixed height to prevent overflow
+        preview_height = int(280 * self.scale_factor)  # 줄임: 350 -> 280
         preview_container = tk.Frame(panel, bg="black", height=preview_height)
         preview_container.pack(pady=5, padx=5, fill=tk.X)
         preview_container.pack_propagate(False)  # Prevent container from expanding
@@ -574,13 +574,13 @@ class IntegratedMonitorApp:
         """Panel 2: Stir-fry monitoring LEFT - ROW 1, LEFT - 세로 모드 최적화"""
         pad = int(6 * self.scale_factor)
         panel = tk.LabelFrame(parent, text="볶음 모니터링 (왼쪽)",
-                             font=("Noto Sans CJK KR", int(self.large_font_size * 0.75), "bold"),
+                             font=("Noto Sans CJK KR", int(self.large_font_size * 0.5), "bold"),
                              bg=COLOR_PANEL, fg=COLOR_ACCENT, bd=2, relief=tk.FLAT,
                              highlightbackground=COLOR_PANEL_BORDER, highlightthickness=1)
         panel.grid(row=1, column=0, padx=pad, pady=int(pad/2), sticky="nsew")
 
-        # Camera preview area - fixed height (세로 모드 - 더 작게)
-        preview_height = int(160 * self.scale_factor)
+        # Camera preview area - fixed height (늘림: 160 -> 220)
+        preview_height = int(220 * self.scale_factor)
         preview_container = tk.Frame(panel, bg="black", height=preview_height)
         preview_container.pack(pady=3, padx=5, fill=tk.X)
         preview_container.pack_propagate(False)
@@ -607,13 +607,13 @@ class IntegratedMonitorApp:
         """Panel 3: Stir-fry monitoring RIGHT - ROW 1, RIGHT - 세로 모드 최적화"""
         pad = int(6 * self.scale_factor)
         panel = tk.LabelFrame(parent, text="볶음 모니터링 (오른쪽)",
-                             font=("Noto Sans CJK KR", int(self.large_font_size * 0.75), "bold"),
+                             font=("Noto Sans CJK KR", int(self.large_font_size * 0.5), "bold"),
                              bg=COLOR_PANEL, fg=COLOR_ACCENT, bd=2, relief=tk.FLAT,
                              highlightbackground=COLOR_PANEL_BORDER, highlightthickness=1)
         panel.grid(row=1, column=1, padx=pad, pady=int(pad/2), sticky="nsew")
 
-        # Camera preview area - fixed height (세로 모드 - 더 작게)
-        preview_height = int(160 * self.scale_factor)
+        # Camera preview area - fixed height (늘림: 160 -> 220)
+        preview_height = int(220 * self.scale_factor)
         preview_container = tk.Frame(panel, bg="black", height=preview_height)
         preview_container.pack(pady=3, padx=5, fill=tk.X)
         preview_container.pack_propagate(False)
