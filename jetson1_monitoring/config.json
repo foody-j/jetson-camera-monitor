@@ -60,6 +60,8 @@
   "mqtt_topic_stirfry_pot1_control": "stirfry/pot1/control",
   "mqtt_topic_stirfry_pot2_food_type": "stirfry/pot2/food_type",
   "mqtt_topic_stirfry_pot2_control": "stirfry/pot2/control",
+  "_comment_mqtt_robot_status": "로봇 PC 상태 구독 토픽",
+  "mqtt_topic_robot_status": "Status/#",
   "mqtt_qos": 1,
   "mqtt_client_id": "jetson1_ai",
   "_comment_mqtt_publish_interval": "MQTT 상태 발행 주기 (초)",
