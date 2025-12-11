@@ -18,7 +18,7 @@ from datetime import datetime
 # 설정
 BROKER = sys.argv[1] if len(sys.argv) > 1 else "localhost"
 PORT = 1883
-TOPIC = "Status/#"
+TOPIC = "HR/Status"
 
 def parse_robot_status(payload):
     """로봇 PC 상태 메시지 파싱"""

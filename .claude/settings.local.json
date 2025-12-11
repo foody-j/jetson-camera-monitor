@@ -9,7 +9,20 @@
       "WebFetch(domain:jetsonhacks.com)",
       "Bash(sudo sed:*)",
       "Bash(cat:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(ssh:*)",
+      "Bash(chmod:*)",
+      "Bash(ls:*)",
+      "Bash(dmesg:*)",
+      "Bash(lsmod:*)",
+      "Bash(v4l2-ctl:*)",
+      "Bash(fc-list)",
+      "Bash(sort:*)",
+      "Bash(git show:*)",
+      "WebSearch",
+      "WebFetch(domain:manuals.plus)",
+      "WebFetch(domain:www.wit-motion.com)",
+      "WebFetch(domain:wit-motion.gitbook.io)"
     ],
     "deny": [],
     "ask": []

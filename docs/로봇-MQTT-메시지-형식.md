@@ -3,14 +3,21 @@
 ## 개요
 로봇 PC에서 Jetson으로 전송하는 JSON 메시지 구조 정리
 
-## MQTT 토픽 (예상)
+## MQTT 토픽
 
+**로봇 PC → Jetson (구독)**
 | 토픽 | 설명 |
 |------|------|
-| `Status/[0]` | 튀김솥 상태 (Jetson2) |
-| `Status/[1]` | 볶음솥 상태 (Jetson1) |
+| `HR/Status` | 로봇 PC 상태 (전체) |
 
-Jetson에서 구독: `Status/#`
+**Jetson → 로봇 PC (발행)**
+| 토픽 | 발행자 | 설명 |
+|------|--------|------|
+| `jetson1/system/ai_mode` | Jetson1 | AI 모드 상태 |
+| `jetson1/relay/status` | Jetson1 | 릴레이 상태 |
+| `jetson2/system/ai_mode` | Jetson2 | AI 모드 상태 |
+| `frying/status` | Jetson2 | 튀김 AI 상태 |
+| `observe/status` | Jetson2 | 관찰 AI 상태 |
 
 ## JSON 구조
 
@@ -104,6 +111,6 @@ Jetson에서 구독: `Status/#`
 - `RBMotion`: 쉐이킹 판단 (로봇팔 가림 회피)
 
 ## TODO
-- [x] 로봇 PC에서 사용하는 MQTT 토픽 확인 (예상: `Status/[0]`, `Status/[1]`)
-- [ ] 현장에서 실제 토픽 검증
-- [ ] Jetson 파서 구현
+- [x] 로봇 PC에서 사용하는 MQTT 토픽 확인 → `HR/Status`
+- [x] 현장에서 실제 토픽 검증
+- [x] Jetson 파서 구현
