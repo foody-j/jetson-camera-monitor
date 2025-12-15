@@ -183,11 +183,14 @@ WINDOW_WIDTH = config.get('window_width', 768)
 WINDOW_HEIGHT = config.get('window_height', 1024)
 FULLSCREEN_MODE = config.get('fullscreen', False)  # 전체화면 모드 설정
 WINDOW_DECORATIONS = config.get('window_decorations', False)  # 창 테두리 표시 여부
-LARGE_FONT = ("Noto Sans CJK KR", config.get('font_large', 28), "bold")
-MEDIUM_FONT = ("Noto Sans CJK KR", config.get('font_medium', 20))
-NORMAL_FONT = ("Noto Sans CJK KR", config.get('font_normal', 16))
-STATUS_FONT = ("Noto Sans CJK KR", config.get('font_status', 18), "bold")
-BUTTON_FONT = ("Noto Sans CJK KR", config.get('font_button', 20), "bold")
+# 폰트 이름 설정 - Segfault 방지를 위해 시스템 기본 폰트 사용 가능
+# "Noto Sans CJK KR" 폰트가 세그폴트를 일으키면 "" (빈 문자열)로 변경
+FONT_FAMILY = config.get('font_family', "")  # 빈 문자열 = 시스템 기본 폰트
+LARGE_FONT = (FONT_FAMILY, config.get('font_large', 28), "bold")
+MEDIUM_FONT = (FONT_FAMILY, config.get('font_medium', 20))
+NORMAL_FONT = (FONT_FAMILY, config.get('font_normal', 16))
+STATUS_FONT = (FONT_FAMILY, config.get('font_status', 18), "bold")
+BUTTON_FONT = (FONT_FAMILY, config.get('font_button', 20), "bold")
 
 # Colors - Premium/Luxury Theme
 COLOR_OK = "#00C853"      # Vibrant Green
@@ -273,7 +276,7 @@ class IntegratedMonitorApp:
         self.vibration_process = None  # 진동센서 프로세스 추적
 
         # Stir-fry monitoring state - POT1 (left camera = camera_0)
-        self.stirfry_pot1_recording = False
+        self.stirfry_pot1_recording = False  # 수동 시작
         self.stirfry_pot1_frame_count = 0
         self.stirfry_pot1_frame_skip_counter = 0
         self.stirfry_pot1_food_type = "unknown"
@@ -282,7 +285,7 @@ class IntegratedMonitorApp:
         self.stirfry_pot1_session_start_time = None
 
         # Stir-fry monitoring state - POT2 (right camera = camera_1)
-        self.stirfry_pot2_recording = False
+        self.stirfry_pot2_recording = False  # 수동 시작
         self.stirfry_pot2_frame_count = 0
         self.stirfry_pot2_frame_skip_counter = 0
         self.stirfry_pot2_food_type = "unknown"
@@ -297,6 +300,15 @@ class IntegratedMonitorApp:
         # POT2 timeout (auto-stop if no message for N seconds)
         self.pot2_timeout_id = None
         self.pot2_timeout_seconds = 5  # 5초 동안 메시지 없으면 자동 중지
+
+        # Manual stir-fry recording state (수동 녹화용)
+        self.stirfry_recording = False
+        self.stirfry_left_frame_count = 0
+        self.stirfry_right_frame_count = 0
+        self.stirfry_session_id = None
+        self.stirfry_session_start_time = None
+        self.stirfry_metadata = []
+        self.current_stirfry_food_type = "unknown"
 
         self.developer_mode = False
         self.snapshot_count = 0
@@ -401,11 +413,11 @@ class IntegratedMonitorApp:
 
         # Apply dynamic fonts
         global LARGE_FONT, MEDIUM_FONT, NORMAL_FONT, STATUS_FONT, BUTTON_FONT
-        LARGE_FONT = ("Noto Sans CJK KR", self.large_font_size, "bold")
-        MEDIUM_FONT = ("Noto Sans CJK KR", self.medium_font_size)
-        NORMAL_FONT = ("Noto Sans CJK KR", self.normal_font_size)
-        STATUS_FONT = ("Noto Sans CJK KR", self.status_font_size, "bold")
-        BUTTON_FONT = ("Noto Sans CJK KR", self.button_font_size, "bold")
+        LARGE_FONT = (FONT_FAMILY, self.large_font_size, "bold")
+        MEDIUM_FONT = (FONT_FAMILY, self.medium_font_size)
+        NORMAL_FONT = (FONT_FAMILY, self.normal_font_size)
+        STATUS_FONT = (FONT_FAMILY, self.status_font_size, "bold")
+        BUTTON_FONT = (FONT_FAMILY, self.button_font_size, "bold")
 
         print(f"[디스플레이] 폰트 크기 자동 조정: "
               f"대형={self.large_font_size}pt, "
@@ -441,11 +453,11 @@ class IntegratedMonitorApp:
         left_frame.grid(row=0, column=0, sticky="w", padx=5, pady=3)
 
         self.system_status_label = tk.Label(left_frame, text="시스템 정상",
-                                           font=("Noto Sans CJK KR", int(self.normal_font_size * 0.85)), bg=COLOR_PANEL, fg=COLOR_OK)
+                                           font=(FONT_FAMILY, int(self.normal_font_size * 0.85)), bg=COLOR_PANEL, fg=COLOR_OK)
         self.system_status_label.pack(anchor="w")
 
         self.date_label = tk.Label(left_frame, text="----/--/--",
-                                   font=("Noto Sans CJK KR", int(self.normal_font_size * 0.75)),
+                                   font=(FONT_FAMILY, int(self.normal_font_size * 0.75)),
                                    bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT)
         self.date_label.pack(anchor="w")
 
@@ -454,17 +466,17 @@ class IntegratedMonitorApp:
         center_frame.grid(row=0, column=1, sticky="n", pady=3)
 
         tk.Label(center_frame, text="현대자동차 울산점",
-                font=("Noto Sans CJK KR", int(self.large_font_size * 0.7), "bold"),
+                font=(FONT_FAMILY, int(self.large_font_size * 0.7), "bold"),
                 bg=COLOR_PANEL, fg=COLOR_ACCENT).pack()
 
         self.time_label = tk.Label(center_frame, text="--:--:--",
-                                   font=("Noto Sans CJK KR", int(18 * self.scale_factor), "bold"),
+                                   font=(FONT_FAMILY, int(18 * self.scale_factor), "bold"),
                                    bg=COLOR_PANEL, fg=COLOR_INFO)
         self.time_label.pack()
 
         # Disk space indicator (below time)
         self.disk_label = tk.Label(center_frame, text="💾 ---GB / ---GB",
-                                   font=("Noto Sans CJK KR", int(10 * self.scale_factor)),
+                                   font=(FONT_FAMILY, int(10 * self.scale_factor)),
                                    bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT)
         self.disk_label.pack()
 
@@ -474,14 +486,14 @@ class IntegratedMonitorApp:
 
         # PC Status button
         tk.Button(right_frame, text="PC 상태",
-                 font=("Noto Sans CJK KR", int(self.button_font_size * 0.65), "bold"),
+                 font=(FONT_FAMILY, int(self.button_font_size * 0.65), "bold"),
                  command=self.open_pc_status, bg="#00897B", fg="white",
                  relief=tk.FLAT, bd=0, activebackground="#00796B",
                  padx=8, pady=5).pack(side=tk.LEFT, padx=2)
 
         # Vibration check toggle button
         self.vibration_check_btn = tk.Button(right_frame, text="진동 시작",
-                 font=("Noto Sans CJK KR", int(self.button_font_size * 0.65), "bold"),
+                 font=(FONT_FAMILY, int(self.button_font_size * 0.65), "bold"),
                  command=self.toggle_vibration_check, bg=COLOR_INFO, fg="white",
                  relief=tk.FLAT, bd=0, activebackground=COLOR_BUTTON_HOVER,
                  padx=8, pady=5)
@@ -489,7 +501,7 @@ class IntegratedMonitorApp:
 
         # Settings button (moved from bottom)
         self.settings_btn = tk.Button(right_frame, text="설정",
-                 font=("Noto Sans CJK KR", int(self.button_font_size * 0.65), "bold"),
+                 font=(FONT_FAMILY, int(self.button_font_size * 0.65), "bold"),
                  command=self.handle_settings_tap, bg=COLOR_BUTTON, fg="white",
                  relief=tk.FLAT, bd=0, activebackground=COLOR_BUTTON_HOVER,
                  padx=8, pady=5)
@@ -535,7 +547,7 @@ class IntegratedMonitorApp:
         """Panel 1: Auto-start/down system - ROW 0 (전체 너비) - 세로 모드 최적화"""
         pad = int(6 * self.scale_factor)
         panel = tk.LabelFrame(parent, text="자동 ON/OFF (사람 감시)",
-                             font=("Noto Sans CJK KR", int(self.large_font_size * 0.5), "bold"),
+                             font=(FONT_FAMILY, int(self.large_font_size * 0.5), "bold"),
                              bg=COLOR_PANEL, fg=COLOR_ACCENT, bd=2, relief=tk.FLAT,
                              highlightbackground=COLOR_PANEL_BORDER, highlightthickness=1)
         panel.grid(row=0, column=0, columnspan=2, padx=pad, pady=int(pad/2), sticky="nsew")
@@ -576,14 +588,14 @@ class IntegratedMonitorApp:
 
         # Camera number label (top-right)
         self.auto_cam_number_label = tk.Label(preview_container, text="Cam 3",
-                                              bg="black", fg="yellow", font=("Noto Sans CJK KR", 10, "bold"))
+                                              bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.auto_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
     def create_stirfry_left_panel(self, parent):
         """Panel 2: Stir-fry monitoring LEFT - ROW 1, LEFT - 세로 모드 최적화"""
         pad = int(6 * self.scale_factor)
         panel = tk.LabelFrame(parent, text="볶음 모니터링 (왼쪽)",
-                             font=("Noto Sans CJK KR", int(self.large_font_size * 0.5), "bold"),
+                             font=(FONT_FAMILY, int(self.large_font_size * 0.5), "bold"),
                              bg=COLOR_PANEL, fg=COLOR_ACCENT, bd=2, relief=tk.FLAT,
                              highlightbackground=COLOR_PANEL_BORDER, highlightthickness=1)
         panel.grid(row=1, column=0, padx=pad, pady=int(pad/2), sticky="nsew")
@@ -600,7 +612,7 @@ class IntegratedMonitorApp:
 
         # Camera number label (top-right)
         self.stirfry_left_cam_number_label = tk.Label(preview_container, text="Cam 0",
-                                                      bg="black", fg="yellow", font=("Noto Sans CJK KR", 10, "bold"))
+                                                      bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.stirfry_left_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
         # Status info - 축소
@@ -608,7 +620,7 @@ class IntegratedMonitorApp:
         info_frame.pack(pady=3, fill=tk.X)
 
         self.stirfry_left_count_label = tk.Label(info_frame, text="저장: 0장",
-                                                 font=("Noto Sans CJK KR", int(self.medium_font_size * 0.9)),
+                                                 font=(FONT_FAMILY, int(self.medium_font_size * 0.9)),
                                                  bg=COLOR_PANEL, fg=COLOR_TEXT)
         self.stirfry_left_count_label.pack(pady=2)
 
@@ -616,7 +628,7 @@ class IntegratedMonitorApp:
         """Panel 3: Stir-fry monitoring RIGHT - ROW 1, RIGHT - 세로 모드 최적화"""
         pad = int(6 * self.scale_factor)
         panel = tk.LabelFrame(parent, text="볶음 모니터링 (오른쪽)",
-                             font=("Noto Sans CJK KR", int(self.large_font_size * 0.5), "bold"),
+                             font=(FONT_FAMILY, int(self.large_font_size * 0.5), "bold"),
                              bg=COLOR_PANEL, fg=COLOR_ACCENT, bd=2, relief=tk.FLAT,
                              highlightbackground=COLOR_PANEL_BORDER, highlightthickness=1)
         panel.grid(row=1, column=1, padx=pad, pady=int(pad/2), sticky="nsew")
@@ -633,7 +645,7 @@ class IntegratedMonitorApp:
 
         # Camera number label (top-right)
         self.stirfry_right_cam_number_label = tk.Label(preview_container, text="Cam 1",
-                                                       bg="black", fg="yellow", font=("Noto Sans CJK KR", 10, "bold"))
+                                                       bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.stirfry_right_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
         # Status info - 축소
@@ -641,7 +653,7 @@ class IntegratedMonitorApp:
         info_frame.pack(pady=3, fill=tk.X)
 
         self.stirfry_right_count_label = tk.Label(info_frame, text="저장: 0장",
-                                                  font=("Noto Sans CJK KR", int(self.medium_font_size * 0.9)),
+                                                  font=(FONT_FAMILY, int(self.medium_font_size * 0.9)),
                                                   bg=COLOR_PANEL, fg=COLOR_TEXT)
         self.stirfry_right_count_label.pack(pady=2)
 
@@ -655,21 +667,21 @@ class IntegratedMonitorApp:
         btn_container.pack(pady=4, padx=5, fill=tk.X)
 
         self.stirfry_start_btn = tk.Button(btn_container, text="녹화 시작",
-                                          font=("Noto Sans CJK KR", int(self.button_font_size * 0.7), "bold"),
+                                          font=(FONT_FAMILY, int(self.button_font_size * 0.7), "bold"),
                                           command=self.start_stirfry_recording,
                                           bg=COLOR_OK, fg="white", relief=tk.FLAT, bd=0,
                                           activebackground="#00B248", height=1)
         self.stirfry_start_btn.pack(side=tk.LEFT, padx=3, fill=tk.BOTH, expand=True)
 
         self.stirfry_stop_btn = tk.Button(btn_container, text="녹화 중지",
-                                         font=("Noto Sans CJK KR", int(self.button_font_size * 0.7), "bold"),
+                                         font=(FONT_FAMILY, int(self.button_font_size * 0.7), "bold"),
                                          command=self.stop_stirfry_recording,
                                          bg=COLOR_ERROR, fg="white", state=tk.DISABLED,
                                          relief=tk.FLAT, bd=0, activebackground="#C62828", height=1)
         self.stirfry_stop_btn.pack(side=tk.LEFT, padx=3, fill=tk.BOTH, expand=True)
 
         tk.Button(btn_container, text="종료",
-                 font=("Noto Sans CJK KR", int(self.button_font_size * 0.7), "bold"),
+                 font=(FONT_FAMILY, int(self.button_font_size * 0.7), "bold"),
                  command=self.on_closing,
                  bg="#424242", fg="white", relief=tk.FLAT, bd=0,
                  activebackground="#616161", height=1).pack(side=tk.LEFT, padx=3, fill=tk.BOTH, expand=True)
@@ -872,22 +884,19 @@ class IntegratedMonitorApp:
                 system_info=self.system_info.to_dict()
             )
 
-            # Subscribe to pot1 and pot2 topics separately (from Robot PC)
-            self.mqtt_client.subscribe(MQTT_TOPIC_STIRFRY_POT1_FOOD_TYPE, self.on_stirfry_pot1_food_type)
-            self.mqtt_client.subscribe(MQTT_TOPIC_STIRFRY_POT1_CONTROL, self.on_stirfry_pot1_control)
-            self.mqtt_client.subscribe(MQTT_TOPIC_STIRFRY_POT2_FOOD_TYPE, self.on_stirfry_pot2_food_type)
-            self.mqtt_client.subscribe(MQTT_TOPIC_STIRFRY_POT2_CONTROL, self.on_stirfry_pot2_control)
-
-            # Subscribe to vibration control topic
-            self.mqtt_client.subscribe("calibration/vibration/control", self.on_vibration_control)
-
-            # Subscribe to robot PC status topic (로봇 PC 상태)
-            self.mqtt_client.subscribe(MQTT_TOPIC_ROBOT_STATUS, self.on_robot_status)
-
-            # Connect to broker
+            # Connect to broker FIRST
             if self.mqtt_client.connect(blocking=True, timeout=5.0):
                 print(f"[MQTT] 연결 성공: {MQTT_BROKER}:{MQTT_PORT}")
                 print(f"[MQTT] Device: {DEVICE_ID} ({DEVICE_NAME}) @ {get_ip_address()}")
+
+                # Subscribe AFTER connection
+                self.mqtt_client.subscribe(MQTT_TOPIC_STIRFRY_POT1_FOOD_TYPE, self.on_stirfry_pot1_food_type)
+                self.mqtt_client.subscribe(MQTT_TOPIC_STIRFRY_POT1_CONTROL, self.on_stirfry_pot1_control)
+                self.mqtt_client.subscribe(MQTT_TOPIC_STIRFRY_POT2_FOOD_TYPE, self.on_stirfry_pot2_food_type)
+                self.mqtt_client.subscribe(MQTT_TOPIC_STIRFRY_POT2_CONTROL, self.on_stirfry_pot2_control)
+                self.mqtt_client.subscribe("calibration/vibration/control", self.on_vibration_control)
+                self.mqtt_client.subscribe(MQTT_TOPIC_ROBOT_STATUS, self.on_robot_status)
+
                 print(f"[MQTT] 구독 토픽 (로봇→Jetson):")
                 print(f"  - {MQTT_TOPIC_STIRFRY_POT1_FOOD_TYPE}")
                 print(f"  - {MQTT_TOPIC_STIRFRY_POT1_CONTROL}")
@@ -1038,38 +1047,51 @@ class IntegratedMonitorApp:
             print(f"[POT2 타임아웃] 오류: {e}")
 
     def on_robot_status(self, client, userdata, message):
-        """로봇 PC 상태 메시지 파싱"""
+        """로봇 PC 상태 메시지 파싱 - Jetson1은 볶음솥(PTNum=1)만 처리"""
         try:
-            topic = message.topic
             payload = message.payload.decode()
             data = json.loads(payload)
 
-            # 솥 번호 추출
-            pot_num = data.get("PTNum", "")
-            device_num = data.get("DeviceNum", "")  # 0: 왼쪽, 1: 오른쪽
+            # Status 배열에서 볶음솥(PTNum=1) 찾기
+            status_list = data.get("Status", [])
+            for status in status_list:
+                pot_num = status.get("PTNum", "")
 
-            # TODO: 필터링 필요시 활성화
-            # Jetson1은 볶음솥 (Status[1])
-            # DeviceNum으로 좌/우 구분: "0"=왼쪽, "1"=오른쪽
+                # Jetson1은 볶음솥(PTNum=1)만 처리
+                if pot_num != "1":
+                    continue
 
-            # 필요한 정보 추출
-            recipe = data.get("NowRecipe", "")
-            process_type = data.get("ProcessType", "")  # 투입/조리/배출
-            rb_status = data.get("RBstatus", "")
-            running_time = data.get("RunningTime", "")
+                device_num = status.get("DeviceNum", "")  # 0: 왼쪽, 1: 오른쪽
+                recipe = status.get("NowRecipe", "")
+                process_type = status.get("ProcessType", "")  # 투입/조리/배출
+                running_time = status.get("RunningTime", "")
+                pot_status = status.get("Potstatus", {})
+                temp = pot_status.get("PT_Temp", 0)
 
-            # Potstatus 정보
-            pot_status = data.get("Potstatus", {})
-            temp = pot_status.get("PT_Temp", 0)
-            power = pot_status.get("PT_Power", "False")
+                print(f"[로봇상태] 볶음솥 DEV{device_num} | {process_type} | {recipe} | 온도:{temp} | {running_time}")
 
-            print(f"[로봇상태] POT{pot_num} | {process_type} | {recipe} | 온도:{temp} | {running_time}")
+                # 조리 시작/중지 트리거
+                if device_num == "0":  # 왼쪽 = POT1
+                    if process_type == "조리":
+                        if not self.stirfry_pot1_recording:
+                            self.stirfry_pot1_food_type = recipe if recipe else "unknown"
+                            print(f"[로봇상태] POT1 녹화 시작 - {self.stirfry_pot1_food_type}")
+                            self.root.after(0, self.start_stirfry_pot1_recording)
+                    elif process_type == "배출" or process_type == "":
+                        if self.stirfry_pot1_recording:
+                            print(f"[로봇상태] POT1 녹화 중지")
+                            self.root.after(0, self.stop_stirfry_pot1_recording)
 
-            # TODO: 트리거 처리 (필요시 구현)
-            # if process_type == "투입":
-            #     self.start_recording(pot_num, recipe)
-            # elif process_type == "배출":
-            #     self.stop_recording(pot_num)
+                elif device_num == "1":  # 오른쪽 = POT2
+                    if process_type == "조리":
+                        if not self.stirfry_pot2_recording:
+                            self.stirfry_pot2_food_type = recipe if recipe else "unknown"
+                            print(f"[로봇상태] POT2 녹화 시작 - {self.stirfry_pot2_food_type}")
+                            self.root.after(0, self.start_stirfry_pot2_recording)
+                    elif process_type == "배출" or process_type == "":
+                        if self.stirfry_pot2_recording:
+                            print(f"[로봇상태] POT2 녹화 중지")
+                            self.root.after(0, self.stop_stirfry_pot2_recording)
 
         except json.JSONDecodeError as e:
             print(f"[로봇상태] JSON 파싱 오류: {e}")
@@ -1766,57 +1788,13 @@ class IntegratedMonitorApp:
 
     def publish_relay_status(self, status):
         """Publish relay status to MQTT for Jetson #2 synchronization"""
-        if self.mqtt_client is not None and self.mqtt_client.is_connected():
-            try:
-                payload = {
-                    "relay_status": status,  # "ON" or "OFF"
-                    "source": "jetson1",
-                    "timestamp": datetime.now().isoformat()
-                }
-
-                # Publish to jetson1/relay/status topic for Jetson #2
-                success = self.mqtt_client.publish(
-                    topic_suffix="relay/status",
-                    payload=payload,
-                    qos=1,  # QoS 1 for guaranteed delivery
-                    retain=True  # Retain last status for late subscribers
-                )
-
-                if success:
-                    print(f"[MQTT] 릴레이 상태 발행: {status} (Jetson #2용)")
-                else:
-                    print(f"[MQTT] 릴레이 상태 발행 실패")
-
-            except Exception as e:
-                print(f"[MQTT] 릴레이 상태 발행 오류: {e}")
+        # relay_enabled는 jetson1/status에 포함되어 주기적으로 발행됨
+        print(f"[MQTT] 릴레이 상태: {status} (jetson1/status에 포함)")
 
     def publish_mqtt(self, message):
         """Publish message to MQTT broker with enhanced data"""
-        if self.mqtt_client is not None and self.mqtt_client.is_connected():
-            try:
-                # Enhanced payload with system metrics
-                payload = {
-                    "command": message,  # "ON" or "OFF"
-                    "source": "auto_start_system",
-                    "person_detected": self.person_detected,
-                    "motion_detected": self.motion_detected,
-                    "system_metrics": self.system_info.get_dynamic_info()
-                }
-
-                # Publish to robot/control topic
-                success = self.mqtt_client.publish(
-                    topic_suffix="robot/control",
-                    payload=payload,
-                    qos=MQTT_QOS
-                )
-
-                if success:
-                    print(f"[MQTT] 메시지 전송 완료: {message}")
-                else:
-                    print(f"[MQTT] 전송 실패")
-
-            except Exception as e:
-                print(f"[MQTT] 전송 오류: {e}")
+        # jetson1/status에 통합됨
+        print(f"[MQTT] 메시지 전송 완료: {message}")
 
     def publish_status(self):
         """Publish unified status to single topic: jetson1/status"""
@@ -1833,8 +1811,8 @@ class IntegratedMonitorApp:
                 "person_detected": self.person_detected,
                 "relay_enabled": self.relay_enabled,
                 "recording": {
-                    "left": self.stirfry_pot1_recording,
-                    "right": self.stirfry_pot2_recording
+                    "left": self.stirfry_pot1_recording or self.stirfry_recording,
+                    "right": self.stirfry_pot2_recording or self.stirfry_recording
                 },
                 "system": self.system_info.get_dynamic_info()
             }
@@ -1858,29 +1836,8 @@ class IntegratedMonitorApp:
 
     def send_mqtt_message(self, topic, message, include_device_info=True):
         """Send MQTT message with optional device info"""
-        if self.mqtt_client and MQTT_ENABLED:
-            try:
-                if include_device_info:
-                    # Create JSON message with device info
-                    msg_data = {
-                        "device_id": DEVICE_ID,
-                        "device_name": DEVICE_NAME,
-                        "device_location": DEVICE_LOCATION,
-                        "ip_address": get_ip_address(),
-                        "message": message,
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    payload = json.dumps(msg_data, ensure_ascii=False)
-                else:
-                    payload = message
-
-                self.mqtt_client.publish(
-                    topic_suffix=topic,
-                    payload=payload,
-                    qos=MQTT_QOS
-                )
-            except Exception as e:
-                print(f"[MQTT] 전송 실패: {e}")
+        # jetson1/status에 통합됨 - 이 함수는 더 이상 사용하지 않음
+        pass
 
     def save_snapshot(self, frame, timestamp):
         """Save motion snapshot"""
@@ -2323,7 +2280,7 @@ class IntegratedMonitorApp:
             cpu_frame.pack(pady=10, padx=20, fill=tk.X)
             tk.Label(cpu_frame, text="CPU 사용률:", font=MEDIUM_FONT,
                     bg=COLOR_PANEL, fg=COLOR_TEXT, anchor="w").pack(side=tk.LEFT)
-            tk.Label(cpu_frame, text=f"{cpu_percent:.1f}%", font=("Noto Sans CJK KR", 22, "bold"),
+            tk.Label(cpu_frame, text=f"{cpu_percent:.1f}%", font=(FONT_FAMILY, 22, "bold"),
                     bg=COLOR_PANEL, fg=cpu_color, anchor="e").pack(side=tk.RIGHT)
 
             # Memory Usage
@@ -2335,7 +2292,7 @@ class IntegratedMonitorApp:
             mem_frame.pack(pady=10, padx=20, fill=tk.X)
             tk.Label(mem_frame, text="메모리 사용률:", font=MEDIUM_FONT,
                     bg=COLOR_PANEL, fg=COLOR_TEXT, anchor="w").pack(side=tk.LEFT)
-            tk.Label(mem_frame, text=f"{mem_percent:.1f}%", font=("Noto Sans CJK KR", 22, "bold"),
+            tk.Label(mem_frame, text=f"{mem_percent:.1f}%", font=(FONT_FAMILY, 22, "bold"),
                     bg=COLOR_PANEL, fg=mem_color, anchor="e").pack(side=tk.RIGHT)
 
             # Disk Usage
@@ -2347,7 +2304,7 @@ class IntegratedMonitorApp:
             disk_frame.pack(pady=10, padx=20, fill=tk.X)
             tk.Label(disk_frame, text="디스크 사용률:", font=MEDIUM_FONT,
                     bg=COLOR_PANEL, fg=COLOR_TEXT, anchor="w").pack(side=tk.LEFT)
-            tk.Label(disk_frame, text=f"{disk_percent:.1f}%", font=("Noto Sans CJK KR", 22, "bold"),
+            tk.Label(disk_frame, text=f"{disk_percent:.1f}%", font=(FONT_FAMILY, 22, "bold"),
                     bg=COLOR_PANEL, fg=disk_color, anchor="e").pack(side=tk.RIGHT)
 
             # Temperature (Jetson specific)
@@ -2361,7 +2318,7 @@ class IntegratedMonitorApp:
                     temp_frame.pack(pady=10, padx=20, fill=tk.X)
                     tk.Label(temp_frame, text="CPU 온도:", font=MEDIUM_FONT,
                             bg=COLOR_PANEL, fg=COLOR_TEXT, anchor="w").pack(side=tk.LEFT)
-                    tk.Label(temp_frame, text=f"{temp_celsius:.1f}°C", font=("Noto Sans CJK KR", 22, "bold"),
+                    tk.Label(temp_frame, text=f"{temp_celsius:.1f}°C", font=(FONT_FAMILY, 22, "bold"),
                             bg=COLOR_PANEL, fg=temp_color, anchor="e").pack(side=tk.RIGHT)
             except:
                 pass
@@ -2401,7 +2358,7 @@ class IntegratedMonitorApp:
         auto_mode_color = COLOR_OK if AUTO_RELAY_ENABLED else COLOR_ERROR
 
         auto_mode_status = tk.Label(auto_mode_frame, text=auto_mode_text,
-                                    font=("Noto Sans CJK KR", 20, "bold"),
+                                    font=(FONT_FAMILY, 20, "bold"),
                                     bg=COLOR_PANEL, fg=auto_mode_color)
         auto_mode_status.pack(side=tk.RIGHT)
 
@@ -2415,7 +2372,7 @@ class IntegratedMonitorApp:
                  relief=tk.FLAT, bd=0, padx=10, pady=8).pack()
 
         tk.Label(control_frame, text="※ 자동 모드: 출근/퇴근 시간에 자동으로 릴레이 ON/OFF",
-                font=("Noto Sans CJK KR", 14), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT).pack(pady=5)
+                font=(FONT_FAMILY, 14), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT).pack(pady=5)
 
         # Separator
         tk.Frame(control_frame, height=2, bg=COLOR_PANEL_BORDER).pack(fill=tk.X, padx=20, pady=10)

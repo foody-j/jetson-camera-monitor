@@ -189,11 +189,14 @@ WINDOW_WIDTH = config.get('window_width', 768)
 WINDOW_HEIGHT = config.get('window_height', 1024)
 FULLSCREEN_MODE = config.get('fullscreen', False)  # 전체화면 모드 설정
 WINDOW_DECORATIONS = config.get('window_decorations', False)  # 창 테두리 표시 여부
-LARGE_FONT = ("Noto Sans CJK KR", config.get('font_large', 22), "bold")
-MEDIUM_FONT = ("Noto Sans CJK KR", config.get('font_medium', 16), "bold")
-SMALL_FONT = ("Noto Sans CJK KR", config.get('font_small', 12))
-NORMAL_FONT = ("Noto Sans CJK KR", config.get('font_normal', 14))
-BUTTON_FONT = ("Noto Sans CJK KR", config.get('font_button', 16), "bold")
+# 폰트 이름 설정 - Segfault 방지를 위해 시스템 기본 폰트 사용 가능
+# "Noto Sans CJK KR" 폰트가 세그폴트를 일으키면 "" (빈 문자열)로 변경
+FONT_FAMILY = config.get('font_family', "")  # 빈 문자열 = 시스템 기본 폰트
+LARGE_FONT = (FONT_FAMILY, config.get('font_large', 22), "bold")
+MEDIUM_FONT = (FONT_FAMILY, config.get('font_medium', 16), "bold")
+SMALL_FONT = (FONT_FAMILY, config.get('font_small', 12))
+NORMAL_FONT = (FONT_FAMILY, config.get('font_normal', 14))
+BUTTON_FONT = (FONT_FAMILY, config.get('font_button', 16), "bold")
 
 # Colors - WHITE MODE (matching Jetson #1)
 COLOR_OK = "#00C853"      # Vibrant Green
@@ -515,54 +518,46 @@ class JetsonIntegratedApp:
                 client_id=MQTT_CLIENT_ID
             )
 
-            # Subscribe to temperature topics (POT1/POT2)
-            self.mqtt_client.subscribe(MQTT_TOPIC_POT1_OIL_TEMP, self.on_pot1_oil_temp)
-            self.mqtt_client.subscribe(MQTT_TOPIC_POT1_PROBE_TEMP, self.on_pot1_probe_temp)
-            self.mqtt_client.subscribe(MQTT_TOPIC_POT2_OIL_TEMP, self.on_pot2_oil_temp)
-            self.mqtt_client.subscribe(MQTT_TOPIC_POT2_PROBE_TEMP, self.on_pot2_probe_temp)
+            # Connect to broker FIRST
+            if self.mqtt_client.connect(blocking=True, timeout=5.0):
+                print(f"[MQTT] 연결 성공: {MQTT_BROKER}:{MQTT_PORT}")
+                print(f"[MQTT] Device: {DEVICE_ID} ({DEVICE_NAME}) @ {get_ip_address()}")
 
-            # Subscribe to food type topic (LEGACY)
-            self.mqtt_client.subscribe(MQTT_TOPIC_FOOD_TYPE, self.on_food_type)
-            self.mqtt_client.subscribe(MQTT_TOPIC_FRYING_CONTROL, self.on_frying_control)
+                # Subscribe AFTER connection
+                self.mqtt_client.subscribe(MQTT_TOPIC_POT1_OIL_TEMP, self.on_pot1_oil_temp)
+                self.mqtt_client.subscribe(MQTT_TOPIC_POT1_PROBE_TEMP, self.on_pot1_probe_temp)
+                self.mqtt_client.subscribe(MQTT_TOPIC_POT2_OIL_TEMP, self.on_pot2_oil_temp)
+                self.mqtt_client.subscribe(MQTT_TOPIC_POT2_PROBE_TEMP, self.on_pot2_probe_temp)
+                self.mqtt_client.subscribe(MQTT_TOPIC_FRYING_POT1_FOOD_TYPE, self.on_frying_pot1_food_type)
+                self.mqtt_client.subscribe(MQTT_TOPIC_FRYING_POT1_CONTROL, self.on_frying_pot1_control)
+                self.mqtt_client.subscribe(MQTT_TOPIC_FRYING_POT2_FOOD_TYPE, self.on_frying_pot2_food_type)
+                self.mqtt_client.subscribe(MQTT_TOPIC_FRYING_POT2_CONTROL, self.on_frying_pot2_control)
+                self.mqtt_client.subscribe("calibration/vibration/control", self.on_vibration_control)
+                jetson1_relay_topic = config.get('mqtt_topic_jetson1_relay', 'jetson1/relay/status')
+                self.mqtt_client.subscribe(jetson1_relay_topic, self.on_jetson1_relay_status)
+                self.mqtt_client.subscribe(MQTT_TOPIC_ROBOT_STATUS, self.on_robot_status)
 
-            # Subscribe to POT1/POT2 control topics
-            self.mqtt_client.subscribe(MQTT_TOPIC_FRYING_POT1_FOOD_TYPE, self.on_frying_pot1_food_type)
-            self.mqtt_client.subscribe(MQTT_TOPIC_FRYING_POT1_CONTROL, self.on_frying_pot1_control)
-            self.mqtt_client.subscribe(MQTT_TOPIC_FRYING_POT2_FOOD_TYPE, self.on_frying_pot2_food_type)
-            self.mqtt_client.subscribe(MQTT_TOPIC_FRYING_POT2_CONTROL, self.on_frying_pot2_control)
+                print(f"[MQTT] 구독 토픽 (로봇→Jetson):")
+                print(f"  - {MQTT_TOPIC_POT1_OIL_TEMP}")
+                print(f"  - {MQTT_TOPIC_POT1_PROBE_TEMP}")
+                print(f"  - {MQTT_TOPIC_POT2_OIL_TEMP}")
+                print(f"  - {MQTT_TOPIC_POT2_PROBE_TEMP}")
+                print(f"  - {MQTT_TOPIC_FRYING_POT1_FOOD_TYPE}")
+                print(f"  - {MQTT_TOPIC_FRYING_POT1_CONTROL}")
+                print(f"  - {MQTT_TOPIC_FRYING_POT2_FOOD_TYPE}")
+                print(f"  - {MQTT_TOPIC_FRYING_POT2_CONTROL}")
+                print(f"  - calibration/vibration/control")
+                print(f"  - {jetson1_relay_topic} (Jetson #1 릴레이 동기화)")
+                print(f"  - {MQTT_TOPIC_ROBOT_STATUS} (로봇 PC 상태)")
+                print(f"[MQTT] 발행 토픽 (Jetson→로봇):")
+                print(f"  - {MQTT_TOPIC_STATUS}")
 
-            # Subscribe to vibration control topic
-            self.mqtt_client.subscribe("calibration/vibration/control", self.on_vibration_control)
-
-            # Subscribe to Jetson #1 relay status (for synchronization)
-            jetson1_relay_topic = config.get('mqtt_topic_jetson1_relay', 'jetson1/relay/status')
-            self.mqtt_client.subscribe(jetson1_relay_topic, self.on_jetson1_relay_status)
-
-            # Subscribe to robot PC status topic (로봇 PC 상태)
-            self.mqtt_client.subscribe(MQTT_TOPIC_ROBOT_STATUS, self.on_robot_status)
-
-            self.mqtt_client.connect()
-            print(f"[MQTT] 연결 성공: {MQTT_BROKER}:{MQTT_PORT}")
-            print(f"[MQTT] Device: {DEVICE_ID} ({DEVICE_NAME}) @ {get_ip_address()}")
-            print(f"[MQTT] 구독 토픽 (로봇→Jetson):")
-            print(f"  - {MQTT_TOPIC_POT1_OIL_TEMP}")
-            print(f"  - {MQTT_TOPIC_POT1_PROBE_TEMP}")
-            print(f"  - {MQTT_TOPIC_POT2_OIL_TEMP}")
-            print(f"  - {MQTT_TOPIC_POT2_PROBE_TEMP}")
-            print(f"  - {MQTT_TOPIC_FRYING_POT1_FOOD_TYPE}")
-            print(f"  - {MQTT_TOPIC_FRYING_POT1_CONTROL}")
-            print(f"  - {MQTT_TOPIC_FRYING_POT2_FOOD_TYPE}")
-            print(f"  - {MQTT_TOPIC_FRYING_POT2_CONTROL}")
-            print(f"  - {MQTT_TOPIC_FOOD_TYPE} (LEGACY)")
-            print(f"  - calibration/vibration/control")
-            print(f"  - {jetson1_relay_topic} (Jetson #1 릴레이 동기화)")
-            print(f"  - {MQTT_TOPIC_ROBOT_STATUS} (로봇 PC 상태)")
-            print(f"[MQTT] 발행 토픽 (Jetson→로봇):")
-            print(f"  - {MQTT_TOPIC_STATUS}")
-
-            # Publish initial status
-            self.publish_status()
-            print(f"[MQTT] 초기 상태 발행 완료")
+                # Publish initial status
+                self.publish_status()
+                print(f"[MQTT] 초기 상태 발행 완료")
+            else:
+                print("[MQTT] 연결 실패")
+                self.mqtt_client = None
         except Exception as e:
             print(f"[MQTT] 연결 실패: {e}")
             self.mqtt_client = None
@@ -875,43 +870,96 @@ class JetsonIntegratedApp:
             print(f"[POT2 타임아웃] 오류: {e}")
 
     def on_robot_status(self, client, userdata, message):
-        """로봇 PC 상태 메시지 파싱"""
+        """로봇 PC 상태 메시지 파싱 (HR/Status)
+
+        메시지 형식:
+        {
+            "Status": [
+                {"DeviceNum": "0", "PTNum": "0", "NowRecipe": "...", "ProcessType": "...", ...},
+                {"DeviceNum": "0", "PTNum": "1", "NowRecipe": "...", "ProcessType": "...", ...}
+            ],
+            "RBMotion": 1
+        }
+
+        Jetson2 튀김솥 매핑:
+        - PTNum "0" → POT1 (왼쪽 튀김솥, 카메라 0,1)
+        - PTNum "1" → POT2 (오른쪽 튀김솥, 카메라 2,3)
+        """
         try:
-            topic = message.topic
             payload = message.payload.decode()
             data = json.loads(payload)
 
-            # 솥 번호 추출
-            pot_num = data.get("PTNum", "")
-            device_num = data.get("DeviceNum", "")  # 0: 왼쪽, 1: 오른쪽
+            # Status 배열 추출
+            status_list = data.get("Status", [])
+            if not status_list:
+                print(f"[로봇상태] Status 배열 없음")
+                return
 
-            # TODO: 필터링 필요시 활성화
-            # Jetson2는 튀김솥 (Status[0])
-            # DeviceNum으로 좌/우 구분: "0"=왼쪽, "1"=오른쪽
+            # 각 솥 정보 처리
+            for pot_data in status_list:
+                pot_num = pot_data.get("PTNum", "")
+                device_num = pot_data.get("DeviceNum", "")
 
-            # 필요한 정보 추출
-            recipe = data.get("NowRecipe", "")
-            process_type = data.get("ProcessType", "")  # 투입/조리/배출
-            rb_status = data.get("RBstatus", "")
-            running_time = data.get("RunningTime", "")
+                # 필요한 정보 추출
+                recipe = pot_data.get("NowRecipe", "")
+                process_type = pot_data.get("ProcessType", "")  # 투입/조리/배출
+                rb_status = pot_data.get("RBstatus", "")
+                running_time = pot_data.get("RunningTime", "")
+                target_time = pot_data.get("TargetTime", "")
+                mode = pot_data.get("Mode", "")
 
-            # Potstatus 정보
-            pot_status = data.get("Potstatus", {})
-            temp = pot_status.get("PT_Temp", 0)
-            power = pot_status.get("PT_Power", "False")
+                # Potstatus 정보
+                pot_status = pot_data.get("Potstatus", {})
+                temp = pot_status.get("PT_Temp", 0)
+                power = pot_status.get("PT_Power", "False")
 
-            print(f"[로봇상태] POT{pot_num} | {process_type} | {recipe} | 온도:{temp} | {running_time}")
+                # GUI 업데이트 및 로깅 (메인 스레드에서)
+                self.root.after(0, lambda pn=pot_num, pt=process_type, r=recipe, t=temp, rt=running_time:
+                    self._update_robot_status_gui(pn, pt, r, t, rt))
 
-            # TODO: 트리거 처리 (필요시 구현)
-            # if process_type == "투입":
-            #     self.start_collection(pot_num, recipe)
-            # elif process_type == "배출":
-            #     self.stop_collection(pot_num)
+                # 디버그 출력 (첫 수신시만 또는 상태 변경시)
+                # print(f"[로봇상태] POT{pot_num} | {process_type} | {recipe} | 온도:{temp}°C | {running_time}")
+
+                # TODO: 트리거 처리 (필요시 구현)
+                # if process_type == "투입" and recipe:
+                #     if pot_num == "0":
+                #         self.root.after(0, lambda: self.start_pot1_collection_with_food(recipe))
+                #     elif pot_num == "1":
+                #         self.root.after(0, lambda: self.start_pot2_collection_with_food(recipe))
+                # elif process_type == "배출":
+                #     if pot_num == "0":
+                #         self.root.after(0, self.stop_pot1_collection)
+                #     elif pot_num == "1":
+                #         self.root.after(0, self.stop_pot2_collection)
 
         except json.JSONDecodeError as e:
             print(f"[로봇상태] JSON 파싱 오류: {e}")
         except Exception as e:
             print(f"[로봇상태] 처리 오류: {e}")
+
+    def _update_robot_status_gui(self, pot_num, process_type, recipe, temp, running_time):
+        """로봇 상태를 GUI에 반영 (메인 스레드에서 호출)"""
+        try:
+            # POT1 (왼쪽 튀김솥) - PTNum "0"
+            if pot_num == "0":
+                if hasattr(self, 'pot1_recipe_label'):
+                    self.pot1_recipe_label.config(text=f"레시피: {recipe}" if recipe else "레시피: -")
+                if hasattr(self, 'pot1_process_label'):
+                    self.pot1_process_label.config(text=f"{process_type}" if process_type else "대기")
+                if hasattr(self, 'pot1_time_label'):
+                    self.pot1_time_label.config(text=f"{running_time}" if running_time else "-")
+
+            # POT2 (오른쪽 튀김솥) - PTNum "1"
+            elif pot_num == "1":
+                if hasattr(self, 'pot2_recipe_label'):
+                    self.pot2_recipe_label.config(text=f"레시피: {recipe}" if recipe else "레시피: -")
+                if hasattr(self, 'pot2_process_label'):
+                    self.pot2_process_label.config(text=f"{process_type}" if process_type else "대기")
+                if hasattr(self, 'pot2_time_label'):
+                    self.pot2_time_label.config(text=f"{running_time}" if running_time else "-")
+
+        except Exception as e:
+            print(f"[로봇상태] GUI 업데이트 오류: {e}")
 
     def publish_status(self):
         """Publish unified status to single topic: jetson2/status"""
@@ -955,25 +1003,8 @@ class JetsonIntegratedApp:
 
     def send_mqtt_message(self, topic, message, include_device_info=True):
         """Send MQTT message with optional device info"""
-        if self.mqtt_client and MQTT_ENABLED:
-            try:
-                if include_device_info:
-                    # Create JSON message with device info
-                    msg_data = {
-                        "device_id": DEVICE_ID,
-                        "device_name": DEVICE_NAME,
-                        "device_location": DEVICE_LOCATION,
-                        "ip_address": get_ip_address(),
-                        "message": message,
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    payload = json.dumps(msg_data, ensure_ascii=False)
-                else:
-                    payload = message
-
-                self.mqtt_client.publish(topic, payload, qos=MQTT_QOS)
-            except Exception as e:
-                print(f"[MQTT] 전송 실패: {e}")
+        # jetson2/status에 통합됨 - 이 함수는 더 이상 사용하지 않음
+        pass
 
     def _init_fonts(self):
         """Pre-load fonts to avoid Segfault on first Label creation"""
@@ -1001,13 +1032,19 @@ class JetsonIntegratedApp:
         left_frame = tk.Frame(header_frame, bg=COLOR_PANEL)
         left_frame.grid(row=0, column=0, sticky="w", padx=5, pady=3)
 
-        print(f"[DEBUG] build_gui: 첫 번째 Label 생성 (폰트 로딩)...")
+        print(f"[DEBUG] build_gui: 첫 번째 Label 생성 (폰트 로딩)...", flush=True)
+        # Tkinter 초기화 완료 대기
+        self.root.update_idletasks()
+        print(f"[DEBUG] build_gui: update_idletasks 완료", flush=True)
+
+        # 폰트 없이 먼저 테스트
+        print(f"[DEBUG] build_gui: Label 생성 시도 (font={FONT_FAMILY})...", flush=True)
         self.system_status_label = tk.Label(left_frame, text="시스템 정상",
-                                           font=("Noto Sans CJK KR", 12), bg=COLOR_PANEL, fg=COLOR_OK)
+                                           font=(FONT_FAMILY, 12), bg=COLOR_PANEL, fg=COLOR_OK)
         self.system_status_label.pack(anchor="w")
 
         self.date_label = tk.Label(left_frame, text="----/--/--",
-                                   font=("Noto Sans CJK KR", 11),
+                                   font=(FONT_FAMILY, 11),
                                    bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT)
         self.date_label.pack(anchor="w")
 
@@ -1016,23 +1053,23 @@ class JetsonIntegratedApp:
         center_frame.grid(row=0, column=1, sticky="n", pady=3)
 
         tk.Label(center_frame, text="현대자동차 울산점",
-                font=("Noto Sans CJK KR", 16, "bold"),
+                font=(FONT_FAMILY, 16, "bold"),
                 bg=COLOR_PANEL, fg=COLOR_ACCENT).pack()
 
         self.time_label = tk.Label(center_frame, text="--:--:--",
-                                   font=("Noto Sans CJK KR", 16, "bold"),
+                                   font=(FONT_FAMILY, 16, "bold"),
                                    bg=COLOR_PANEL, fg=COLOR_INFO)
         self.time_label.pack()
 
         # Disk space indicator (below time)
         self.disk_label = tk.Label(center_frame, text="💾 ---GB / ---GB",
-                                   font=("Noto Sans CJK KR", 10),
+                                   font=(FONT_FAMILY, 10),
                                    bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT)
         self.disk_label.pack()
 
         # Keyboard shortcuts hint (세로 모드 - 폰트 축소)
         tk.Label(center_frame, text="F11: 전체화면 | ESC: 창모드",
-                font=("Noto Sans CJK KR", 8),
+                font=(FONT_FAMILY, 8),
                 bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT).pack(pady=(1,0))
 
         # RIGHT: PC Status, Vibration Check, Settings buttons (세로 모드 - 축소)
@@ -1041,14 +1078,14 @@ class JetsonIntegratedApp:
 
         # PC Status button
         tk.Button(right_frame, text="PC 상태",
-                 font=("Noto Sans CJK KR", 12, "bold"),
+                 font=(FONT_FAMILY, 12, "bold"),
                  command=self.open_pc_status, bg="#00897B", fg="white",
                  relief=tk.FLAT, bd=0, activebackground="#00796B",
                  padx=8, pady=5).pack(side=tk.LEFT, padx=2)
 
         # Vibration check toggle button
         self.vibration_check_btn = tk.Button(right_frame, text="진동 시작",
-                 font=("Noto Sans CJK KR", 12, "bold"),
+                 font=(FONT_FAMILY, 12, "bold"),
                  command=self.toggle_vibration_check, bg=COLOR_INFO, fg="white",
                  relief=tk.FLAT, bd=0, activebackground=COLOR_BUTTON_HOVER,
                  padx=8, pady=5)
@@ -1056,7 +1093,7 @@ class JetsonIntegratedApp:
 
         # Settings button (placeholder)
         tk.Button(right_frame, text="설정",
-                 font=("Noto Sans CJK KR", 12, "bold"),
+                 font=(FONT_FAMILY, 12, "bold"),
                  command=self.open_settings, bg=COLOR_BUTTON, fg="white",
                  relief=tk.FLAT, bd=0, activebackground=COLOR_BUTTON_HOVER,
                  padx=8, pady=5).pack(side=tk.LEFT, padx=2)
@@ -1087,7 +1124,7 @@ class JetsonIntegratedApp:
         panel.grid(row=0, column=0, padx=2, pady=1, sticky="nsew")
 
         # Title (축소)
-        title = tk.Label(panel, text="🍤 튀김 AI - 왼쪽", font=("Noto Sans CJK KR", 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
+        title = tk.Label(panel, text="🍤 튀김 AI - 왼쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
         title.pack(pady=2)
 
         # Camera preview (세로 레이아웃 - 높이 더 축소)
@@ -1100,7 +1137,7 @@ class JetsonIntegratedApp:
 
         # Camera number label (top-right)
         self.frying_left_cam_number_label = tk.Label(preview_container, text="Cam 0",
-                                                     bg="black", fg="yellow", font=("Noto Sans CJK KR", 10, "bold"))
+                                                     bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.frying_left_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
         # Info frame (temperature + color features) - 축소
@@ -1109,25 +1146,25 @@ class JetsonIntegratedApp:
 
         # Oil Temperature
         self.frying_left_temp_label = tk.Label(
-            info_frame, text="기름: -- °C", font=("Noto Sans CJK KR", 10), bg=COLOR_PANEL, fg=COLOR_ERROR
+            info_frame, text="기름: -- °C", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_ERROR
         )
         self.frying_left_temp_label.pack()
 
         # Probe Temperature
         self.frying_left_probe_label = tk.Label(
-            info_frame, text="탐침: -- °C", font=("Noto Sans CJK KR", 10), bg=COLOR_PANEL, fg=COLOR_INFO
+            info_frame, text="탐침: -- °C", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_INFO
         )
         self.frying_left_probe_label.pack()
 
         # Color features - DISABLED per user request
         # self.frying_left_color_label = tk.Label(
-        #     info_frame, text="갈색: --% | 황금: --%", font=("Noto Sans CJK KR", 10), bg=COLOR_PANEL, fg=COLOR_WARNING
+        #     info_frame, text="갈색: --% | 황금: --%", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_WARNING
         # )
         # self.frying_left_color_label.pack()
 
         # Status
         self.frying_left_status = tk.Label(
-            panel, text="대기 중", font=("Noto Sans CJK KR", 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
         )
         self.frying_left_status.pack(pady=1)
 
@@ -1138,7 +1175,7 @@ class JetsonIntegratedApp:
         panel.grid(row=0, column=1, padx=2, pady=1, sticky="nsew")
 
         # Title (축소)
-        title = tk.Label(panel, text="🍤 튀김 AI - 오른쪽", font=("Noto Sans CJK KR", 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
+        title = tk.Label(panel, text="🍤 튀김 AI - 오른쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
         title.pack(pady=2)
 
         # Camera preview (세로 레이아웃 - 높이 더 축소)
@@ -1151,7 +1188,7 @@ class JetsonIntegratedApp:
 
         # Camera number label (top-right)
         self.frying_right_cam_number_label = tk.Label(preview_container, text="Cam 1",
-                                                      bg="black", fg="yellow", font=("Noto Sans CJK KR", 10, "bold"))
+                                                      bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.frying_right_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
         # Info frame (temperature + color features) - 축소
@@ -1160,25 +1197,25 @@ class JetsonIntegratedApp:
 
         # Oil Temperature
         self.frying_right_temp_label = tk.Label(
-            info_frame, text="기름: -- °C", font=("Noto Sans CJK KR", 10), bg=COLOR_PANEL, fg=COLOR_ERROR
+            info_frame, text="기름: -- °C", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_ERROR
         )
         self.frying_right_temp_label.pack()
 
         # Probe Temperature
         self.frying_right_probe_label = tk.Label(
-            info_frame, text="탐침: -- °C", font=("Noto Sans CJK KR", 10), bg=COLOR_PANEL, fg=COLOR_INFO
+            info_frame, text="탐침: -- °C", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_INFO
         )
         self.frying_right_probe_label.pack()
 
         # Color features - DISABLED per user request
         # self.frying_right_color_label = tk.Label(
-        #     info_frame, text="갈색: --% | 황금: --%", font=("Noto Sans CJK KR", 10), bg=COLOR_PANEL, fg=COLOR_WARNING
+        #     info_frame, text="갈색: --% | 황금: --%", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_WARNING
         # )
         # self.frying_right_color_label.pack()
 
         # Status
         self.frying_right_status = tk.Label(
-            panel, text="대기 중", font=("Noto Sans CJK KR", 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
         )
         self.frying_right_status.pack(pady=1)
 
@@ -1189,7 +1226,7 @@ class JetsonIntegratedApp:
         panel.grid(row=1, column=0, padx=2, pady=1, sticky="nsew")
 
         # Title (축소)
-        title = tk.Label(panel, text="🥘 바켓 감지 - 왼쪽", font=("Noto Sans CJK KR", 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
+        title = tk.Label(panel, text="🥘 바켓 감지 - 왼쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
         title.pack(pady=2)
 
         # Camera preview (세로 레이아웃 - 높이 더 축소)
@@ -1202,12 +1239,12 @@ class JetsonIntegratedApp:
 
         # Camera number label (top-right)
         self.observe_left_cam_number_label = tk.Label(preview_container, text="Cam 2",
-                                                      bg="black", fg="yellow", font=("Noto Sans CJK KR", 10, "bold"))
+                                                      bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.observe_left_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
         # Status
         self.observe_left_status = tk.Label(
-            panel, text="대기 중", font=("Noto Sans CJK KR", 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
         )
         self.observe_left_status.pack(pady=2)
 
@@ -1218,7 +1255,7 @@ class JetsonIntegratedApp:
         panel.grid(row=1, column=1, padx=2, pady=1, sticky="nsew")
 
         # Title (축소)
-        title = tk.Label(panel, text="🥘 바켓 감지 - 오른쪽", font=("Noto Sans CJK KR", 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
+        title = tk.Label(panel, text="🥘 바켓 감지 - 오른쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
         title.pack(pady=2)
 
         # Camera preview (세로 레이아웃 - 높이 더 축소)
@@ -1231,12 +1268,12 @@ class JetsonIntegratedApp:
 
         # Camera number label (top-right)
         self.observe_right_cam_number_label = tk.Label(preview_container, text="Cam 3",
-                                                       bg="black", fg="yellow", font=("Noto Sans CJK KR", 10, "bold"))
+                                                       bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.observe_right_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
         # Status
         self.observe_right_status = tk.Label(
-            panel, text="대기 중", font=("Noto Sans CJK KR", 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
         )
         self.observe_right_status.pack(pady=2)
 
@@ -1252,7 +1289,7 @@ class JetsonIntegratedApp:
         self.btn_start_frying = tk.Button(
             btn_frame,
             text="튀김 시작",
-            font=("Noto Sans CJK KR", 11),
+            font=(FONT_FAMILY, 11),
             bg="#27AE60",
             fg="white",
             activebackground="#229954",
@@ -1266,7 +1303,7 @@ class JetsonIntegratedApp:
         self.btn_stop_frying = tk.Button(
             btn_frame,
             text="튀김 중지",
-            font=("Noto Sans CJK KR", 11),
+            font=(FONT_FAMILY, 11),
             bg=COLOR_ERROR,
             fg="white",
             activebackground="#C0392B",
@@ -1281,7 +1318,7 @@ class JetsonIntegratedApp:
         self.btn_start_observe = tk.Button(
             btn_frame,
             text="바켓 시작",
-            font=("Noto Sans CJK KR", 11),
+            font=(FONT_FAMILY, 11),
             bg="#3498DB",
             fg="white",
             activebackground="#2980B9",
@@ -1295,7 +1332,7 @@ class JetsonIntegratedApp:
         self.btn_stop_observe = tk.Button(
             btn_frame,
             text="바켓 중지",
-            font=("Noto Sans CJK KR", 11),
+            font=(FONT_FAMILY, 11),
             bg=COLOR_ERROR,
             fg="white",
             activebackground="#C0392B",
@@ -1314,7 +1351,7 @@ class JetsonIntegratedApp:
         self.btn_start_collection = tk.Button(
             btn_frame,
             text="수집 시작",
-            font=("Noto Sans CJK KR", 11),
+            font=(FONT_FAMILY, 11),
             bg="#9B59B6",
             fg="white",
             activebackground="#8E44AD",
@@ -1328,7 +1365,7 @@ class JetsonIntegratedApp:
         self.btn_stop_collection = tk.Button(
             btn_frame,
             text="수집 중지",
-            font=("Noto Sans CJK KR", 11),
+            font=(FONT_FAMILY, 11),
             bg=COLOR_ERROR,
             fg="white",
             activebackground="#C0392B",
@@ -1347,7 +1384,7 @@ class JetsonIntegratedApp:
         self.collection_status_label = tk.Label(
             status_frame,
             text="수집: 대기 중",
-            font=("Noto Sans CJK KR", 10),
+            font=(FONT_FAMILY, 10),
             bg=COLOR_BG,
             fg=COLOR_TEXT
         )
@@ -1357,7 +1394,7 @@ class JetsonIntegratedApp:
         self.btn_exit = tk.Button(
             control_frame,
             text="종료",
-            font=("Noto Sans CJK KR", 11),
+            font=(FONT_FAMILY, 11),
             bg="#95A5A6",
             fg="white",
             activebackground="#7F8C8D",
@@ -2071,7 +2108,7 @@ class JetsonIntegratedApp:
                 cpu_frame.pack(pady=10, padx=20, fill=tk.X)
                 tk.Label(cpu_frame, text="CPU 사용률:", font=MEDIUM_FONT,
                         bg=COLOR_PANEL, fg=COLOR_TEXT, anchor="w").pack(side=tk.LEFT)
-                tk.Label(cpu_frame, text=f"{cpu_percent:.1f}%", font=("Noto Sans CJK KR", 22, "bold"),
+                tk.Label(cpu_frame, text=f"{cpu_percent:.1f}%", font=(FONT_FAMILY, 22, "bold"),
                         bg=COLOR_PANEL, fg=cpu_color, anchor="e").pack(side=tk.RIGHT)
 
                 # GPU Usage (Jetson specific)
@@ -2084,7 +2121,7 @@ class JetsonIntegratedApp:
                     gpu_frame.pack(pady=10, padx=20, fill=tk.X)
                     tk.Label(gpu_frame, text="GPU 사용률:", font=MEDIUM_FONT,
                             bg=COLOR_PANEL, fg=COLOR_TEXT, anchor="w").pack(side=tk.LEFT)
-                    tk.Label(gpu_frame, text=f"{gpu_percent:.1f}%", font=("Noto Sans CJK KR", 22, "bold"),
+                    tk.Label(gpu_frame, text=f"{gpu_percent:.1f}%", font=(FONT_FAMILY, 22, "bold"),
                             bg=COLOR_PANEL, fg=gpu_color, anchor="e").pack(side=tk.RIGHT)
                 except:
                     pass
@@ -2098,7 +2135,7 @@ class JetsonIntegratedApp:
                 mem_frame.pack(pady=10, padx=20, fill=tk.X)
                 tk.Label(mem_frame, text="메모리 사용률:", font=MEDIUM_FONT,
                         bg=COLOR_PANEL, fg=COLOR_TEXT, anchor="w").pack(side=tk.LEFT)
-                tk.Label(mem_frame, text=f"{mem_percent:.1f}%", font=("Noto Sans CJK KR", 22, "bold"),
+                tk.Label(mem_frame, text=f"{mem_percent:.1f}%", font=(FONT_FAMILY, 22, "bold"),
                         bg=COLOR_PANEL, fg=mem_color, anchor="e").pack(side=tk.RIGHT)
 
                 # Disk Usage
@@ -2110,7 +2147,7 @@ class JetsonIntegratedApp:
                 disk_frame.pack(pady=10, padx=20, fill=tk.X)
                 tk.Label(disk_frame, text="디스크 사용률:", font=MEDIUM_FONT,
                         bg=COLOR_PANEL, fg=COLOR_TEXT, anchor="w").pack(side=tk.LEFT)
-                tk.Label(disk_frame, text=f"{disk_percent:.1f}%", font=("Noto Sans CJK KR", 22, "bold"),
+                tk.Label(disk_frame, text=f"{disk_percent:.1f}%", font=(FONT_FAMILY, 22, "bold"),
                         bg=COLOR_PANEL, fg=disk_color, anchor="e").pack(side=tk.RIGHT)
 
                 # Temperature (Jetson specific)
@@ -2124,7 +2161,7 @@ class JetsonIntegratedApp:
                         temp_frame.pack(pady=10, padx=20, fill=tk.X)
                         tk.Label(temp_frame, text="CPU 온도:", font=MEDIUM_FONT,
                                 bg=COLOR_PANEL, fg=COLOR_TEXT, anchor="w").pack(side=tk.LEFT)
-                        tk.Label(temp_frame, text=f"{temp_celsius:.1f}°C", font=("Noto Sans CJK KR", 22, "bold"),
+                        tk.Label(temp_frame, text=f"{temp_celsius:.1f}°C", font=(FONT_FAMILY, 22, "bold"),
                                 bg=COLOR_PANEL, fg=temp_color, anchor="e").pack(side=tk.RIGHT)
                 except:
                     pass
@@ -2164,7 +2201,7 @@ class JetsonIntegratedApp:
         auto_mode_color = COLOR_OK if AUTO_RELAY_ENABLED else COLOR_ERROR
 
         auto_mode_status = tk.Label(auto_mode_frame, text=auto_mode_text,
-                                    font=("Noto Sans CJK KR", 20, "bold"),
+                                    font=(FONT_FAMILY, 20, "bold"),
                                     bg=COLOR_PANEL, fg=auto_mode_color)
         auto_mode_status.pack(side=tk.RIGHT)
 
@@ -2178,7 +2215,7 @@ class JetsonIntegratedApp:
                  relief=tk.FLAT, bd=0, padx=10, pady=8).pack()
 
         tk.Label(control_frame, text="※ 자동 모드: Jetson #1과 동기화 (MQTT)",
-                font=("Noto Sans CJK KR", 14), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT).pack(pady=5)
+                font=(FONT_FAMILY, 14), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT).pack(pady=5)
 
         # Separator
         tk.Frame(control_frame, height=2, bg=COLOR_PANEL_BORDER).pack(fill=tk.X, padx=20, pady=10)
@@ -2843,9 +2880,11 @@ class JetsonIntegratedApp:
         self.root.attributes('-fullscreen', self.is_fullscreen)
 
     def exit_fullscreen(self):
-        """Exit fullscreen mode"""
+        """Exit fullscreen mode - 창 모드로 복원"""
         self.is_fullscreen = False
         self.root.attributes('-fullscreen', False)
+        # 창 크기 복원
+        self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+0+0")
 
     def on_close(self):
         """Cleanup and close application - 백그라운드에서 정리"""
