@@ -229,7 +229,7 @@ class ModbusTemperatureSensor(TemperatureSensor):
         try:
             # Holding Register 읽기
             result = self.client.read_holding_registers(
-                self.register, 1, slave=self.slave_id
+                self.register, 1, device_id=self.slave_id
             )
             
             if result and not result.isError():

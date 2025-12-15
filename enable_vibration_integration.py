@@ -55,7 +55,7 @@ print()
 def unlock(uid):
     """센서 잠금 해제"""
     try:
-        client.write_register(address=REG_UNLOCK, value=UNLOCK_VALUE, slave=uid)
+        client.write_register(address=REG_UNLOCK, value=UNLOCK_VALUE, device_id=uid)
         print(f"  [0x{uid:02X}] 잠금 해제 완료")
         return True
     except Exception as e:
@@ -65,7 +65,7 @@ def unlock(uid):
 def save_and_restart(uid):
     """설정 저장 및 재시작"""
     try:
-        client.write_register(address=REG_SAVE, value=SAVE_VALUE, slave=uid)
+        client.write_register(address=REG_SAVE, value=SAVE_VALUE, device_id=uid)
         print(f"  [0x{uid:02X}] 저장 및 재시작...")
         return True
     except Exception as e:
@@ -88,7 +88,7 @@ def read_config(uid):
 
     for addr, name in regs_to_read:
         try:
-            result = client.read_holding_registers(address=addr, count=1, slave=uid)
+            result = client.read_holding_registers(address=addr, count=1, device_id=uid)
             if hasattr(result, 'registers'):
                 val = result.registers[0]
                 print(f"  0x{addr:02X} {name}: 0x{val:04X} ({val})")
@@ -111,7 +111,7 @@ def try_enable_integration(uid):
     #    비트: 가속도, 자이로, 각도, 속도, 변위 등
     try:
         # 0x3F = 모든 기본 출력 활성화
-        client.write_register(address=0x02, value=0x3F, slave=uid)
+        client.write_register(address=0x02, value=0x3F, device_id=uid)
         print(f"  [0x{uid:02X}] RSW = 0x3F (모든 출력 활성화)")
     except Exception as e:
         print(f"  [0x{uid:02X}] RSW 설정 실패: {e}")
@@ -119,7 +119,7 @@ def try_enable_integration(uid):
 
     # 3. 출력 속도 설정 (0x06 = 10Hz, 0x07 = 50Hz, 0x08 = 100Hz)
     try:
-        client.write_register(address=0x03, value=0x06, slave=uid)
+        client.write_register(address=0x03, value=0x06, device_id=uid)
         print(f"  [0x{uid:02X}] RATE = 0x06 (10Hz)")
     except Exception as e:
         print(f"  [0x{uid:02X}] RATE 설정 실패: {e}")
@@ -183,7 +183,7 @@ if client.connect():
 
     for uid in UNIT_IDS:
         try:
-            result = client.read_holding_registers(address=REG_START, count=REG_COUNT, slave=uid)
+            result = client.read_holding_registers(address=REG_START, count=REG_COUNT, device_id=uid)
             if hasattr(result, 'registers'):
                 regs = result.registers
                 print(f"\n[0x{uid:02X}] Raw 레지스터:")
