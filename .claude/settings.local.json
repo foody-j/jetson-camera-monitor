@@ -23,7 +23,9 @@
       "WebFetch(domain:manuals.plus)",
       "WebFetch(domain:www.wit-motion.com)",
       "WebFetch(domain:wit-motion.gitbook.io)",
-      "Bash(pip3 show:*)"
+      "Bash(pip3 show:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(dpkg:*)"
     ],
     "deny": [],
     "ask": []
