@@ -7,7 +7,7 @@
   "mode": "auto",
   "_comment_time": "주간 모드 시작/종료 시간 (HH:MM 형식)",
   "day_start": "07:30",
-  "day_end": "19:00",
+  "day_end": "11:00",
   "_comment_camera": "사람 감지 카메라 (gmsl 또는 usb)",
   "camera_type": "gmsl",
   "camera_index": 2,
@@ -96,5 +96,7 @@
   "_comment_frame_skip": "프레임 스킵 (90 = 30fps에서 3초마다 저장)",
   "stirfry_frame_skip": 90,
   "_comment_preview": "프리뷰 자동 숨김 시간 (초, 999999=항상 표시)",
-  "preview_hide_delay": 999999
+  "preview_hide_delay": 999999,
+  "_comment_vibration_test_mode": "진동센서 테스트 모드 (true=VibrationRequest 시 즉시 NORMAL 응답, false=실제 측정)",
+  "vibration_test_mode": true
 }

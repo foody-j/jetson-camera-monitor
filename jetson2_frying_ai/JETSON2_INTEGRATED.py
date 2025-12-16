@@ -172,6 +172,9 @@ MQTT_TOPIC_FRYING_POT2_CONTROL = config.get('mqtt_topic_frying_pot2_control', 'f
 # AI Mode Setting
 AI_MODE_ENABLED = config.get('ai_mode_enabled', False)
 
+# Vibration Sensor Settings
+VIBRATION_TEST_MODE = config.get('vibration_test_mode', False)  # True=VibrationRequest 시 즉시 NORMAL 응답
+
 # Relay Control Settings
 RELAY_MODE = config.get('relay_mode', 'pulse')
 AUTO_RELAY_ENABLED = config.get('auto_relay_enabled', False)
@@ -334,6 +337,7 @@ class JetsonIntegratedApp:
         # Subprocess tracking (진동센서 등)
         self.child_processes = []
         self.vibration_process = None  # 진동센서 프로세스 추적
+        self.vibration_status = "IDLE"  # 진동센서 상태: IDLE, MEASURING, NORMAL, ABNORMAL
 
         # Frame skip counters (CPU 절약)
         self.frying_frame_skip = 0
@@ -353,9 +357,10 @@ class JetsonIntegratedApp:
         self.observe_left_state = None
         self.observe_right_state = None
 
-        # Pot status (for MQTT publishing - will be updated by pot detection AI later)
-        self.pot1_pot_status = "EMPTY"  # "HAS_FOOD" or "EMPTY"
-        self.pot2_pot_status = "EMPTY"  # "HAS_FOOD" or "EMPTY"
+        # Pot status (for MQTT publishing)
+        # 상태값: "IDLE" (대기), "COOKING" (조리 중), "UNKNOWN" (AI 판단 불가)
+        self.pot1_pot_status = "UNKNOWN" if not AI_MODE_ENABLED else "IDLE"
+        self.pot2_pot_status = "UNKNOWN" if not AI_MODE_ENABLED else "IDLE"
 
         # Temperature data (from MQTT)
         self.oil_temp_left = 0.0
@@ -878,16 +883,31 @@ class JetsonIntegratedApp:
                 {"DeviceNum": "0", "PTNum": "0", "NowRecipe": "...", "ProcessType": "...", ...},
                 {"DeviceNum": "0", "PTNum": "1", "NowRecipe": "...", "ProcessType": "...", ...}
             ],
-            "RBMotion": 1
+            "RBMotion": 1,
+            "VibrationRequest": false
         }
 
-        Jetson2 튀김솥 매핑:
-        - PTNum "0" → POT1 (왼쪽 튀김솥, 카메라 0,1)
-        - PTNum "1" → POT2 (오른쪽 튀김솥, 카메라 2,3)
+        DeviceNum/PTNum 매핑:
+        - DeviceNum "0" = 튀김 (Jetson2)
+        - DeviceNum "1" = 볶음 (Jetson1)
+        - PTNum "0" = 왼쪽, "1" = 오른쪽
         """
         try:
             payload = message.payload.decode()
             data = json.loads(payload)
+
+            # VibrationRequest 처리
+            vibration_request = data.get("VibrationRequest", False)
+            if vibration_request:
+                print(f"[로봇상태] VibrationRequest 수신: {vibration_request}")
+                if VIBRATION_TEST_MODE:
+                    # 테스트 모드: 즉시 NORMAL 응답
+                    print(f"[진동] 테스트 모드 - 즉시 NORMAL 응답")
+                    self.vibration_status = "NORMAL"
+                    self.publish_status()  # 즉시 상태 발행
+                else:
+                    # 실제 모드: 진동센서 측정 시작
+                    self.start_vibration_check()
 
             # Status 배열 추출
             status_list = data.get("Status", [])
@@ -895,10 +915,15 @@ class JetsonIntegratedApp:
                 print(f"[로봇상태] Status 배열 없음")
                 return
 
-            # 각 솥 정보 처리
+            # 각 솥 정보 처리 - Jetson2는 튀김솥(DeviceNum=0)만 처리
             for pot_data in status_list:
-                pot_num = pot_data.get("PTNum", "")
                 device_num = pot_data.get("DeviceNum", "")
+
+                # Jetson2는 튀김솥(DeviceNum=0)만 처리
+                if device_num != "0":
+                    continue
+
+                pot_num = pot_data.get("PTNum", "")  # 0: 왼쪽, 1: 오른쪽
 
                 # 필요한 정보 추출
                 recipe = pot_data.get("NowRecipe", "")
@@ -980,6 +1005,9 @@ class JetsonIntegratedApp:
                 "observe": {
                     "left": self.observe_left_state if self.observe_left_state is not None else "UNKNOWN",
                     "right": self.observe_right_state if self.observe_right_state is not None else "UNKNOWN"
+                },
+                "vibration": {
+                    "status": self.vibration_status
                 },
                 "system": self.system_info.get_dynamic_info() if hasattr(self, 'system_info') else {}
             }
@@ -2373,11 +2401,13 @@ class JetsonIntegratedApp:
             print(f"[진동] 프로세스 시작 (PID: {self.vibration_process.pid})")
             print(f"[진동] 디버깅 메시지는 journalctl -u jetson2-ai -f 로 확인하세요")
 
-            # Update button state
+            # Update status and button
+            self.vibration_status = "MEASURING"
             self.vibration_check_btn.config(text="진동 중지", bg=COLOR_ERROR)
         except Exception as e:
             print(f"[진동] 실행 오류: {e}")
             self.vibration_process = None
+            self.vibration_status = "IDLE"
 
     def stop_vibration_check(self):
         """Stop vibration sensor monitoring program"""
@@ -2401,13 +2431,15 @@ class JetsonIntegratedApp:
             if self.vibration_process in self.child_processes:
                 self.child_processes.remove(self.vibration_process)
 
-            # Update button state
+            # Update status and button
+            self.vibration_status = "IDLE"
             self.vibration_check_btn.config(text="진동 시작", bg=COLOR_INFO)
 
         except Exception as e:
             print(f"[진동] 종료 오류: {e}")
         finally:
             self.vibration_process = None
+            self.vibration_status = "IDLE"
 
     def toggle_vibration_check(self):
         """Toggle vibration sensor monitoring (GUI button)"""

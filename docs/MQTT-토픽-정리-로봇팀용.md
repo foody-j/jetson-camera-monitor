@@ -34,8 +34,30 @@
 }
 ```
 
+### Status 배열 필드 설명
+
 | 필드 | 타입 | 설명 |
 |------|------|------|
+| `DeviceNum` | string | 장치 구분: "0"=튀김(Jetson2), "1"=볶음(Jetson1) |
+| `PTNum` | string | 솥 위치: "0"=왼쪽, "1"=오른쪽 |
+| `ProcessType` | string | 현재 프로세스: "투입", "조리", "배출" |
+| `NowRecipe` | string | 현재 레시피명 |
+| `RunningTime` | string | 경과 시간 |
+
+#### DeviceNum + PTNum 조합
+
+| DeviceNum | PTNum | 대상 |
+|-----------|-------|------|
+| "0" | "0" | 튀김 왼쪽 (Jetson2) |
+| "0" | "1" | 튀김 오른쪽 (Jetson2) |
+| "1" | "0" | 볶음 왼쪽 (Jetson1) |
+| "1" | "1" | 볶음 오른쪽 (Jetson1) |
+
+### 최상위 필드
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `RBMotion` | number | 쉐이킹 상태 (1: 1번솥, 2: 2번솥) |
 | `VibrationRequest` | bool | 진동센서 측정 요청 (true=측정 요청) |
 
 ---

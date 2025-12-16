@@ -97,5 +97,8 @@
   "jpeg_quality": 100,
   "target_probe_temp": 75.0,
   "food_types": ["chicken", "shrimp", "potato", "dumpling", "pork_cutlet", "fish"],
-  "// Defaults: data_collection_interval=3 (seconds), save_resolution=1280x720 (resize from 1920x1536), jpeg_quality=100 (maximum quality, ~800KB per image), target_probe_temp=75.0 (celsius)": ""
+  "// Defaults: data_collection_interval=3 (seconds), save_resolution=1280x720 (resize from 1920x1536), jpeg_quality=100 (maximum quality, ~800KB per image), target_probe_temp=75.0 (celsius)": "",
+
+  "_comment_vibration_test_mode": "진동센서 테스트 모드 (true=VibrationRequest 시 즉시 NORMAL 응답, false=실제 측정)",
+  "vibration_test_mode": true
 }

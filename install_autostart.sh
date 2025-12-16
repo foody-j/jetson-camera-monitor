@@ -46,7 +46,7 @@ REAL_USER=${SUDO_USER:-$USER}
 sudo tee $SERVICE_FILE > /dev/null <<EOF
 [Unit]
 Description=$DESCRIPTION
-After=multi-user.target gmsl-driver-load.service graphical.target
+After=multi-user.target gmsl-driver-load.service graphical.target network-online.target
 Wants=network-online.target
 Requires=gmsl-driver-load.service
 
@@ -57,6 +57,7 @@ Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/$REAL_USER/.Xauthority"
 Environment="HOME=/home/$REAL_USER"
 Environment="PYTHONPATH=/home/$REAL_USER/.local/lib/python3.10/site-packages"
+Environment="PYTHONUNBUFFERED=1"
 WorkingDirectory=$(dirname $PYTHON_SCRIPT)
 ExecStartPre=/bin/sleep 5
 ExecStart=/usr/bin/python3 $PYTHON_SCRIPT

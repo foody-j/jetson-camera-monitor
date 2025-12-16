@@ -150,6 +150,9 @@ MQTT_TOPIC_STIRFRY_POT2_CONTROL = config.get('mqtt_topic_stirfry_pot2_control', 
 # AI Mode Setting
 AI_MODE_ENABLED = config.get('ai_mode_enabled', False)
 
+# Vibration Sensor Settings
+VIBRATION_TEST_MODE = config.get('vibration_test_mode', False)  # True=VibrationRequest 시 즉시 NORMAL 응답
+
 # Relay Control Settings
 RELAY_MODE = config.get('relay_mode', 'pulse')
 AUTO_RELAY_ENABLED = config.get('auto_relay_enabled', True)
@@ -274,6 +277,7 @@ class IntegratedMonitorApp:
         # Subprocess tracking (진동센서 등)
         self.child_processes = []
         self.vibration_process = None  # 진동센서 프로세스 추적
+        self.vibration_status = "IDLE"  # 진동센서 상태: IDLE, MEASURING, NORMAL, ABNORMAL
 
         # Stir-fry monitoring state - POT1 (left camera = camera_0)
         self.stirfry_pot1_recording = False  # 수동 시작
@@ -1047,50 +1051,65 @@ class IntegratedMonitorApp:
             print(f"[POT2 타임아웃] 오류: {e}")
 
     def on_robot_status(self, client, userdata, message):
-        """로봇 PC 상태 메시지 파싱 - Jetson1은 볶음솥(PTNum=1)만 처리"""
+        """로봇 PC 상태 메시지 파싱 - Jetson1은 볶음솥(DeviceNum=1)만 처리"""
         try:
             payload = message.payload.decode()
             data = json.loads(payload)
 
-            # Status 배열에서 볶음솥(PTNum=1) 찾기
+            # VibrationRequest 처리
+            vibration_request = data.get("VibrationRequest", False)
+            if vibration_request:
+                print(f"[로봇상태] VibrationRequest 수신: {vibration_request}")
+                if VIBRATION_TEST_MODE:
+                    # 테스트 모드: 즉시 NORMAL 응답
+                    print(f"[진동] 테스트 모드 - 즉시 NORMAL 응답")
+                    self.vibration_status = "NORMAL"
+                    self.publish_status()  # 즉시 상태 발행
+                else:
+                    # 실제 모드: 진동센서 측정 시작
+                    self.start_vibration_check()
+
+            # Status 배열에서 볶음솥(DeviceNum=1) 찾기
+            # DeviceNum: "0"=튀김(Jetson2), "1"=볶음(Jetson1)
+            # PTNum: "0"=왼쪽, "1"=오른쪽
             status_list = data.get("Status", [])
             for status in status_list:
-                pot_num = status.get("PTNum", "")
+                device_num = status.get("DeviceNum", "")
 
-                # Jetson1은 볶음솥(PTNum=1)만 처리
-                if pot_num != "1":
+                # Jetson1은 볶음솥(DeviceNum=1)만 처리
+                if device_num != "1":
                     continue
 
-                device_num = status.get("DeviceNum", "")  # 0: 왼쪽, 1: 오른쪽
+                pt_num = status.get("PTNum", "")  # 0: 왼쪽, 1: 오른쪽
                 recipe = status.get("NowRecipe", "")
                 process_type = status.get("ProcessType", "")  # 투입/조리/배출
                 running_time = status.get("RunningTime", "")
                 pot_status = status.get("Potstatus", {})
                 temp = pot_status.get("PT_Temp", 0)
 
-                print(f"[로봇상태] 볶음솥 DEV{device_num} | {process_type} | {recipe} | 온도:{temp} | {running_time}")
+                print(f"[로봇상태] 볶음솥 PT{pt_num} | {process_type} | {recipe} | 온도:{temp} | {running_time}")
 
                 # 조리 시작/중지 트리거
-                if device_num == "0":  # 왼쪽 = POT1
+                if pt_num == "0":  # 왼쪽 = POT1
                     if process_type == "조리":
                         if not self.stirfry_pot1_recording:
                             self.stirfry_pot1_food_type = recipe if recipe else "unknown"
-                            print(f"[로봇상태] POT1 녹화 시작 - {self.stirfry_pot1_food_type}")
+                            print(f"[로봇상태] POT1(왼쪽) 녹화 시작 - {self.stirfry_pot1_food_type}")
                             self.root.after(0, self.start_stirfry_pot1_recording)
                     elif process_type == "배출" or process_type == "":
                         if self.stirfry_pot1_recording:
-                            print(f"[로봇상태] POT1 녹화 중지")
+                            print(f"[로봇상태] POT1(왼쪽) 녹화 중지")
                             self.root.after(0, self.stop_stirfry_pot1_recording)
 
-                elif device_num == "1":  # 오른쪽 = POT2
+                elif pt_num == "1":  # 오른쪽 = POT2
                     if process_type == "조리":
                         if not self.stirfry_pot2_recording:
                             self.stirfry_pot2_food_type = recipe if recipe else "unknown"
-                            print(f"[로봇상태] POT2 녹화 시작 - {self.stirfry_pot2_food_type}")
+                            print(f"[로봇상태] POT2(오른쪽) 녹화 시작 - {self.stirfry_pot2_food_type}")
                             self.root.after(0, self.start_stirfry_pot2_recording)
                     elif process_type == "배출" or process_type == "":
                         if self.stirfry_pot2_recording:
-                            print(f"[로봇상태] POT2 녹화 중지")
+                            print(f"[로봇상태] POT2(오른쪽) 녹화 중지")
                             self.root.after(0, self.stop_stirfry_pot2_recording)
 
         except json.JSONDecodeError as e:
@@ -1814,6 +1833,9 @@ class IntegratedMonitorApp:
                     "left": self.stirfry_pot1_recording or self.stirfry_recording,
                     "right": self.stirfry_pot2_recording or self.stirfry_recording
                 },
+                "vibration": {
+                    "status": self.vibration_status
+                },
                 "system": self.system_info.get_dynamic_info()
             }
 
@@ -2490,11 +2512,13 @@ class IntegratedMonitorApp:
             print(f"[진동] 프로세스 시작 (PID: {self.vibration_process.pid})")
             print(f"[진동] 디버깅 메시지는 journalctl -u jetson1-ai -f 로 확인하세요")
 
-            # Update button state
+            # Update status and button
+            self.vibration_status = "MEASURING"
             self.vibration_check_btn.config(text="진동 중지", bg=COLOR_ERROR)
         except Exception as e:
             print(f"[진동] 실행 오류: {e}")
             self.vibration_process = None
+            self.vibration_status = "IDLE"
 
     def stop_vibration_check(self):
         """Stop vibration sensor monitoring program"""
@@ -2518,13 +2542,15 @@ class IntegratedMonitorApp:
             if self.vibration_process in self.child_processes:
                 self.child_processes.remove(self.vibration_process)
 
-            # Update button state
+            # Update status and button
+            self.vibration_status = "IDLE"
             self.vibration_check_btn.config(text="진동 시작", bg=COLOR_INFO)
 
         except Exception as e:
             print(f"[진동] 종료 오류: {e}")
         finally:
             self.vibration_process = None
+            self.vibration_status = "IDLE"
 
     def toggle_vibration_check(self):
         """Toggle vibration sensor monitoring (GUI button)"""

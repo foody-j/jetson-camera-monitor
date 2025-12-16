@@ -42,6 +42,15 @@ NVIDIA Jetson Orin Nano 기반 식당 모니터링 시스템 (GMSL 카메라 + A
 
 ## 최근 변경사항
 
+### 2025-12-11
+- systemctl 서비스에서 MQTT 연결 안 되는 문제 수정
+  - **원인**: `After=network-online.target` 누락으로 네트워크 준비 전 서비스 시작
+  - **해결**: 서비스 파일에 `network-online.target` 추가 필요
+  - 수정 위치: `/etc/systemd/system/jetson1-monitor.service` (또는 jetson2)
+  - `install_autostart.sh` 스크립트도 수정 완료
+- pymodbus 3.x 호환성 수정 (`fix_vibration_sensor.py`)
+  - `slave` 파라미터 → `device_id`로 변경 (pymodbus 3.11.4)
+
 ### 2025-12-08
 - `tkfont.families()` 프리징 이슈 수정 (Jetson1, Jetson2 모두)
   - 폰트 초기화 시 시스템 프리징 발생
@@ -96,3 +105,39 @@ sudo journalctl -u jetson2-monitor -f
 - `tkfont.families()` 사용 금지 (프리징 유발)
 - GMSL 카메라는 `/dev/video*`로 확인
 - GPIO 테스트: `test_relay_pulse.py`, `test_both_pins.py`
+
+## systemctl 서비스 MQTT 문제 해결 (2025-12-11)
+
+**증상**: `python3`으로 직접 실행하면 MQTT 정상, `systemctl`로 실행하면 MQTT 연결 안 됨
+
+**원인**: 서비스가 네트워크 준비 전에 시작됨
+
+**해결 방법**:
+```bash
+# 서비스 파일 수정
+sudo vim /etc/systemd/system/jetson1-monitor.service  # 또는 jetson2-monitor
+
+# [Unit] 섹션 수정:
+# 변경 전:
+After=multi-user.target gmsl-driver-load.service graphical.target
+# 변경 후:
+After=multi-user.target gmsl-driver-load.service graphical.target network-online.target
+
+# [Service] 섹션에 추가 (로그 버퍼링 방지):
+Environment="PYTHONUNBUFFERED=1"
+
+# 적용:
+sudo systemctl daemon-reload
+sudo systemctl restart jetson1-monitor  # 또는 jetson2-monitor
+```
+
+## pymodbus 버전 호환성 (2025-12-11)
+
+**pymodbus 3.x 버전**에서는 `slave` 파라미터가 `device_id`로 변경됨:
+```python
+# 변경 전 (pymodbus 2.x):
+client.read_holding_registers(address=0x00, count=3, slave=0x50)
+
+# 변경 후 (pymodbus 3.x):
+client.read_holding_registers(address=0x00, count=3, device_id=0x50)
+```

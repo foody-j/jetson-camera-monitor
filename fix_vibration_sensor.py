@@ -63,7 +63,7 @@ if not client.connect():
 def read_reg(uid, addr, name=""):
     """레지스터 1개 읽기"""
     try:
-        result = client.read_holding_registers(address=addr, count=1, slave=uid)
+        result = client.read_holding_registers(address=addr, count=1, device_id=uid)
         if hasattr(result, 'registers'):
             val = result.registers[0]
             print(f"  [0x{uid:02X}] 0x{addr:02X} {name}: {val} (0x{val:04X})")
@@ -78,7 +78,7 @@ def read_reg(uid, addr, name=""):
 def read_regs(uid, addr, count):
     """레지스터 여러개 읽기"""
     try:
-        result = client.read_holding_registers(address=addr, count=count, slave=uid)
+        result = client.read_holding_registers(address=addr, count=count, device_id=uid)
         if hasattr(result, 'registers'):
             return result.registers
         return None
@@ -89,16 +89,16 @@ def write_reg(uid, addr, value, name=""):
     """레지스터 쓰기 (잠금해제 → 쓰기 → 저장)"""
     try:
         # 1. 잠금 해제
-        client.write_register(address=REG_UNLOCK, value=UNLOCK_VALUE, slave=uid)
+        client.write_register(address=REG_UNLOCK, value=UNLOCK_VALUE, device_id=uid)
         time.sleep(0.1)
 
         # 2. 값 쓰기
-        client.write_register(address=addr, value=value, slave=uid)
+        client.write_register(address=addr, value=value, device_id=uid)
         print(f"  [0x{uid:02X}] 0x{addr:02X} {name} = {value} 설정 완료")
         time.sleep(0.1)
 
         # 3. 저장
-        client.write_register(address=REG_SAVE, value=SAVE_VALUE, slave=uid)
+        client.write_register(address=REG_SAVE, value=SAVE_VALUE, device_id=uid)
         print(f"  [0x{uid:02X}] 설정 저장됨")
         return True
     except Exception as e:

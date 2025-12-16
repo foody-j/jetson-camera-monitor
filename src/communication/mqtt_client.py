@@ -159,26 +159,37 @@ class MQTTClient:
             logger.error(f"Error publishing message: {e}")
             return False
 
-    def subscribe(self, topic_suffix: str, callback: Callable, qos: int = 1):
+    def subscribe(self, topic: str, callback: Callable, qos: int = 1, use_prefix: bool = False):
         """
         Subscribe to topic
 
         Args:
-            topic_suffix: Topic suffix (will be prefixed with topic_prefix)
-            callback: Callback function(topic, payload_dict)
+            topic: Topic to subscribe (no prefix by default)
+            callback: Callback function(client, userdata, message)
             qos: Quality of Service
+            use_prefix: If True, add topic_prefix (default: False)
         """
-        full_topic = f"{self.topic_prefix}/{topic_suffix}"
+        full_topic = f"{self.topic_prefix}/{topic}" if use_prefix else topic
 
-        def on_message(client, userdata, msg):
-            try:
-                payload = json.loads(msg.payload.decode())
-                callback(msg.topic, payload)
-            except Exception as e:
-                logger.error(f"Error processing message from {msg.topic}: {e}")
+        # Initialize callbacks dict if not exists
+        if not hasattr(self, '_callbacks'):
+            self._callbacks = {}
+
+            # Set up message dispatcher (only once)
+            def on_message(client, userdata, msg):
+                topic = msg.topic
+                if topic in self._callbacks:
+                    try:
+                        self._callbacks[topic](client, userdata, msg)
+                    except Exception as e:
+                        logger.error(f"Error processing message from {topic}: {e}")
+
+            self.client.on_message = on_message
+
+        # Store callback for this topic
+        self._callbacks[full_topic] = callback
 
         self.client.subscribe(full_topic, qos=qos)
-        self.client.on_message = on_message
         logger.info(f"Subscribed to {full_topic}")
 
     def is_connected(self) -> bool:
