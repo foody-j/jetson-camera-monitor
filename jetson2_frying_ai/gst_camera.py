@@ -90,26 +90,29 @@ class GstCamera:
 
             print(f"[GstCamera] Pipeline for camera {self.device_index} is PLAYING")
 
-            # Add bus watch for errors (NO mainloop - we'll iterate manually)
+            # Add bus watch for errors
             bus = self.pipeline.get_bus()
             bus.add_signal_watch()
             bus.connect('message', self._on_bus_message)
 
-            # Instead of blocking mainloop, use GLib context iteration
-            context = GLib.MainContext.default()
+            # 각 카메라별 독립적인 GLib context 사용 (충돌 방지)
+            self._context = GLib.MainContext.new()
+            self._context.push_thread_default()
 
             # Poll GLib events periodically
             while self.is_running:
-                # Process pending events
-                while context.pending():
-                    context.iteration(False)
+                # Process pending events (non-blocking)
+                while self._context.pending():
+                    self._context.iteration(False)
 
                 # Small sleep to avoid busy-waiting
-                time.sleep(0.001)
+                time.sleep(0.005)  # 5ms로 증가 (CPU 부하 감소)
 
         except Exception as e:
             print(f"[ERROR] Pipeline thread error for camera {self.device_index}: {e}")
         finally:
+            if hasattr(self, '_context'):
+                self._context.pop_thread_default()
             self.is_running = False
 
     def _on_bus_message(self, bus, message):
