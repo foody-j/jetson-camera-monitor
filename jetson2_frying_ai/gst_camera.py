@@ -40,13 +40,14 @@ class GstCamera:
             print(f"[GstCamera] Camera {self.device_index} already running")
             return True
 
-        # Build GStreamer pipeline
+        # Build GStreamer pipeline (4카메라 안정화: 버퍼 제한 + queue)
         pipeline_str = (
-            f"v4l2src device={self.device_path} ! "
+            f"v4l2src device={self.device_path} io-mode=2 num-buffers=-1 ! "
             f"video/x-raw, format=UYVY, width={self.width}, height={self.height}, framerate={self.fps}/1 ! "
+            f"queue max-size-buffers=2 leaky=downstream ! "
             f"videoconvert ! "
             f"video/x-raw, format=BGR ! "
-            f"appsink name=sink emit-signals=true max-buffers=1 drop=true"
+            f"appsink name=sink emit-signals=true max-buffers=1 drop=true sync=false"
         )
 
         print(f"[GstCamera] Pipeline: {pipeline_str}")
