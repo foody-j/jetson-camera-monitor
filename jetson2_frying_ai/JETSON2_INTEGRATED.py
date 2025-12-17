@@ -1450,7 +1450,7 @@ class JetsonIntegratedApp:
         self.observe_right_cap = None
 
         # 카메라 초기화 딜레이 (드라이버 안정화)
-        CAMERA_INIT_DELAY = 1.0  # 초
+        CAMERA_INIT_DELAY = 2.0  # 초 (현장 프리징 방지)
 
         # Frying AI cameras (video0, video1)
         if FRYING_ENABLED:
