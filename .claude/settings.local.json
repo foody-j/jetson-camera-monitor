@@ -25,7 +25,8 @@
       "WebFetch(domain:wit-motion.gitbook.io)",
       "Bash(pip3 show:*)",
       "WebFetch(domain:github.com)",
-      "Bash(dpkg:*)"
+      "Bash(dpkg:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

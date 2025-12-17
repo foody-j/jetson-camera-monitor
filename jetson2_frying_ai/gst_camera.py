@@ -90,23 +90,22 @@ class GstCamera:
 
             print(f"[GstCamera] Pipeline for camera {self.device_index} is PLAYING")
 
-            # Bus polling 방식 (GLib mainloop 없이)
+            # Add bus watch for errors (NO mainloop - we'll iterate manually)
             bus = self.pipeline.get_bus()
+            bus.add_signal_watch()
+            bus.connect('message', self._on_bus_message)
 
-            # 프레임 읽기만 수행 (GLib iteration 제거)
+            # Instead of blocking mainloop, use GLib context iteration
+            context = GLib.MainContext.default()
+
+            # Poll GLib events periodically
             while self.is_running:
-                # Bus 메시지 체크 (non-blocking)
-                msg = bus.pop_filtered(Gst.MessageType.ERROR | Gst.MessageType.EOS)
-                if msg:
-                    if msg.type == Gst.MessageType.ERROR:
-                        err, debug = msg.parse_error()
-                        print(f"[ERROR] GStreamer error on camera {self.device_index}: {err}")
-                        break
-                    elif msg.type == Gst.MessageType.EOS:
-                        print(f"[INFO] End-of-stream on camera {self.device_index}")
-                        break
+                # Process pending events
+                while context.pending():
+                    context.iteration(False)
 
-                time.sleep(0.01)  # 10ms
+                # Small sleep to avoid busy-waiting
+                time.sleep(0.001)
 
         except Exception as e:
             print(f"[ERROR] Pipeline thread error for camera {self.device_index}: {e}")
