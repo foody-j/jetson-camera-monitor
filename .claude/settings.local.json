@@ -26,7 +26,9 @@
       "Bash(pip3 show:*)",
       "WebFetch(domain:github.com)",
       "Bash(dpkg:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(gst-inspect-1.0:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []
