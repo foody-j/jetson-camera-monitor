@@ -33,8 +33,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.communication.mqtt_client import MQTTClient
 from src.core.system_info import SystemInfo
 
-# Import GStreamer camera wrapper (optimized for UYVY format)
-from gst_camera import GstCamera
+# Import GStreamer camera wrapper (multiprocessing for 4-camera stability)
+from gst_camera_mp import GstCameraMP as GstCamera
 
 # Import Frying AI segmenter
 from frying_segmenter import FoodSegmenter
