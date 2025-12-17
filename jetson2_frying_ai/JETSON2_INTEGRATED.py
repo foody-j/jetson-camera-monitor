@@ -230,6 +230,7 @@ GUI_UPDATE_INTERVAL = config.get('gui_update_interval_ms', 50)
 # Frame skip settings (CPU 절약)
 FRYING_FRAME_SKIP = config.get('frying_frame_skip', 3)
 OBSERVE_FRAME_SKIP = config.get('observe_frame_skip', 5)
+GUI_FRAME_SKIP = config.get('gui_frame_skip', 3)  # GUI 표시 프레임 스킵 (3=10fps)
 
 
 # =========================
@@ -342,6 +343,11 @@ class JetsonIntegratedApp:
         # Frame skip counters (CPU 절약)
         self.frying_frame_skip = 0
         self.observe_frame_skip = 0
+        # GUI 표시 프레임 스킵 (각 카메라별)
+        self.gui_frame_skip_frying_left = 0
+        self.gui_frame_skip_frying_right = 0
+        self.gui_frame_skip_observe_left = 0
+        self.gui_frame_skip_observe_right = 0
 
         # Camera objects
         self.frying_left_cap = None
@@ -1610,17 +1616,22 @@ class JetsonIntegratedApp:
                     fg=probe_color
                 )
 
-            # Display (resize once)
-            display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
-            display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-
-            img = Image.fromarray(display_frame)
-            imgtk = ImageTk.PhotoImage(image=img)
-            self.frying_left_label.imgtk = imgtk
-            self.frying_left_label.configure(image=imgtk)
-
-            # Store latest frame for data collection
+            # Store latest frame for data collection (매 프레임 저장)
             self.latest_frying_left_frame = frame.copy()
+
+            # GUI 표시는 N프레임마다 (부하 감소)
+            self.gui_frame_skip_frying_left += 1
+            if self.gui_frame_skip_frying_left >= GUI_FRAME_SKIP:
+                self.gui_frame_skip_frying_left = 0
+
+                # Display (resize once)
+                display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
+                display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+
+                img = Image.fromarray(display_frame)
+                imgtk = ImageTk.PhotoImage(image=img)
+                self.frying_left_label.imgtk = imgtk
+                self.frying_left_label.configure(image=imgtk)
 
             # POT1 data collection timer
             if self.pot1_collecting:
@@ -1720,17 +1731,22 @@ class JetsonIntegratedApp:
                     fg=probe_color
                 )
 
-            # Display
-            display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
-            display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-
-            img = Image.fromarray(display_frame)
-            imgtk = ImageTk.PhotoImage(image=img)
-            self.frying_right_label.imgtk = imgtk
-            self.frying_right_label.configure(image=imgtk)
-
-            # Store latest frame for data collection
+            # Store latest frame for data collection (매 프레임 저장)
             self.latest_frying_right_frame = frame.copy()
+
+            # GUI 표시는 N프레임마다 (부하 감소)
+            self.gui_frame_skip_frying_right += 1
+            if self.gui_frame_skip_frying_right >= GUI_FRAME_SKIP:
+                self.gui_frame_skip_frying_right = 0
+
+                # Display
+                display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
+                display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+
+                img = Image.fromarray(display_frame)
+                imgtk = ImageTk.PhotoImage(image=img)
+                self.frying_right_label.imgtk = imgtk
+                self.frying_right_label.configure(image=imgtk)
 
             # Data collection timer (only if frying_left is not active)
             if self.data_collection_active and self.frying_left_cap is None:
@@ -1861,17 +1877,22 @@ class JetsonIntegratedApp:
                         self.observe_left_state = None
                         self.observe_left_status.config(text="바켓 없음")
 
-            # Display
-            display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
-            display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-
-            img = Image.fromarray(display_frame)
-            imgtk = ImageTk.PhotoImage(image=img)
-            self.observe_left_label.imgtk = imgtk
-            self.observe_left_label.configure(image=imgtk)
-
-            # Store latest frame for data collection
+            # Store latest frame for data collection (매 프레임 저장)
             self.latest_observe_left_frame = frame.copy()
+
+            # GUI 표시는 N프레임마다 (부하 감소)
+            self.gui_frame_skip_observe_left += 1
+            if self.gui_frame_skip_observe_left >= GUI_FRAME_SKIP:
+                self.gui_frame_skip_observe_left = 0
+
+                # Display
+                display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
+                display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+
+                img = Image.fromarray(display_frame)
+                imgtk = ImageTk.PhotoImage(image=img)
+                self.observe_left_label.imgtk = imgtk
+                self.observe_left_label.configure(image=imgtk)
 
             # POT2 data collection timer
             if self.pot2_collecting:
@@ -2011,17 +2032,22 @@ class JetsonIntegratedApp:
                         self.observe_right_state = None
                         self.observe_right_status.config(text="바켓 없음")
 
-            # Display
-            display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
-            display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-
-            img = Image.fromarray(display_frame)
-            imgtk = ImageTk.PhotoImage(image=img)
-            self.observe_right_label.imgtk = imgtk
-            self.observe_right_label.configure(image=imgtk)
-
-            # Store latest frame for data collection
+            # Store latest frame for data collection (매 프레임 저장)
             self.latest_observe_right_frame = frame.copy()
+
+            # GUI 표시는 N프레임마다 (부하 감소)
+            self.gui_frame_skip_observe_right += 1
+            if self.gui_frame_skip_observe_right >= GUI_FRAME_SKIP:
+                self.gui_frame_skip_observe_right = 0
+
+                # Display
+                display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
+                display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+
+                img = Image.fromarray(display_frame)
+                imgtk = ImageTk.PhotoImage(image=img)
+                self.observe_right_label.imgtk = imgtk
+                self.observe_right_label.configure(image=imgtk)
 
             # Data collection timer (last fallback - only if all other cameras are not active)
             if (self.data_collection_active and
