@@ -40,7 +40,7 @@
   "frying_frame_skip": 15,
   "observe_frame_skip": 20,
   "_comment_gui_frame_skip": "GUI 표시 프레임 스킵 (3=3프레임마다 1번 표시, 30fps→10fps). 데이터 수집은 영향 없음",
-  "gui_frame_skip": 3,
+  "gui_frame_skip": 5,
   "// Defaults: camera_width=1920, camera_height=1536, display_width=600, display_height=450, gui_update_interval_ms=50, frying_frame_skip=3, observe_frame_skip=5, gui_frame_skip=3": "",
 
   "// GUI Display Settings (768x1024 세로 모드)": "",

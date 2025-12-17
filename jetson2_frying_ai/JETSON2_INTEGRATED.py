@@ -1440,8 +1440,8 @@ class JetsonIntegratedApp:
         self.btn_exit.pack(side=tk.RIGHT, padx=5)
 
     def init_cameras(self):
-        """Initialize GMSL cameras based on enabled settings"""
-        print("[카메라] 카메라 초기화 중...")
+        """Initialize GMSL cameras based on enabled settings (순차 초기화)"""
+        print("[카메라] 카메라 순차 초기화 중...")
 
         # Initialize cameras to None first
         self.frying_left_cap = None
@@ -1449,9 +1449,12 @@ class JetsonIntegratedApp:
         self.observe_left_cap = None
         self.observe_right_cap = None
 
+        # 카메라 초기화 딜레이 (드라이버 안정화)
+        CAMERA_INIT_DELAY = 1.0  # 초
+
         # Frying AI cameras (video0, video1)
         if FRYING_ENABLED:
-            print(f"[카메라] 튀김솥 카메라 초기화 중...")
+            print(f"[카메라] 튀김솥 왼쪽 초기화 중...")
             self.frying_left_cap = GstCamera(
                 device_index=FRYING_LEFT_CAMERA_INDEX,
                 width=CAMERA_WIDTH,
@@ -1464,6 +1467,9 @@ class JetsonIntegratedApp:
                 print(f"[카메라] 튀김솥 왼쪽 (video{FRYING_LEFT_CAMERA_INDEX}) 초기화 실패 ✗")
                 self.frying_left_cap = None
 
+            time.sleep(CAMERA_INIT_DELAY)  # 순차 초기화 딜레이
+
+            print(f"[카메라] 튀김솥 오른쪽 초기화 중...")
             self.frying_right_cap = GstCamera(
                 device_index=FRYING_RIGHT_CAMERA_INDEX,
                 width=CAMERA_WIDTH,
@@ -1475,12 +1481,14 @@ class JetsonIntegratedApp:
             else:
                 print(f"[카메라] 튀김솥 오른쪽 (video{FRYING_RIGHT_CAMERA_INDEX}) 초기화 실패 ✗")
                 self.frying_right_cap = None
+
+            time.sleep(CAMERA_INIT_DELAY)  # 순차 초기화 딜레이
         else:
             print(f"[카메라] 튀김솥 카메라 비활성화됨 (frying_enabled=false)")
 
         # Observe_add cameras (video2, video3)
         if OBSERVE_ENABLED:
-            print(f"[카메라] 바스켓 카메라 초기화 중...")
+            print(f"[카메라] 바스켓 왼쪽 초기화 중...")
             self.observe_left_cap = GstCamera(
                 device_index=OBSERVE_LEFT_CAMERA_INDEX,
                 width=CAMERA_WIDTH,
@@ -1493,6 +1501,9 @@ class JetsonIntegratedApp:
                 print(f"[카메라] 바스켓 왼쪽 (video{OBSERVE_LEFT_CAMERA_INDEX}) 초기화 실패 ✗")
                 self.observe_left_cap = None
 
+            time.sleep(CAMERA_INIT_DELAY)  # 순차 초기화 딜레이
+
+            print(f"[카메라] 바스켓 오른쪽 초기화 중...")
             self.observe_right_cap = GstCamera(
                 device_index=OBSERVE_RIGHT_CAMERA_INDEX,
                 width=CAMERA_WIDTH,
@@ -1507,7 +1518,7 @@ class JetsonIntegratedApp:
         else:
             print(f"[카메라] 바스켓 카메라 비활성화됨 (observe_enabled=false)")
 
-        print("[카메라] 카메라 초기화 완료!")
+        print("[카메라] 카메라 순차 초기화 완료!")
 
     def update_clock(self):
         """Update time and date in header"""
