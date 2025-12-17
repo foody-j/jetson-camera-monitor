@@ -91,12 +91,12 @@
   "mqtt_topic_jetson1_relay": "jetson1/relay/status",
 
   "// Data Collection Settings (Manual Mode)": "",
-  "data_collection_interval": 3,
+  "data_collection_interval": 10,
   "save_resolution": {
     "width": 1280,
     "height": 720
   },
-  "jpeg_quality": 100,
+  "jpeg_quality": 85,
   "target_probe_temp": 75.0,
   "food_types": ["chicken", "shrimp", "potato", "dumpling", "pork_cutlet", "fish"],
   "// Defaults: data_collection_interval=3 (seconds), save_resolution=1280x720 (resize from 1920x1536), jpeg_quality=100 (maximum quality, ~800KB per image), target_probe_temp=75.0 (celsius)": "",
