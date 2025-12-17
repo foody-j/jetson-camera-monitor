@@ -2580,99 +2580,133 @@ class JetsonIntegratedApp:
         print(f"[데이터수집] MQTT 메타데이터 수집 활성화")
 
     def stop_data_collection(self):
-        """Stop manual data collection"""
-        from datetime import datetime
-        import json
-
+        """Stop manual data collection (비동기 처리로 GUI 프리징 방지)"""
         if not self.data_collection_active:
             return
 
         self.data_collection_active = False
-        duration = (datetime.now() - self.collection_start_time).total_seconds()
 
-        # Organize temperature data by time
-        temperature_timeline = []
-        for item in self.collection_metadata:
-            if item["type"] in ["oil_temperature", "probe_temperature"]:
-                # Check if timestamp already exists
-                existing = next((x for x in temperature_timeline if x["timestamp"] == item["timestamp"]), None)
-                if existing:
-                    # Add to existing entry
-                    key = f"{item['type'].replace('_temperature', '_temp')}_{item['position']}"
-                    existing[key] = item["value"]
-                else:
-                    # Create new entry
-                    new_entry = {"timestamp": item["timestamp"]}
-                    key = f"{item['type'].replace('_temperature', '_temp')}_{item['position']}"
-                    new_entry[key] = item["value"]
-                    temperature_timeline.append(new_entry)
-
-        # Save session info with improved metadata
-        session_info = {
-            "session_id": self.collection_session_id,
-            "food_type": self.current_food_type,
-            "start_time": self.collection_start_time.strftime("%Y-%m-%d %H:%M:%S"),
-            "end_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "duration_sec": duration,
-            "collection_interval": self.collection_interval,
-
-            "completion_info": self.collection_completion_info if self.collection_completion_marked else None,
-            "completion_marked": self.collection_completion_marked,
-
-            "cameras_used": [0, 1, 2, 3],
-            "total_frames_saved": self.collection_frame_counter,
-
-            "camera_config": {
-                "resolution": {
-                    "width": config.get("camera_width", 1280),
-                    "height": config.get("camera_height", 720)
-                },
-                "fps": config.get("camera_fps", 30)
-            },
-
-            "temperature_timeline": temperature_timeline,
-            "raw_metadata": self.collection_metadata,
-            "metadata_count": len(self.collection_metadata)
-        }
-
-        # Save to both directories
-        for dir_path in [self.frying_session_dir, self.bucket_session_dir]:
-            info_path = os.path.join(dir_path, "session_info.json")
-            with open(info_path, 'w', encoding='utf-8') as f:
-                json.dump(session_info, f, indent=2, ensure_ascii=False)
-
-        # Update GUI
+        # 즉시 GUI 업데이트 (프리징 방지)
         self.btn_start_collection.config(state=tk.NORMAL)
         self.btn_stop_collection.config(state=tk.DISABLED)
-        self.collection_status_label.config(text="수집: 대기 중", fg=COLOR_TEXT)
+        self.collection_status_label.config(text="수집: 저장 중...", fg=COLOR_WARNING)
 
-        print(f"[데이터수집] 종료: {self.collection_frame_counter}장 저장, {duration:.1f}초")
-        print(f"[데이터수집] 음식 종류: {self.current_food_type}")
-        print(f"[데이터수집] 완료 마킹: {'예' if self.collection_completion_marked else '아니오'}")
-        print(f"[데이터수집] MQTT 메타데이터: {len(self.collection_metadata)}개 수집")
+        # 저장에 필요한 데이터 복사 (스레드 안전)
+        save_data = {
+            "session_id": self.collection_session_id,
+            "food_type": self.current_food_type,
+            "start_time": self.collection_start_time,
+            "frame_counter": self.collection_frame_counter,
+            "metadata": self.collection_metadata.copy(),
+            "completion_marked": self.collection_completion_marked,
+            "completion_info": self.collection_completion_info.copy() if self.collection_completion_info else {},
+            "frying_session_dir": self.frying_session_dir,
+            "bucket_session_dir": self.bucket_session_dir,
+            "collection_interval": self.collection_interval
+        }
 
-        # Show summary
-        from tkinter import messagebox
-        completion_text = ""
-        if self.collection_completion_marked:
-            elapsed = self.collection_completion_info.get("elapsed_time_sec", 0)
-            method = self.collection_completion_info.get("method", "unknown")
-            completion_text = f"\n완료 마킹: {method} ({elapsed:.1f}초)"
+        # 백그라운드에서 저장 후 메시지박스 표시
+        import threading
+        threading.Thread(
+            target=self._save_collection_data_async,
+            args=(save_data,),
+            daemon=True
+        ).start()
 
-        showinfo_topmost(
-            "데이터 수집 완료",
-            f"세션: {self.collection_session_id}\n"
-            f"음식: {self.current_food_type}\n\n"
-            f"총 저장: {self.collection_frame_counter}장\n"
-            f"수집 시간: {duration:.1f}초{completion_text}\n"
-            f"MQTT 메타데이터: {len(self.collection_metadata)}개\n\n"
-            f"저장 경로:\n{os.path.expanduser('~/AI_Data/')}"
-        )
-
-        # Reset session
+        # Reset session (즉시)
         self.collection_session_id = None
         self.collection_start_time = None
         self.current_food_type = "unknown"
+
+    def _save_collection_data_async(self, save_data):
+        """백그라운드에서 JSON 저장 후 메시지박스 표시"""
+        from datetime import datetime
+        import json
+
+        try:
+            end_time = datetime.now()
+            duration = (end_time - save_data["start_time"]).total_seconds()
+
+            # Organize temperature data by time
+            temperature_timeline = []
+            for item in save_data["metadata"]:
+                if item["type"] in ["oil_temperature", "probe_temperature"]:
+                    existing = next((x for x in temperature_timeline if x["timestamp"] == item["timestamp"]), None)
+                    if existing:
+                        key = f"{item['type'].replace('_temperature', '_temp')}_{item['position']}"
+                        existing[key] = item["value"]
+                    else:
+                        new_entry = {"timestamp": item["timestamp"]}
+                        key = f"{item['type'].replace('_temperature', '_temp')}_{item['position']}"
+                        new_entry[key] = item["value"]
+                        temperature_timeline.append(new_entry)
+
+            # Save session info with improved metadata
+            session_info = {
+                "session_id": save_data["session_id"],
+                "food_type": save_data["food_type"],
+                "start_time": save_data["start_time"].strftime("%Y-%m-%d %H:%M:%S"),
+                "end_time": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "duration_sec": duration,
+                "collection_interval": save_data["collection_interval"],
+
+                "completion_info": save_data["completion_info"] if save_data["completion_marked"] else None,
+                "completion_marked": save_data["completion_marked"],
+
+                "cameras_used": [0, 1, 2, 3],
+                "total_frames_saved": save_data["frame_counter"],
+
+                "camera_config": {
+                    "resolution": {
+                        "width": config.get("camera_width", 1280),
+                        "height": config.get("camera_height", 720)
+                    },
+                    "fps": config.get("camera_fps", 30)
+                },
+
+                "temperature_timeline": temperature_timeline,
+                "raw_metadata": save_data["metadata"],
+                "metadata_count": len(save_data["metadata"])
+            }
+
+            # Save to both directories
+            for dir_path in [save_data["frying_session_dir"], save_data["bucket_session_dir"]]:
+                info_path = os.path.join(dir_path, "session_info.json")
+                with open(info_path, 'w', encoding='utf-8') as f:
+                    json.dump(session_info, f, indent=2, ensure_ascii=False)
+
+            print(f"[데이터수집] 종료: {save_data['frame_counter']}장 저장, {duration:.1f}초")
+            print(f"[데이터수집] 음식 종류: {save_data['food_type']}")
+            print(f"[데이터수집] 완료 마킹: {'예' if save_data['completion_marked'] else '아니오'}")
+            print(f"[데이터수집] MQTT 메타데이터: {len(save_data['metadata'])}개 수집")
+
+            # 메인 스레드에서 GUI 업데이트 및 메시지박스 표시
+            completion_text = ""
+            if save_data["completion_marked"]:
+                elapsed = save_data["completion_info"].get("elapsed_time_sec", 0)
+                method = save_data["completion_info"].get("method", "unknown")
+                completion_text = f"\n완료 마킹: {method} ({elapsed:.1f}초)"
+
+            msg = (
+                f"세션: {save_data['session_id']}\n"
+                f"음식: {save_data['food_type']}\n\n"
+                f"총 저장: {save_data['frame_counter']}장\n"
+                f"수집 시간: {duration:.1f}초{completion_text}\n"
+                f"MQTT 메타데이터: {len(save_data['metadata'])}개\n\n"
+                f"저장 경로:\n{os.path.expanduser('~/AI_Data/')}"
+            )
+
+            # 메인 스레드에서 실행
+            self.root.after(0, lambda: self._on_collection_save_complete(msg))
+
+        except Exception as e:
+            print(f"[데이터수집] 저장 오류: {e}")
+            self.root.after(0, lambda: self._on_collection_save_complete(f"저장 중 오류 발생: {e}"))
+
+    def _on_collection_save_complete(self, msg):
+        """저장 완료 후 GUI 업데이트 (메인 스레드에서 실행)"""
+        self.collection_status_label.config(text="수집: 대기 중", fg=COLOR_TEXT)
+        showinfo_topmost("데이터 수집 완료", msg)
 
     # POT1/POT2 Separate Collection Functions
     def start_pot1_collection(self):
