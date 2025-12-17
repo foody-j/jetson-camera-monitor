@@ -52,10 +52,10 @@ def camera_process(device_index, width, height, fps, frame_queue, running_flag, 
         print(f"[CameraProcess {device_index}] Pipeline started")
         ready_flag.value = 1
 
-        # 프레임 캡처 루프 (polling 방식)
+        # 프레임 캡처 루프 (blocking 방식으로 CPU 절약)
         while running_flag.value:
             # Pull sample (blocking with timeout)
-            sample = sink.emit('try-pull-sample', 100 * Gst.MSECOND)  # 100ms timeout
+            sample = sink.emit('try-pull-sample', 500 * Gst.MSECOND)  # 500ms timeout (blocking)
 
             if sample:
                 buf = sample.get_buffer()
@@ -75,19 +75,17 @@ def camera_process(device_index, width, height, fps, frame_queue, running_flag, 
 
                     buf.unmap(map_info)
 
-                    # Queue에 전송 (non-blocking, 오래된 프레임 버림)
+                    # Queue에 전송 (오래된 프레임 1개만 제거)
                     try:
-                        # Queue가 가득 차면 오래된 것 제거
-                        while not frame_queue.empty():
+                        if frame_queue.full():
                             try:
                                 frame_queue.get_nowait()
                             except:
-                                break
+                                pass
                         frame_queue.put_nowait(frame)
                     except:
                         pass
-
-            time.sleep(0.001)  # CPU 사용률 감소
+            # No sleep needed - try-pull-sample already blocks
 
         # Cleanup
         pipeline.set_state(Gst.State.NULL)
