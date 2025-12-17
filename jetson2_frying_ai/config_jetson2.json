@@ -78,7 +78,7 @@
   "mqtt_qos": 1,
   "mqtt_client_id": "jetson2_ai",
   "_comment_mqtt_publish_interval": "MQTT 상태 발행 주기 (초)",
-  "mqtt_publish_interval": 2,
+  "mqtt_publish_interval": 1,
   "_comment_ai_mode": "AI 장착 여부 (true=AI 완성됨, false=AI 미완성)",
   "ai_mode_enabled": false,
 
