@@ -2161,67 +2161,102 @@ class IntegratedMonitorApp:
         print(f"[볶음] 녹화 시작 - 세션: {self.stirfry_session_id}, 음식: {self.current_stirfry_food_type}")
 
     def stop_stirfry_recording(self):
-        """Stop stir-fry data recording for BOTH cameras"""
+        """Stop stir-fry data recording for BOTH cameras (비동기 처리로 GUI 프리징 방지)"""
         from datetime import datetime
-        import json
 
         self.stirfry_recording = False
         self.stirfry_frame_skip_counter = 0  # Reset frame skip counter
 
-        # Add session end metadata
-        if self.stirfry_session_start_time:
-            session_end_time = datetime.now()
-            duration = (session_end_time - self.stirfry_session_start_time).total_seconds()
+        # 즉시 GUI 업데이트 (프리징 방지)
+        self.stirfry_start_btn.config(state=tk.NORMAL)
+        self.stirfry_stop_btn.config(state=tk.DISABLED)
 
-            self.stirfry_metadata.append({
+        # 저장에 필요한 데이터 복사 (스레드 안전)
+        if self.stirfry_session_start_time:
+            save_data = {
+                "session_id": self.stirfry_session_id,
+                "food_type": self.current_stirfry_food_type,
+                "start_time": self.stirfry_session_start_time,
+                "left_frame_count": self.stirfry_left_frame_count,
+                "right_frame_count": self.stirfry_right_frame_count,
+                "metadata": self.stirfry_metadata.copy()
+            }
+
+            # 백그라운드에서 저장 후 메시지박스 표시
+            import threading
+            threading.Thread(
+                target=self._save_stirfry_data_async,
+                args=(save_data,),
+                daemon=True
+            ).start()
+
+        total_frames = self.stirfry_left_frame_count + self.stirfry_right_frame_count
+        print(f"[볶음] 녹화 중지 - 왼쪽: {self.stirfry_left_frame_count}장, 오른쪽: {self.stirfry_right_frame_count}장")
+
+    def _save_stirfry_data_async(self, save_data):
+        """백그라운드에서 JSON 저장 후 메시지박스 표시"""
+        from datetime import datetime
+        import json
+
+        try:
+            session_end_time = datetime.now()
+            duration = (session_end_time - save_data["start_time"]).total_seconds()
+
+            # Add session end metadata
+            save_data["metadata"].append({
                 "timestamp": session_end_time.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                 "type": "session_end",
                 "duration_seconds": duration,
-                "left_frame_count": self.stirfry_left_frame_count,
-                "right_frame_count": self.stirfry_right_frame_count,
-                "total_frames": self.stirfry_left_frame_count + self.stirfry_right_frame_count
+                "left_frame_count": save_data["left_frame_count"],
+                "right_frame_count": save_data["right_frame_count"],
+                "total_frames": save_data["left_frame_count"] + save_data["right_frame_count"]
             })
 
             # Save metadata JSON file
-            try:
-                base_dir = os.path.expanduser(f"~/{STIRFRY_SAVE_DIR}")
-                metadata_dir = os.path.join(base_dir, self.stirfry_session_id)
-                os.makedirs(metadata_dir, mode=0o755, exist_ok=True)
+            base_dir = os.path.expanduser(f"~/{STIRFRY_SAVE_DIR}")
+            metadata_dir = os.path.join(base_dir, save_data["session_id"])
+            os.makedirs(metadata_dir, mode=0o755, exist_ok=True)
 
-                metadata_file = os.path.join(metadata_dir, "metadata.json")
-                metadata_content = {
-                    "session_id": self.stirfry_session_id,
-                    "food_type": self.current_stirfry_food_type,
-                    "start_time": self.stirfry_session_start_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "end_time": session_end_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "duration_seconds": duration,
-                    "left_frames": self.stirfry_left_frame_count,
-                    "right_frames": self.stirfry_right_frame_count,
-                    "total_frames": self.stirfry_left_frame_count + self.stirfry_right_frame_count,
-                    "resolution": {
-                        "width": STIRFRY_SAVE_RESOLUTION['width'],
-                        "height": STIRFRY_SAVE_RESOLUTION['height']
-                    },
-                    "jpeg_quality": STIRFRY_JPEG_QUALITY,
-                    "frame_skip": STIRFRY_FRAME_SKIP,
-                    "device_id": DEVICE_ID,
-                    "device_name": DEVICE_NAME,
-                    "events": self.stirfry_metadata
-                }
+            metadata_file = os.path.join(metadata_dir, "metadata.json")
+            metadata_content = {
+                "session_id": save_data["session_id"],
+                "food_type": save_data["food_type"],
+                "start_time": save_data["start_time"].strftime("%Y-%m-%d %H:%M:%S"),
+                "end_time": session_end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "duration_seconds": duration,
+                "left_frames": save_data["left_frame_count"],
+                "right_frames": save_data["right_frame_count"],
+                "total_frames": save_data["left_frame_count"] + save_data["right_frame_count"],
+                "resolution": {
+                    "width": STIRFRY_SAVE_RESOLUTION['width'],
+                    "height": STIRFRY_SAVE_RESOLUTION['height']
+                },
+                "jpeg_quality": STIRFRY_JPEG_QUALITY,
+                "frame_skip": STIRFRY_FRAME_SKIP,
+                "device_id": DEVICE_ID,
+                "device_name": DEVICE_NAME,
+                "events": save_data["metadata"]
+            }
 
-                with open(metadata_file, 'w', encoding='utf-8') as f:
-                    json.dump(metadata_content, f, ensure_ascii=False, indent=2)
+            with open(metadata_file, 'w', encoding='utf-8') as f:
+                json.dump(metadata_content, f, ensure_ascii=False, indent=2)
 
-                print(f"[볶음] 메타데이터 저장 완료: {metadata_file}")
-            except Exception as e:
-                print(f"[오류] 메타데이터 저장 실패: {e}")
+            print(f"[볶음] 메타데이터 저장 완료: {metadata_file}")
 
-        self.stirfry_start_btn.config(state=tk.NORMAL)
-        self.stirfry_stop_btn.config(state=tk.DISABLED)
-        total_frames = self.stirfry_left_frame_count + self.stirfry_right_frame_count
-        print(f"[볶음] 녹화 중지 - 왼쪽: {self.stirfry_left_frame_count}장, 오른쪽: {self.stirfry_right_frame_count}장")
-        showinfo_topmost("녹화 완료",
-                          f"세션: {self.stirfry_session_id}\n음식: {self.current_stirfry_food_type}\n왼쪽: {self.stirfry_left_frame_count}장\n오른쪽: {self.stirfry_right_frame_count}장\n총: {total_frames}장")
+            # 메인 스레드에서 메시지박스 표시
+            total_frames = save_data["left_frame_count"] + save_data["right_frame_count"]
+            msg = (
+                f"세션: {save_data['session_id']}\n"
+                f"음식: {save_data['food_type']}\n"
+                f"왼쪽: {save_data['left_frame_count']}장\n"
+                f"오른쪽: {save_data['right_frame_count']}장\n"
+                f"총: {total_frames}장"
+            )
+            self.root.after(0, lambda: showinfo_topmost("녹화 완료", msg))
+
+        except Exception as e:
+            print(f"[오류] 메타데이터 저장 실패: {e}")
+            self.root.after(0, lambda: showinfo_topmost("녹화 완료", f"저장 중 오류 발생: {e}"))
 
     def toggle_auto_relay(self, window, status_label):
         """Toggle automatic relay control mode"""
