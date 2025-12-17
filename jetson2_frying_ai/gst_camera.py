@@ -40,16 +40,11 @@ class GstCamera:
             print(f"[GstCamera] Camera {self.device_index} already running")
             return True
 
-        # Build GStreamer pipeline (4카메라 안정화: GPU 변환 + 버퍼 제한)
-        # nvvidconv: GPU 기반 컬러 변환 (CPU videoconvert 대체)
-        # BGRx → BGR 변환은 appsink에서 처리
+        # Build GStreamer pipeline (4카메라 안정화: 버퍼 제한 + queue)
         pipeline_str = (
             f"v4l2src device={self.device_path} io-mode=2 num-buffers=-1 ! "
             f"video/x-raw, format=UYVY, width={self.width}, height={self.height}, framerate={self.fps}/1 ! "
             f"queue max-size-buffers=2 leaky=downstream ! "
-            f"nvvidconv ! "
-            f"video/x-raw, format=BGRx ! "
-            f"queue max-size-buffers=1 leaky=downstream ! "
             f"videoconvert ! "
             f"video/x-raw, format=BGR ! "
             f"appsink name=sink emit-signals=true max-buffers=1 drop=true sync=false"
