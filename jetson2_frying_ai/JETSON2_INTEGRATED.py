@@ -265,6 +265,9 @@ class JetsonIntegratedApp:
         # System info
         self.sys_info = SystemInfo(device_name="Jetson2", location="Kitchen")
 
+        # 로봇 상태 업데이트 (MQTT 콜백 → 메인 스레드 전달용)
+        self._robot_status_update = None
+
         # GPIO relay control
         self.relay_enabled = False
         self.relay_mode = config.get('relay_mode', 'pulse')
@@ -947,9 +950,8 @@ class JetsonIntegratedApp:
                 temp = pot_status.get("PT_Temp", 0)
                 power = pot_status.get("PT_Power", "False")
 
-                # GUI 업데이트 및 로깅 (메인 스레드에서)
-                self.root.after(0, lambda pn=pot_num, pt=process_type, r=recipe, t=temp, rt=running_time:
-                    self._update_robot_status_gui(pn, pt, r, t, rt))
+                # GUI 업데이트 요청을 Queue에 저장 (스레드 안전)
+                self._robot_status_update = (pot_num, process_type, recipe, temp, running_time)
 
                 # 디버그 출력 (첫 수신시만 또는 상태 변경시)
                 # print(f"[로봇상태] POT{pot_num} | {process_type} | {recipe} | 온도:{temp}°C | {running_time}")
@@ -1553,6 +1555,15 @@ class JetsonIntegratedApp:
                     self._disk_updated = True
                 except Exception as e:
                     self.disk_label.config(text="💾 용량 정보 없음", fg=COLOR_TEXT)
+
+        # 로봇 상태 업데이트 처리 (MQTT 콜백에서 전달받음)
+        if self._robot_status_update:
+            try:
+                pn, pt, r, t, rt = self._robot_status_update
+                self._update_robot_status_gui(pn, pt, r, t, rt)
+                self._robot_status_update = None
+            except Exception as e:
+                pass  # 무시
 
         self.root.after(200, self.update_clock)
 
