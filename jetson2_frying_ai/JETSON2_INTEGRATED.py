@@ -36,6 +36,9 @@ from src.core.system_info import SystemInfo
 # Import GStreamer camera wrapper (multiprocessing for 4-camera stability)
 from gst_camera_mp import GstCameraMP as GstCamera
 
+# Import multiprocessing image saver (prevents GUI freezing during data collection)
+from image_saver_mp import get_image_saver, stop_image_saver
+
 # Import Frying AI segmenter
 from frying_segmenter import FoodSegmenter
 
@@ -2891,82 +2894,74 @@ class JetsonIntegratedApp:
         self.pot2_start_time = None
 
     def save_pot1_data(self, frying_left, observe_left, observe_right):
-        """Save POT1 frames (cameras 0, 2, 3)"""
+        """Save POT1 frames (cameras 0, 2, 3) - 별도 프로세스에서 저장"""
         if not self.pot1_collecting:
             return
 
         from datetime import datetime
-        import cv2
 
         timestamp = datetime.now().strftime("%H%M%S_%f")[:-3]  # HHMMss_mmm
+        saver = get_image_saver(JPEG_QUALITY, SAVE_WIDTH, SAVE_HEIGHT)
 
         # Save POT1 cameras: camera_0 (frying left), camera_2 (observe left), camera_3 (observe right)
         for cam_idx, frame in [(0, frying_left), (2, observe_left), (3, observe_right)]:
             if frame is not None:
-                # Resize to save resolution (1920x1536 -> 1280x720)
-                frame_resized = cv2.resize(frame, (SAVE_WIDTH, SAVE_HEIGHT), interpolation=cv2.INTER_LINEAR)
                 save_path = os.path.join(self.pot1_session_dir, f"camera_{cam_idx}", f"camera_{cam_idx}_{timestamp}.jpg")
-                cv2.imwrite(save_path, frame_resized, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+                saver.save(save_path, frame)
                 self.pot1_frame_counter += 1
 
         if self.pot1_frame_counter % 10 == 0:
-            print(f"[POT1 수집] {self.pot1_frame_counter}장 저장됨")
+            print(f"[POT1 수집] {self.pot1_frame_counter}장 저장됨 (대기: {saver.get_queue_size()})")
 
     def save_pot2_data(self, frying_right, observe_left, observe_right):
-        """Save POT2 frames (cameras 1, 2, 3)"""
+        """Save POT2 frames (cameras 1, 2, 3) - 별도 프로세스에서 저장"""
         if not self.pot2_collecting:
             return
 
         from datetime import datetime
-        import cv2
 
         timestamp = datetime.now().strftime("%H%M%S_%f")[:-3]  # HHMMss_mmm
+        saver = get_image_saver(JPEG_QUALITY, SAVE_WIDTH, SAVE_HEIGHT)
 
         # Save POT2 cameras: camera_1 (frying right), camera_2 (observe left), camera_3 (observe right)
         for cam_idx, frame in [(1, frying_right), (2, observe_left), (3, observe_right)]:
             if frame is not None:
-                # Resize to save resolution (1920x1536 -> 1280x720)
-                frame_resized = cv2.resize(frame, (SAVE_WIDTH, SAVE_HEIGHT), interpolation=cv2.INTER_LINEAR)
                 save_path = os.path.join(self.pot2_session_dir, f"camera_{cam_idx}", f"camera_{cam_idx}_{timestamp}.jpg")
-                cv2.imwrite(save_path, frame_resized, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+                saver.save(save_path, frame)
                 self.pot2_frame_counter += 1
 
         if self.pot2_frame_counter % 10 == 0:
-            print(f"[POT2 수집] {self.pot2_frame_counter}장 저장됨")
+            print(f"[POT2 수집] {self.pot2_frame_counter}장 저장됨 (대기: {saver.get_queue_size()})")
 
     def save_collection_data(self, frying_left, frying_right, observe_left, observe_right):
-        """Save frames from all 4 cameras during data collection (LEGACY)"""
+        """Save frames from all 4 cameras during data collection (LEGACY) - 별도 프로세스에서 저장"""
         if not self.data_collection_active:
             return
 
         from datetime import datetime
-        import cv2
 
         timestamp = datetime.now().strftime("%H%M%S_%f")[:-3]  # HHMMss_mmm
+        saver = get_image_saver(JPEG_QUALITY, SAVE_WIDTH, SAVE_HEIGHT)
 
         # Save frying cameras (camera 0, 1)
         for cam_idx, frame in [(0, frying_left), (1, frying_right)]:
             if frame is not None:
-                # Resize to save resolution (1920x1536 -> 1280x720)
-                frame_resized = cv2.resize(frame, (SAVE_WIDTH, SAVE_HEIGHT), interpolation=cv2.INTER_LINEAR)
                 save_path = os.path.join(
                     self.frying_session_dir,
                     f"camera_{cam_idx}",
                     f"cam{cam_idx}_{timestamp}.jpg"
                 )
-                cv2.imwrite(save_path, frame_resized, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+                saver.save(save_path, frame)
 
         # Save bucket cameras (camera 2, 3)
         for cam_idx, frame in [(2, observe_left), (3, observe_right)]:
             if frame is not None:
-                # Resize to save resolution (1920x1536 -> 1280x720)
-                frame_resized = cv2.resize(frame, (SAVE_WIDTH, SAVE_HEIGHT), interpolation=cv2.INTER_LINEAR)
                 save_path = os.path.join(
                     self.bucket_session_dir,
                     f"camera_{cam_idx}",
                     f"cam{cam_idx}_{timestamp}.jpg"
                 )
-                cv2.imwrite(save_path, frame_resized, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+                saver.save(save_path, frame)
 
         self.collection_frame_counter += 1
 
@@ -2975,7 +2970,7 @@ class JetsonIntegratedApp:
             self.collection_status_label.config(
                 text=f"수집 중: {self.collection_frame_counter}장 저장됨"
             )
-            print(f"[데이터수집] {self.collection_frame_counter}장 저장됨")
+            print(f"[데이터수집] {self.collection_frame_counter}장 저장됨 (대기: {saver.get_queue_size()})")
 
     def toggle_fullscreen(self):
         """Toggle fullscreen mode"""
@@ -3059,6 +3054,11 @@ class JetsonIntegratedApp:
                         t.join(timeout=2.0)
 
                     print("[종료] 카메라 해제 완료")
+
+                    # Stop image saver process
+                    print("[종료] 이미지 저장 프로세스 종료 중...")
+                    stop_image_saver()
+                    print("[종료] 이미지 저장 프로세스 종료 완료")
 
                     # Disconnect MQTT
                     if self.mqtt_client:
