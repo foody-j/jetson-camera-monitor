@@ -35,6 +35,9 @@ from gst_camera import GstCamera
 # Import GPIO for Relay control
 import Jetson.GPIO as GPIO
 
+# Import Night Review module
+from night_review_module import NightReviewManager
+
 # =========================
 # Load Configuration
 # =========================
@@ -376,6 +379,11 @@ class IntegratedMonitorApp:
         # Start periodic MQTT publishing
         if MQTT_ENABLED:
             self.publish_mqtt_periodic()
+
+        # Initialize Night Review manager
+        self.night_review_manager = NightReviewManager(self, config)
+        if self.night_review_manager.enabled:
+            print(f"[초기화] 야간 리뷰 활성화 (매일 {self.night_review_manager.review_time})")
 
         print("[초기화] 모든 시스템 초기화 완료!")
 
@@ -746,6 +754,11 @@ class IntegratedMonitorApp:
                  command=self.force_snapshot_mode, bg=COLOR_ERROR, fg="white",
                  relief=tk.FLAT, bd=0, activebackground="#C62828").pack(pady=15, padx=20, fill=tk.X)
 
+        # Night review button - manually trigger review
+        tk.Button(scrollable_frame, text="🌙 야간 리뷰 보기", font=BUTTON_FONT,
+                 command=self.show_night_review, bg="#5C6BC0", fg="white",
+                 relief=tk.FLAT, bd=0, activebackground="#3F51B5").pack(pady=10, padx=20, fill=tk.X)
+
         # Enable mouse wheel scrolling
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
@@ -791,6 +804,14 @@ class IntegratedMonitorApp:
         self.off_triggered_once = True
         self.auto_detection_label.config(text="감지: 테스트 모드 (스냅샷)", fg=COLOR_WARNING)
         showinfo_topmost("테스트 모드", "스냅샷 모드가 즉시 시작되었습니다.\n모션 감지 시 자동 저장됩니다.")
+
+    def show_night_review(self):
+        """Manually trigger night review window (developer mode)"""
+        if hasattr(self, 'night_review_manager'):
+            print("[개발자] 야간 리뷰 수동 실행")
+            self.night_review_manager.show_review()
+        else:
+            showwarning_topmost("오류", "야간 리뷰 모듈이 초기화되지 않았습니다.")
 
     # =========================
     # Initialization
@@ -1231,6 +1252,10 @@ class IntegratedMonitorApp:
             if current_second == 0 or not hasattr(self, '_date_set'):
                 self.date_label.config(text=now.strftime("%Y년 %m월 %d일"))
                 self._date_set = True
+
+                # Check night review time (every minute)
+                if hasattr(self, 'night_review_manager'):
+                    self.night_review_manager.check_review_time()
 
                 # Update disk space (every minute to avoid overhead)
                 try:
