@@ -191,7 +191,7 @@ FULLSCREEN_MODE = config.get('fullscreen', False)  # 전체화면 모드 설정
 WINDOW_DECORATIONS = config.get('window_decorations', False)  # 창 테두리 표시 여부
 # 폰트 이름 설정 - Segfault 방지를 위해 시스템 기본 폰트 사용 가능
 # "Noto Sans CJK KR" 폰트가 세그폴트를 일으키면 "" (빈 문자열)로 변경
-FONT_FAMILY = config.get('font_family', "")  # 빈 문자열 = 시스템 기본 폰트
+FONT_FAMILY = "TkDefaultFont"  # 시스템 기본 폰트 (빈 문자열은 segfault 유발)
 LARGE_FONT = (FONT_FAMILY, config.get('font_large', 28), "bold")
 MEDIUM_FONT = (FONT_FAMILY, config.get('font_medium', 20))
 NORMAL_FONT = (FONT_FAMILY, config.get('font_normal', 16))
