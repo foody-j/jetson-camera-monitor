@@ -1093,8 +1093,8 @@ class JetsonIntegratedApp:
         center_frame = tk.Frame(header_frame, bg=COLOR_PANEL)
         center_frame.grid(row=0, column=1, sticky="n", pady=3)
 
-        tk.Label(center_frame, text="현대자동차 울산점",
-                font=(FONT_FAMILY, 16, "bold"),
+        tk.Label(center_frame, text="단국대학교 스마트식품공학연구실(SFLAB)",
+                font=(FONT_FAMILY, 12, "bold"),
                 bg=COLOR_PANEL, fg=COLOR_ACCENT).pack()
 
         self.time_label = tk.Label(center_frame, text="--:--:--",
