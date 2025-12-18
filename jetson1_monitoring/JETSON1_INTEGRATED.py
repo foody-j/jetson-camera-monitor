@@ -698,6 +698,14 @@ class IntegratedMonitorApp:
                  bg="#424242", fg="white", relief=tk.FLAT, bd=0,
                  activebackground="#616161", height=1).pack(side=tk.LEFT, padx=3, fill=tk.BOTH, expand=True)
 
+        # Developer mode button
+        self.dev_mode_btn = tk.Button(btn_container, text="개발자 모드",
+                 font=(FONT_FAMILY, int(self.button_font_size * 0.7), "bold"),
+                 command=self.toggle_developer_mode,
+                 bg="#607D8B", fg="white", relief=tk.FLAT, bd=0,
+                 activebackground="#546E7A", height=1)
+        self.dev_mode_btn.pack(side=tk.LEFT, padx=3, fill=tk.BOTH, expand=True)
+
     def create_dev_panel(self, parent):
         """Panel 4: Developer mode (debugging panel) - BOTTOM with scrolling (spans both columns)"""
         pad = int(10 * self.scale_factor)
