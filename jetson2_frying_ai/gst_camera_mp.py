@@ -18,13 +18,26 @@ def camera_process(device_index, width, height, fps, frame_queue, running_flag, 
     """
     별도 프로세스 - OpenCV GStreamer 백엔드
     """
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-
     device_path = f"/dev/video{device_index}"
     print(f"[CameraProcess {device_index}] Starting for {device_path}", flush=True)
 
     cap = None
+
+    def signal_handler(signum, frame):
+        """종료 시그널 핸들러 - 즉시 running_flag 해제"""
+        nonlocal cap
+        print(f"[CameraProcess {device_index}] Signal {signum} received, stopping...", flush=True)
+        running_flag.value = 0
+        if cap:
+            try:
+                cap.release()
+            except:
+                pass
+        os._exit(0)
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
     try:
         # OpenCV + GStreamer pipeline
         gst_str = (
@@ -184,25 +197,43 @@ class GstCameraMP:
 
         print(f"[GstCameraMP] Stopping {self.device_index}...")
 
+        # 1. running_flag 먼저 해제
         if self.running_flag:
             self.running_flag.value = 0
 
-        if self.process.is_alive():
-            self.process.join(timeout=0.5)
+        # 2. SIGTERM 보내서 signal_handler 트리거
+        if self._pid:
+            try:
+                os.kill(self._pid, signal.SIGTERM)
+            except:
+                pass
 
+        # 3. 짧게 대기
+        if self.process.is_alive():
+            self.process.join(timeout=0.3)
+
+        # 4. 아직 살아있으면 SIGKILL
         if self.process.is_alive():
             self._force_kill()
-            time.sleep(0.1)
+            self.process.join(timeout=0.2)
 
+        # 5. Queue 정리
         if self.frame_queue:
             try:
+                while not self.frame_queue.empty():
+                    self.frame_queue.get_nowait()
+            except:
+                pass
+            try:
                 self.frame_queue.close()
+                self.frame_queue.join_thread()
             except:
                 pass
 
         self.process = None
         self._pid = None
         self.latest_frame = None
+        print(f"[GstCameraMP] Camera {self.device_index} stopped")
 
     def release(self):
         self.stop()
