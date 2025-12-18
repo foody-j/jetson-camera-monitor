@@ -1079,10 +1079,11 @@ class JetsonIntegratedApp:
         print(f"[DEBUG] build_gui: update_idletasks 완료", flush=True)
 
         # 폰트 없이 먼저 테스트
-        print(f"[DEBUG] build_gui: Label 생성 시도 (font={FONT_FAMILY})...", flush=True)
+        print(f"[DEBUG] build_gui: Label 생성 시도 (폰트 없이)...", flush=True)
         self.system_status_label = tk.Label(left_frame, text="시스템 정상",
-                                           font=(FONT_FAMILY, 12), bg=COLOR_PANEL, fg=COLOR_OK)
+                                           bg=COLOR_PANEL, fg=COLOR_OK)
         self.system_status_label.pack(anchor="w")
+        print(f"[DEBUG] build_gui: Label 생성 성공!", flush=True)
 
         self.date_label = tk.Label(left_frame, text="----/--/--",
                                    font=(FONT_FAMILY, 11),
