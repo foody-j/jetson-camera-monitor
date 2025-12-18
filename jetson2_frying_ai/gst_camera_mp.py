@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-GStreamer Camera with Multiprocessing (Improved)
-각 카메라가 별도 프로세스에서 실행 - 죽여도 메인에 영향 없음
+V4L2 Camera with Multiprocessing
+GStreamer 완전히 제외 - 순수 V4L2 + OpenCV
 """
 
 import multiprocessing as mp
@@ -11,124 +11,108 @@ import time
 import ctypes
 import signal
 import os
+import cv2
+
+
+def uyvy_to_bgr(uyvy_frame, width, height):
+    """UYVY를 BGR로 변환"""
+    # UYVY: 2 bytes per pixel (Y + U/V shared)
+    yuv = np.frombuffer(uyvy_frame, dtype=np.uint8).reshape((height, width, 2))
+    bgr = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR_UYVY)
+    return bgr
 
 
 def camera_process(device_index, width, height, fps, frame_queue, running_flag, ready_flag, error_flag):
     """
-    별도 프로세스에서 실행되는 카메라 캡처 루프
+    별도 프로세스 - 순수 V4L2 (GStreamer 없음)
     """
-    # 시그널 무시 (부모가 죽여도 깔끔하게)
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-    import gi
-    gi.require_version('Gst', '1.0')
-    from gi.repository import Gst
-
-    Gst.init(None)
-
     device_path = f"/dev/video{device_index}"
-    print(f"[CameraProcess {device_index}] Starting for {device_path} @ {width}x{height}@{fps}fps", flush=True)
+    print(f"[CameraProcess {device_index}] Starting V4L2 for {device_path}", flush=True)
 
-    # GStreamer pipeline - 더 안정적인 설정
-    pipeline_str = (
-        f"v4l2src device={device_path} io-mode=2 ! "
-        f"video/x-raw, format=UYVY, width={width}, height={height}, framerate={fps}/1 ! "
-        f"queue max-size-buffers=1 leaky=downstream ! "
-        f"videoconvert n-threads=2 ! "
-        f"video/x-raw, format=BGR ! "
-        f"appsink name=sink emit-signals=false max-buffers=1 drop=true sync=false"
-    )
-
-    pipeline = None
+    cap = None
     try:
-        pipeline = Gst.parse_launch(pipeline_str)
-        sink = pipeline.get_by_name('sink')
+        # 순수 V4L2 - GStreamer 없이
+        cap = cv2.VideoCapture(device_index, cv2.CAP_V4L2)
 
-        if not sink:
-            print(f"[CameraProcess {device_index}] ERROR: Failed to get appsink", flush=True)
+        if not cap.isOpened():
+            print(f"[CameraProcess {device_index}] ERROR: Failed to open", flush=True)
             error_flag.value = 1
             return
 
-        # Start pipeline
-        ret = pipeline.set_state(Gst.State.PLAYING)
-        if ret == Gst.StateChangeReturn.FAILURE:
-            print(f"[CameraProcess {device_index}] ERROR: Failed to start pipeline", flush=True)
-            error_flag.value = 1
-            return
+        # V4L2 설정
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        cap.set(cv2.CAP_PROP_FPS, fps)
+        # UYVY 포맷 설정
+        fourcc = cv2.VideoWriter_fourcc('U', 'Y', 'V', 'Y')
+        cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-        # 실제로 프레임 받을 때까지 대기
-        for _ in range(20):  # 2초 대기
-            sample = sink.emit('try-pull-sample', 100 * Gst.MSECOND)
-            if sample:
-                print(f"[CameraProcess {device_index}] First frame received!", flush=True)
+        actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print(f"[CameraProcess {device_index}] Opened @ {actual_w}x{actual_h}", flush=True)
+
+        # 첫 프레임 대기
+        for _ in range(30):
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                print(f"[CameraProcess {device_index}] First frame: {frame.shape}", flush=True)
                 ready_flag.value = 1
                 break
             time.sleep(0.1)
 
         if not ready_flag.value:
-            print(f"[CameraProcess {device_index}] WARNING: No frames yet, continuing anyway", flush=True)
-            ready_flag.value = 1
+            print(f"[CameraProcess {device_index}] No frames!", flush=True)
+            error_flag.value = 1
+            return
 
         no_frame_count = 0
 
-        # 프레임 캡처 루프
         while running_flag.value:
-            sample = sink.emit('try-pull-sample', 200 * Gst.MSECOND)
+            ret, frame = cap.read()
 
-            if sample:
+            if ret and frame is not None:
                 no_frame_count = 0
-                buf = sample.get_buffer()
-                caps = sample.get_caps()
-                structure = caps.get_structure(0)
-                w = structure.get_value('width')
-                h = structure.get_value('height')
 
-                success, map_info = buf.map(Gst.MapFlags.READ)
-                if success:
-                    frame = np.ndarray(
-                        shape=(h, w, 3),
-                        dtype=np.uint8,
-                        buffer=map_info.data
-                    ).copy()
+                # UYVY면 변환 필요
+                if len(frame.shape) == 2 or frame.shape[2] == 2:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_UYVY)
 
-                    buf.unmap(map_info)
-
-                    # Queue에 전송
-                    try:
-                        if frame_queue.full():
-                            try:
-                                frame_queue.get_nowait()
-                            except:
-                                pass
-                        frame_queue.put_nowait(frame)
-                    except:
-                        pass
+                try:
+                    if frame_queue.full():
+                        try:
+                            frame_queue.get_nowait()
+                        except:
+                            pass
+                    frame_queue.put_nowait(frame)
+                except:
+                    pass
             else:
                 no_frame_count += 1
-                # 5초간 프레임 없으면 에러 표시
-                if no_frame_count > 25:
-                    print(f"[CameraProcess {device_index}] WARNING: No frames for 5 seconds", flush=True)
+                if no_frame_count > 150:
+                    print(f"[CameraProcess {device_index}] No frames 5s", flush=True)
                     no_frame_count = 0
+                time.sleep(0.01)
 
     except Exception as e:
         print(f"[CameraProcess {device_index}] ERROR: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         error_flag.value = 1
     finally:
-        # 반드시 파이프라인 정리
-        if pipeline:
+        if cap:
             try:
-                pipeline.set_state(Gst.State.NULL)
+                cap.release()
             except:
                 pass
-        print(f"[CameraProcess {device_index}] Exiting", flush=True)
+        print(f"[CameraProcess {device_index}] Exit", flush=True)
 
 
 class GstCameraMP:
-    """
-    멀티프로세스 기반 GStreamer 카메라
-    프로세스 격리로 죽여도 메인 프로세스 안전
-    """
+    """V4L2 멀티프로세스 카메라"""
 
     def __init__(self, device_index, width=1920, height=1536, fps=30):
         self.device_index = device_index
@@ -144,21 +128,17 @@ class GstCameraMP:
         self.latest_frame = None
         self._pid = None
 
-        print(f"[GstCameraMP] Creating camera {device_index} @ {width}x{height}")
+        print(f"[GstCameraMP] Creating camera {device_index}")
 
     def start(self):
-        """카메라 프로세스 시작"""
         if self.process and self.process.is_alive():
-            print(f"[GstCameraMP] Camera {self.device_index} already running")
             return True
 
-        # 프로세스 간 통신 설정
         self.frame_queue = Queue(maxsize=2)
         self.running_flag = Value(ctypes.c_int, 1)
         self.ready_flag = Value(ctypes.c_int, 0)
         self.error_flag = Value(ctypes.c_int, 0)
 
-        # 카메라 프로세스 시작 (daemon=False로 변경 - 더 안정적)
         self.process = Process(
             target=camera_process,
             args=(
@@ -171,32 +151,29 @@ class GstCameraMP:
                 self.ready_flag,
                 self.error_flag
             ),
-            daemon=False  # 명시적으로 종료 관리
+            daemon=False
         )
         self.process.start()
         self._pid = self.process.pid
-        print(f"[GstCameraMP] Camera {self.device_index} process started (PID: {self._pid})")
+        print(f"[GstCameraMP] Camera {self.device_index} PID: {self._pid}")
 
-        # 프로세스 준비 대기 (최대 5초)
         for _ in range(50):
             if self.ready_flag.value:
                 print(f"[GstCameraMP] Camera {self.device_index} ready!")
                 return True
             if self.error_flag.value:
-                print(f"[GstCameraMP] Camera {self.device_index} failed to start")
+                print(f"[GstCameraMP] Camera {self.device_index} failed")
                 self._force_kill()
                 return False
             time.sleep(0.1)
 
-        print(f"[GstCameraMP] Camera {self.device_index} startup timeout")
+        print(f"[GstCameraMP] Camera {self.device_index} timeout")
         return False
 
     def read(self):
-        """최신 프레임 읽기"""
         if not self.process or not self.process.is_alive():
             return False, None
 
-        # Queue에서 최신 프레임 가져오기
         try:
             while not self.frame_queue.empty():
                 self.latest_frame = self.frame_queue.get_nowait()
@@ -208,89 +185,55 @@ class GstCameraMP:
         return False, None
 
     def isOpened(self):
-        """카메라 실행 중인지 확인"""
         return self.process is not None and self.process.is_alive()
 
     def _force_kill(self):
-        """프로세스 강제 종료 (SIGKILL)"""
         if self._pid:
             try:
                 os.kill(self._pid, signal.SIGKILL)
-                print(f"[GstCameraMP] Sent SIGKILL to camera {self.device_index} (PID: {self._pid})")
-            except ProcessLookupError:
-                pass  # 이미 죽음
-            except Exception as e:
-                print(f"[GstCameraMP] Kill error: {e}")
+            except:
+                pass
 
     def stop(self):
-        """카메라 프로세스 중지"""
         if not self.process:
             return
 
-        print(f"[GstCameraMP] Stopping camera {self.device_index}...")
+        print(f"[GstCameraMP] Stopping {self.device_index}...")
 
-        # 1. 종료 신호 보내기
         if self.running_flag:
             self.running_flag.value = 0
 
-        # 2. 잠깐 대기 (0.5초)
         if self.process.is_alive():
             self.process.join(timeout=0.5)
 
-        # 3. 아직 살아있으면 SIGKILL
         if self.process.is_alive():
-            print(f"[GstCameraMP] Force killing camera {self.device_index}")
             self._force_kill()
             time.sleep(0.1)
 
-        # 4. Queue 정리
         if self.frame_queue:
             try:
                 self.frame_queue.close()
-                self.frame_queue.join_thread()
             except:
                 pass
 
         self.process = None
         self._pid = None
         self.latest_frame = None
-        print(f"[GstCameraMP] Camera {self.device_index} stopped")
 
     def release(self):
-        """리소스 해제"""
         self.stop()
 
 
-# 테스트 코드
 if __name__ == "__main__":
-    print("=" * 60)
-    print("Testing GstCameraMP with 4 cameras...")
-    print("=" * 60)
-
-    cameras = []
-    for i in range(4):
-        cam = GstCameraMP(device_index=i, width=1920, height=1536, fps=30)
-        if cam.start():
-            cameras.append(cam)
-            print(f"Camera {i} started")
-        else:
-            print(f"Camera {i} FAILED")
-        time.sleep(1.0)
-
-    print(f"\n{len(cameras)} cameras running, reading frames...")
-
-    for iteration in range(10):
-        time.sleep(0.5)
-        print(f"\n--- Iteration {iteration + 1} ---")
-        for i, cam in enumerate(cameras):
+    print("Testing V4L2 Camera...")
+    cam = GstCameraMP(device_index=0, width=1920, height=1536, fps=30)
+    if cam.start():
+        for i in range(10):
+            time.sleep(0.5)
             ret, frame = cam.read()
             if ret:
-                print(f"  Camera {i}: Shape={frame.shape}, Mean={frame.mean():.1f}")
+                print(f"Frame {i}: {frame.shape}")
             else:
-                print(f"  Camera {i}: No frame")
-
-    print("\nStopping cameras...")
-    for cam in cameras:
+                print(f"Frame {i}: No frame")
         cam.stop()
-
-    print("Test complete!")
+    print("Done!")
