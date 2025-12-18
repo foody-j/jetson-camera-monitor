@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-V4L2 Camera with Multiprocessing
-GStreamer 완전히 제외 - 순수 V4L2 + OpenCV
+OpenCV + GStreamer Camera with Multiprocessing
+OpenCV의 GStreamer 백엔드 사용 (안정성 향상)
 """
 
 import multiprocessing as mp
@@ -14,52 +14,41 @@ import os
 import cv2
 
 
-def uyvy_to_bgr(uyvy_frame, width, height):
-    """UYVY를 BGR로 변환"""
-    # UYVY: 2 bytes per pixel (Y + U/V shared)
-    yuv = np.frombuffer(uyvy_frame, dtype=np.uint8).reshape((height, width, 2))
-    bgr = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR_UYVY)
-    return bgr
-
-
 def camera_process(device_index, width, height, fps, frame_queue, running_flag, ready_flag, error_flag):
     """
-    별도 프로세스 - 순수 V4L2 (GStreamer 없음)
+    별도 프로세스 - OpenCV GStreamer 백엔드
     """
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     device_path = f"/dev/video{device_index}"
-    print(f"[CameraProcess {device_index}] Starting V4L2 for {device_path}", flush=True)
+    print(f"[CameraProcess {device_index}] Starting for {device_path}", flush=True)
 
     cap = None
     try:
-        # 순수 V4L2 - GStreamer 없이
-        cap = cv2.VideoCapture(device_index, cv2.CAP_V4L2)
+        # OpenCV + GStreamer pipeline
+        gst_str = (
+            f"v4l2src device={device_path} io-mode=2 ! "
+            f"video/x-raw, format=UYVY, width={width}, height={height}, framerate={fps}/1 ! "
+            f"videoconvert ! "
+            f"video/x-raw, format=BGR ! "
+            f"appsink drop=1 max-buffers=1"
+        )
+
+        cap = cv2.VideoCapture(gst_str, cv2.CAP_GSTREAMER)
 
         if not cap.isOpened():
             print(f"[CameraProcess {device_index}] ERROR: Failed to open", flush=True)
             error_flag.value = 1
             return
 
-        # V4L2 설정
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        cap.set(cv2.CAP_PROP_FPS, fps)
-        # UYVY 포맷 설정
-        fourcc = cv2.VideoWriter_fourcc('U', 'Y', 'V', 'Y')
-        cap.set(cv2.CAP_PROP_FOURCC, fourcc)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-        actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        print(f"[CameraProcess {device_index}] Opened @ {actual_w}x{actual_h}", flush=True)
+        print(f"[CameraProcess {device_index}] Opened with GStreamer", flush=True)
 
         # 첫 프레임 대기
         for _ in range(30):
             ret, frame = cap.read()
-            if ret and frame is not None:
-                print(f"[CameraProcess {device_index}] First frame: {frame.shape}", flush=True)
+            if ret and frame is not None and frame.size > 0:
+                print(f"[CameraProcess {device_index}] First frame: {frame.shape}, mean={frame.mean():.1f}", flush=True)
                 ready_flag.value = 1
                 break
             time.sleep(0.1)
@@ -74,13 +63,8 @@ def camera_process(device_index, width, height, fps, frame_queue, running_flag, 
         while running_flag.value:
             ret, frame = cap.read()
 
-            if ret and frame is not None:
+            if ret and frame is not None and frame.size > 0:
                 no_frame_count = 0
-
-                # UYVY면 변환 필요
-                if len(frame.shape) == 2 or frame.shape[2] == 2:
-                    frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_UYVY)
-
                 try:
                     if frame_queue.full():
                         try:
@@ -112,7 +96,7 @@ def camera_process(device_index, width, height, fps, frame_queue, running_flag, 
 
 
 class GstCameraMP:
-    """V4L2 멀티프로세스 카메라"""
+    """OpenCV+GStreamer 멀티프로세스 카메라"""
 
     def __init__(self, device_index, width=1920, height=1536, fps=30):
         self.device_index = device_index
@@ -225,15 +209,31 @@ class GstCameraMP:
 
 
 if __name__ == "__main__":
-    print("Testing V4L2 Camera...")
-    cam = GstCameraMP(device_index=0, width=1920, height=1536, fps=30)
-    if cam.start():
-        for i in range(10):
-            time.sleep(0.5)
+    print("Testing OpenCV+GStreamer Camera...")
+
+    cameras = []
+    for i in range(4):
+        cam = GstCameraMP(device_index=i, width=1920, height=1536, fps=30)
+        if cam.start():
+            cameras.append(cam)
+            print(f"Camera {i} started")
+        else:
+            print(f"Camera {i} FAILED")
+        time.sleep(1.0)
+
+    print(f"\n{len(cameras)} cameras running...")
+
+    for iteration in range(5):
+        time.sleep(0.5)
+        print(f"\n--- Iteration {iteration + 1} ---")
+        for i, cam in enumerate(cameras):
             ret, frame = cam.read()
             if ret:
-                print(f"Frame {i}: {frame.shape}")
+                print(f"  Camera {i}: {frame.shape}, mean={frame.mean():.1f}")
             else:
-                print(f"Frame {i}: No frame")
+                print(f"  Camera {i}: No frame")
+
+    print("\nStopping...")
+    for cam in cameras:
         cam.stop()
     print("Done!")
