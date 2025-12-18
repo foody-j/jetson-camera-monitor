@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 GStreamer Camera Wrapper for GMSL UYVY cameras
-Direct GStreamer usage to avoid OpenCV format issues
+Each camera uses its own GLib context to avoid conflicts with multiple cameras
 """
 
 import gi
@@ -11,12 +11,20 @@ import numpy as np
 import threading
 import time
 
-# Initialize GStreamer
-Gst.init(None)
+# Initialize GStreamer once
+_gst_initialized = False
+_gst_init_lock = threading.Lock()
+
+def _ensure_gst_init():
+    global _gst_initialized
+    with _gst_init_lock:
+        if not _gst_initialized:
+            Gst.init(None)
+            _gst_initialized = True
 
 
 class GstCamera:
-    """GStreamer-based camera capture for UYVY format"""
+    """GStreamer-based camera capture for UYVY format - isolated context per camera"""
 
     def __init__(self, device_index, width=1920, height=1536, fps=30):
         self.device_index = device_index
@@ -26,11 +34,11 @@ class GstCamera:
         self.device_path = f"/dev/video{device_index}"
 
         self.pipeline = None
-        self.mainloop = None
         self.latest_frame = None
         self.frame_lock = threading.Lock()
         self.is_running = False
         self.thread = None
+        self._context = None  # 각 카메라별 GLib context
 
         print(f"[GstCamera] Creating camera for {self.device_path} @ {width}x{height}")
 
@@ -40,13 +48,15 @@ class GstCamera:
             print(f"[GstCamera] Camera {self.device_index} already running")
             return True
 
+        _ensure_gst_init()
+
         # Build GStreamer pipeline
         pipeline_str = (
-            f"v4l2src device={self.device_path} ! "
+            f"v4l2src device={self.device_path} io-mode=2 ! "
             f"video/x-raw, format=UYVY, width={self.width}, height={self.height}, framerate={self.fps}/1 ! "
             f"videoconvert ! "
             f"video/x-raw, format=BGR ! "
-            f"appsink name=sink emit-signals=true max-buffers=1 drop=true"
+            f"appsink name=sink emit-signals=true max-buffers=1 drop=true sync=false"
         )
 
         print(f"[GstCamera] Pipeline: {pipeline_str}")
@@ -63,23 +73,38 @@ class GstCamera:
             # Connect to new-sample signal
             sink.connect('new-sample', self._on_new_sample)
 
+            # 각 카메라마다 별도의 GLib context 생성
+            self._context = GLib.MainContext.new()
+
             # Start pipeline in background thread
             self.is_running = True
             self.thread = threading.Thread(target=self._run_pipeline, daemon=True)
             self.thread.start()
 
-            # Wait a bit for pipeline to start
-            time.sleep(0.5)
+            # Wait for first frame (최대 3초)
+            for _ in range(30):
+                time.sleep(0.1)
+                with self.frame_lock:
+                    if self.latest_frame is not None:
+                        print(f"[GstCamera] Camera {self.device_index} started successfully")
+                        return True
 
-            print(f"[GstCamera] Camera {self.device_index} started successfully")
+            # 프레임 못 받았으면 실패
+            if self.latest_frame is None:
+                print(f"[GstCamera] Camera {self.device_index} - no frames received")
+                self.stop()
+                return False
+
             return True
 
         except Exception as e:
             print(f"[ERROR] Failed to start camera {self.device_index}: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def _run_pipeline(self):
-        """Run GStreamer mainloop in background thread"""
+        """Run GStreamer pipeline in background thread with isolated context"""
         try:
             # Set pipeline to PLAYING state
             ret = self.pipeline.set_state(Gst.State.PLAYING)
@@ -90,38 +115,42 @@ class GstCamera:
 
             print(f"[GstCamera] Pipeline for camera {self.device_index} is PLAYING")
 
-            # Add bus watch for errors (NO mainloop - we'll iterate manually)
+            # Bus watch for errors
             bus = self.pipeline.get_bus()
-            bus.add_signal_watch()
-            bus.connect('message', self._on_bus_message)
 
-            # Instead of blocking mainloop, use GLib context iteration
-            context = GLib.MainContext.default()
-
-            # Poll GLib events periodically
+            # 자체 context로 iteration (default context 공유 안 함)
             while self.is_running:
-                # Process pending events
-                while context.pending():
-                    context.iteration(False)
+                # Bus 메시지 폴링 (타임아웃 10ms)
+                msg = bus.timed_pop(10 * Gst.MSECOND)
+                if msg:
+                    self._handle_bus_message(msg)
 
-                # Small sleep to avoid busy-waiting
+                # GLib context iteration (non-blocking)
+                while self._context.pending():
+                    self._context.iteration(False)
+
                 time.sleep(0.001)
 
         except Exception as e:
             print(f"[ERROR] Pipeline thread error for camera {self.device_index}: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
             self.is_running = False
 
-    def _on_bus_message(self, bus, message):
+    def _handle_bus_message(self, message):
         """Handle GStreamer bus messages"""
         t = message.type
         if t == Gst.MessageType.ERROR:
             err, debug = message.parse_error()
             print(f"[ERROR] GStreamer error on camera {self.device_index}: {err}, {debug}")
-            self.stop()
+            self.is_running = False
         elif t == Gst.MessageType.EOS:
             print(f"[INFO] End-of-stream on camera {self.device_index}")
-            self.stop()
+            self.is_running = False
+        elif t == Gst.MessageType.WARNING:
+            warn, debug = message.parse_warning()
+            print(f"[WARN] GStreamer warning on camera {self.device_index}: {warn}")
 
     def _on_new_sample(self, sink):
         """Callback for new frame from appsink"""
@@ -183,7 +212,7 @@ class GstCamera:
 
     def stop(self):
         """Stop the camera"""
-        if not self.is_running:
+        if not self.is_running and self.pipeline is None:
             return
 
         print(f"[GstCamera] Stopping camera {self.device_index}...")
@@ -191,15 +220,18 @@ class GstCamera:
 
         # Stop pipeline
         if self.pipeline:
-            self.pipeline.set_state(Gst.State.NULL)
+            try:
+                self.pipeline.set_state(Gst.State.NULL)
+            except:
+                pass
+            self.pipeline = None
 
-        # Wait for thread to finish (only if not called from the same thread)
+        # Wait for thread to finish (짧은 타임아웃)
         if self.thread and self.thread.is_alive():
             if threading.current_thread() != self.thread:
-                self.thread.join(timeout=2.0)
-            else:
-                print(f"[GstCamera] Skipping join (called from same thread)")
+                self.thread.join(timeout=1.0)
 
+        self._context = None
         print(f"[GstCamera] Camera {self.device_index} stopped")
 
     def release(self):
