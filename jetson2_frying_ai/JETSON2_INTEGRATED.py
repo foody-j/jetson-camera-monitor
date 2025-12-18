@@ -120,6 +120,8 @@ FRYING_CLS_MODEL = config.get('frying_cls_model', 'frying_cls.pt')
 
 # Observe_add Configuration (video2, video3)
 OBSERVE_ENABLED = config.get('observe_enabled', True)
+OBSERVE_LEFT_ENABLED = config.get('observe_left_enabled', True)
+OBSERVE_RIGHT_ENABLED = config.get('observe_right_enabled', True)
 OBSERVE_LEFT_CAMERA_INDEX = config.get('observe_left_camera_index', 2)
 OBSERVE_RIGHT_CAMERA_INDEX = config.get('observe_right_camera_index', 3)
 OBSERVE_SEG_MODEL = config.get('observe_seg_model', '../observe_add/besta.pt')
@@ -1493,33 +1495,38 @@ class JetsonIntegratedApp:
 
         # Observe_add cameras (video2, video3)
         if OBSERVE_ENABLED:
-            print(f"[카메라] 바스켓 왼쪽 초기화 중...")
-            self.observe_left_cap = GstCamera(
-                device_index=OBSERVE_LEFT_CAMERA_INDEX,
-                width=CAMERA_WIDTH,
-                height=CAMERA_HEIGHT,
-                fps=CAMERA_FPS
-            )
-            if self.observe_left_cap.start():
-                print(f"[카메라] 바스켓 왼쪽 (video{OBSERVE_LEFT_CAMERA_INDEX}) 초기화 완료 ✓")
+            if OBSERVE_LEFT_ENABLED:
+                print(f"[카메라] 바스켓 왼쪽 초기화 중...")
+                self.observe_left_cap = GstCamera(
+                    device_index=OBSERVE_LEFT_CAMERA_INDEX,
+                    width=CAMERA_WIDTH,
+                    height=CAMERA_HEIGHT,
+                    fps=CAMERA_FPS
+                )
+                if self.observe_left_cap.start():
+                    print(f"[카메라] 바스켓 왼쪽 (video{OBSERVE_LEFT_CAMERA_INDEX}) 초기화 완료 ✓")
+                else:
+                    print(f"[카메라] 바스켓 왼쪽 (video{OBSERVE_LEFT_CAMERA_INDEX}) 초기화 실패 ✗")
+                    self.observe_left_cap = None
+                time.sleep(CAMERA_INIT_DELAY)
             else:
-                print(f"[카메라] 바스켓 왼쪽 (video{OBSERVE_LEFT_CAMERA_INDEX}) 초기화 실패 ✗")
-                self.observe_left_cap = None
+                print(f"[카메라] 바스켓 왼쪽 비활성화됨 (observe_left_enabled=false)")
 
-            time.sleep(CAMERA_INIT_DELAY)  # 순차 초기화 딜레이
-
-            print(f"[카메라] 바스켓 오른쪽 초기화 중...")
-            self.observe_right_cap = GstCamera(
-                device_index=OBSERVE_RIGHT_CAMERA_INDEX,
-                width=CAMERA_WIDTH,
-                height=CAMERA_HEIGHT,
-                fps=CAMERA_FPS
-            )
-            if self.observe_right_cap.start():
-                print(f"[카메라] 바스켓 오른쪽 (video{OBSERVE_RIGHT_CAMERA_INDEX}) 초기화 완료 ✓")
+            if OBSERVE_RIGHT_ENABLED:
+                print(f"[카메라] 바스켓 오른쪽 초기화 중...")
+                self.observe_right_cap = GstCamera(
+                    device_index=OBSERVE_RIGHT_CAMERA_INDEX,
+                    width=CAMERA_WIDTH,
+                    height=CAMERA_HEIGHT,
+                    fps=CAMERA_FPS
+                )
+                if self.observe_right_cap.start():
+                    print(f"[카메라] 바스켓 오른쪽 (video{OBSERVE_RIGHT_CAMERA_INDEX}) 초기화 완료 ✓")
+                else:
+                    print(f"[카메라] 바스켓 오른쪽 (video{OBSERVE_RIGHT_CAMERA_INDEX}) 초기화 실패 ✗")
+                    self.observe_right_cap = None
             else:
-                print(f"[카메라] 바스켓 오른쪽 (video{OBSERVE_RIGHT_CAMERA_INDEX}) 초기화 실패 ✗")
-                self.observe_right_cap = None
+                print(f"[카메라] 바스켓 오른쪽 비활성화됨 (observe_right_enabled=false)")
         else:
             print(f"[카메라] 바스켓 카메라 비활성화됨 (observe_enabled=false)")
 
