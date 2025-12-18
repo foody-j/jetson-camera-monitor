@@ -10,8 +10,8 @@ import threading
 import time
 import os
 import signal
-import tempfile
-import mmap
+import fcntl
+import select
 
 
 class GstCamera:
@@ -87,26 +87,41 @@ class GstCamera:
             return False
 
     def _read_frames(self):
-        """Read frames from subprocess stdout"""
+        """Read frames from subprocess stdout (non-blocking)"""
         try:
-            while self.is_running and self.process and self.process.poll() is None:
-                # Read one frame
-                data = self.process.stdout.read(self.frame_size)
+            # Set stdout to non-blocking
+            fd = self.process.stdout.fileno()
+            flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+            fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
-                if len(data) != self.frame_size:
-                    if len(data) == 0:
-                        time.sleep(0.01)
-                        continue
-                    # Partial read, skip
+            buffer = b''
+
+            while self.is_running and self.process and self.process.poll() is None:
+                # Wait for data with timeout
+                readable, _, _ = select.select([self.process.stdout], [], [], 0.1)
+
+                if not readable:
                     continue
 
-                # Convert to numpy array
-                frame = np.frombuffer(data, dtype=np.uint8).reshape(
-                    (self.height, self.width, 3)
-                )
+                try:
+                    chunk = self.process.stdout.read(self.frame_size)
+                    if chunk:
+                        buffer += chunk
+                except BlockingIOError:
+                    continue
 
-                with self.frame_lock:
-                    self.latest_frame = frame.copy()
+                # Extract complete frames from buffer
+                while len(buffer) >= self.frame_size:
+                    frame_data = buffer[:self.frame_size]
+                    buffer = buffer[self.frame_size:]
+
+                    # Convert to numpy array
+                    frame = np.frombuffer(frame_data, dtype=np.uint8).reshape(
+                        (self.height, self.width, 3)
+                    )
+
+                    with self.frame_lock:
+                        self.latest_frame = frame.copy()
 
         except Exception as e:
             if self.is_running:
@@ -136,23 +151,25 @@ class GstCamera:
         print(f"[GstCamera] Stopping camera {self.device_index}...")
         self.is_running = False
 
+        # Close stdout first to unblock read thread
+        if self.process and self.process.stdout:
+            try:
+                self.process.stdout.close()
+            except:
+                pass
+
+        # Wait for thread to exit
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=0.3)
+
         # Kill subprocess group
         if self.process:
             try:
-                # Kill entire process group
-                os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
-                self.process.wait(timeout=0.5)
+                os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
+                self.process.wait(timeout=0.3)
             except:
-                try:
-                    os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
-                    self.process.wait(timeout=0.3)
-                except:
-                    pass
+                pass
             self.process = None
-
-        # Wait for thread
-        if self.thread and self.thread.is_alive():
-            self.thread.join(timeout=0.5)
 
         print(f"[GstCamera] Camera {self.device_index} stopped")
 
