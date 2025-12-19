@@ -2349,6 +2349,9 @@ class IntegratedMonitorApp:
         # Center the window
         status_window.transient(self.root)
         status_window.grab_set()
+        status_window.attributes('-topmost', True)
+        status_window.lift()
+        status_window.focus_force()
 
         # Title
         tk.Label(status_window, text="[ Jetson Orin Nano 상태 ]", font=LARGE_FONT,
