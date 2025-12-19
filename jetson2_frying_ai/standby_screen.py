@@ -28,7 +28,17 @@ class StandbyScreen:
             bg='black',
             fg='#4A90D9'
         )
-        title_label.pack(pady=(0, 80))
+        title_label.pack(pady=(0, 20))
+
+        # 연구실명
+        lab_label = tk.Label(
+            main_frame,
+            text="단국대학교 스마트식품공학연구실",
+            font=('Arial', 28),
+            bg='black',
+            fg='#888888'
+        )
+        lab_label.pack(pady=(0, 80))
 
         # 시간 표시
         self.time_label = tk.Label(
