@@ -33,17 +33,6 @@ class GstCamera:
         # BGR frame size
         self.frame_size = width * height * 3
 
-        # 프레임 타임스탬프 (stale 감지용)
-        self.last_frame_time = 0
-        self.frame_timeout = 5.0  # 5초 동안 프레임 없으면 stale
-
-        # 자동 재시작 설정 (비활성화)
-        self.auto_restart = False
-        self.restart_count = 0
-        self.max_restart_attempts = 3
-        self.restart_lock = threading.Lock()
-        self.restart_in_progress = False
-
         print(f"[GstCamera] Creating camera for {self.device_path} @ {width}x{height}")
 
     def start(self):
@@ -133,98 +122,26 @@ class GstCamera:
 
                     with self.frame_lock:
                         self.latest_frame = frame.copy()
-                        self.last_frame_time = time.time()
 
         except Exception as e:
             if self.is_running:
                 print(f"[ERROR] Frame read error camera {self.device_index}: {e}")
         finally:
             self.is_running = False
-            # 자동 재시작 트리거
-            if self.auto_restart:
-                self._trigger_restart()
 
     def read(self):
         """Read the latest frame"""
         if not self.is_running:
-            # 자동 재시작 시도
-            if self.auto_restart and not self.restart_in_progress:
-                self._trigger_restart()
             return False, None
 
         with self.frame_lock:
             if self.latest_frame is None:
                 return False, None
-
-            # Stale 프레임 체크
-            if self.last_frame_time > 0:
-                elapsed = time.time() - self.last_frame_time
-                if elapsed > self.frame_timeout:
-                    print(f"[WARN] Camera {self.device_index} frame stale ({elapsed:.1f}s)")
-                    if self.auto_restart:
-                        self._trigger_restart()
-                    return False, None
-
             return True, self.latest_frame.copy()
 
     def isOpened(self):
         """Check if camera is running"""
         return self.is_running and self.process is not None
-
-    def is_healthy(self):
-        """카메라 상태 체크 - 프레임이 정상적으로 들어오는지"""
-        if not self.is_running:
-            return False
-        if self.last_frame_time == 0:
-            return False
-        elapsed = time.time() - self.last_frame_time
-        return elapsed < self.frame_timeout
-
-    def _trigger_restart(self):
-        """비동기 재시작 트리거"""
-        with self.restart_lock:
-            if self.restart_in_progress:
-                return
-            if self.restart_count >= self.max_restart_attempts:
-                print(f"[ERROR] Camera {self.device_index} max restart attempts reached ({self.max_restart_attempts})")
-                return
-            self.restart_in_progress = True
-
-        # 별도 스레드에서 재시작
-        restart_thread = threading.Thread(target=self._do_restart, daemon=True)
-        restart_thread.start()
-
-    def _do_restart(self):
-        """실제 재시작 수행"""
-        try:
-            self.restart_count += 1
-            print(f"[GstCamera] Camera {self.device_index} auto-restart attempt {self.restart_count}/{self.max_restart_attempts}")
-
-            # 정지
-            self.auto_restart = False  # 재시작 중 추가 트리거 방지
-            self.stop()
-            time.sleep(1.0)  # 잠시 대기
-
-            # 재시작
-            self.auto_restart = True
-            self.latest_frame = None
-            self.last_frame_time = 0
-
-            if self.start():
-                print(f"[GstCamera] Camera {self.device_index} restart SUCCESS")
-                self.restart_count = 0  # 성공하면 카운터 리셋
-            else:
-                print(f"[ERROR] Camera {self.device_index} restart FAILED")
-
-        except Exception as e:
-            print(f"[ERROR] Camera {self.device_index} restart error: {e}")
-        finally:
-            with self.restart_lock:
-                self.restart_in_progress = False
-
-    def reset_restart_count(self):
-        """재시작 카운터 리셋 (외부에서 호출)"""
-        self.restart_count = 0
 
     def stop(self):
         """Stop the camera"""

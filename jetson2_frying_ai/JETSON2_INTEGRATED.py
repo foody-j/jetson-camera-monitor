@@ -1575,34 +1575,6 @@ class JetsonIntegratedApp:
 
         self.root.after(200, self.update_clock)
 
-        # 카메라 헬스체크 (10초마다)
-        if current_second % 10 == 0:
-            self._check_camera_health()
-
-    def _check_camera_health(self):
-        """모든 카메라의 상태를 체크하고 문제 시 로그"""
-        if not hasattr(self, '_last_health_check'):
-            self._last_health_check = 0
-
-        now = time.time()
-        if now - self._last_health_check < 10:  # 10초 간격
-            return
-        self._last_health_check = now
-
-        cameras = [
-            ('frying_left', self.frying_left_cap),
-            ('frying_right', self.frying_right_cap),
-            ('observe_left', self.observe_left_cap),
-            ('observe_right', self.observe_right_cap),
-        ]
-
-        for name, cam in cameras:
-            if cam is None:
-                continue
-            if hasattr(cam, 'is_healthy'):
-                if not cam.is_healthy():
-                    print(f"[HEALTH] 카메라 {name} 문제 감지 - 자동 복구 시도 중...")
-
     def update_frying_left(self):
         """Update Frying AI left camera - OPTIMIZED with frame skip"""
         if not self.running:
