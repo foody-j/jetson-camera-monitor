@@ -37,8 +37,8 @@ class GstCamera:
         self.last_frame_time = 0
         self.frame_timeout = 5.0  # 5초 동안 프레임 없으면 stale
 
-        # 자동 재시작 설정
-        self.auto_restart = True
+        # 자동 재시작 설정 (비활성화)
+        self.auto_restart = False
         self.restart_count = 0
         self.max_restart_attempts = 3
         self.restart_lock = threading.Lock()
