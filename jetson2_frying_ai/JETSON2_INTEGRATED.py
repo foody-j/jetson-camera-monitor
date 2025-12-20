@@ -191,6 +191,7 @@ SAVE_HEIGHT = SAVE_RESOLUTION['height']
 TARGET_PROBE_TEMP = config.get('target_probe_temp', 75.0)
 JPEG_QUALITY = config.get('jpeg_quality', 85)
 FOOD_TYPES = config.get('food_types', ["chicken", "shrimp", "potato", "dumpling", "pork_cutlet", "fish"])
+RECORDING_DELAY_AFTER_DISCHARGE = config.get('recording_delay_after_discharge', 20)  # 배출 후 추가 녹화 시간 (초)
 
 # GUI Configuration - WHITE MODE (768x1024 세로 모드)
 WINDOW_WIDTH = config.get('window_width', 768)
@@ -416,6 +417,8 @@ class JetsonIntegratedApp:
         # POT1 timeout (auto-stop if no message for N seconds)
         self.pot1_timeout_id = None
         self.pot1_timeout_seconds = 5  # 5초 동안 메시지 없으면 자동 중지
+        # POT1 배출 후 지연 종료 타이머
+        self.pot1_discharge_timer_id = None
 
         # POT2 data collection (cameras 2, 3)
         self.pot2_collecting = False
@@ -431,6 +434,8 @@ class JetsonIntegratedApp:
         # POT2 timeout (auto-stop if no message for N seconds)
         self.pot2_timeout_id = None
         self.pot2_timeout_seconds = 5  # 5초 동안 메시지 없으면 자동 중지
+        # POT2 배출 후 지연 종료 타이머
+        self.pot2_discharge_timer_id = None
 
         # Latest frames for data collection
         self.latest_frying_left_frame = None
@@ -955,20 +960,43 @@ class JetsonIntegratedApp:
                 # GUI 업데이트 요청을 Queue에 저장 (스레드 안전)
                 self._robot_status_update = (pot_num, process_type, recipe, temp, running_time)
 
-                # 디버그 출력 (첫 수신시만 또는 상태 변경시)
-                # print(f"[로봇상태] POT{pot_num} | {process_type} | {recipe} | 온도:{temp}°C | {running_time}")
+                # 디버그 출력
+                print(f"[로봇상태] 튀김솥 PT{pot_num} | {process_type} | {recipe} | 온도:{temp}°C | {running_time}")
 
-                # TODO: 트리거 처리 (필요시 구현)
-                # if process_type == "투입" and recipe:
-                #     if pot_num == "0":
-                #         self.root.after(0, lambda: self.start_pot1_collection_with_food(recipe))
-                #     elif pot_num == "1":
-                #         self.root.after(0, lambda: self.start_pot2_collection_with_food(recipe))
-                # elif process_type == "배출":
-                #     if pot_num == "0":
-                #         self.root.after(0, self.stop_pot1_collection)
-                #     elif pot_num == "1":
-                #         self.root.after(0, self.stop_pot2_collection)
+                # 녹화 시작/중지 트리거: 투입 시 시작, 배출 후 N초 뒤 종료
+                if pot_num == "0":  # 왼쪽 = POT1
+                    if process_type == "투입":
+                        # 배출 타이머가 있으면 취소 (다시 투입된 경우)
+                        if self.pot1_discharge_timer_id:
+                            self.root.after_cancel(self.pot1_discharge_timer_id)
+                            self.pot1_discharge_timer_id = None
+                            print(f"[로봇상태] POT1(왼쪽) 배출 타이머 취소 (재투입)")
+                        if not self.pot1_collecting:
+                            self.pot1_food_type = recipe if recipe else "unknown"
+                            print(f"[로봇상태] POT1(왼쪽) 데이터 수집 시작 - {self.pot1_food_type}")
+                            self.root.after(0, self.start_pot1_collection)
+                    elif process_type == "배출":
+                        if self.pot1_collecting and not self.pot1_discharge_timer_id:
+                            delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
+                            print(f"[로봇상태] POT1(왼쪽) 배출 감지 - {RECORDING_DELAY_AFTER_DISCHARGE}초 후 수집 종료 예정")
+                            self.pot1_discharge_timer_id = self.root.after(delay_ms, self._delayed_stop_pot1_collection)
+
+                elif pot_num == "1":  # 오른쪽 = POT2
+                    if process_type == "투입":
+                        # 배출 타이머가 있으면 취소 (다시 투입된 경우)
+                        if self.pot2_discharge_timer_id:
+                            self.root.after_cancel(self.pot2_discharge_timer_id)
+                            self.pot2_discharge_timer_id = None
+                            print(f"[로봇상태] POT2(오른쪽) 배출 타이머 취소 (재투입)")
+                        if not self.pot2_collecting:
+                            self.pot2_food_type = recipe if recipe else "unknown"
+                            print(f"[로봇상태] POT2(오른쪽) 데이터 수집 시작 - {self.pot2_food_type}")
+                            self.root.after(0, self.start_pot2_collection)
+                    elif process_type == "배출":
+                        if self.pot2_collecting and not self.pot2_discharge_timer_id:
+                            delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
+                            print(f"[로봇상태] POT2(오른쪽) 배출 감지 - {RECORDING_DELAY_AFTER_DISCHARGE}초 후 수집 종료 예정")
+                            self.pot2_discharge_timer_id = self.root.after(delay_ms, self._delayed_stop_pot2_collection)
 
         except json.JSONDecodeError as e:
             print(f"[로봇상태] JSON 파싱 오류: {e}")
@@ -2914,6 +2942,20 @@ class JetsonIntegratedApp:
         # Reset session
         self.pot2_session_id = None
         self.pot2_start_time = None
+
+    def _delayed_stop_pot1_collection(self):
+        """배출 후 지연 종료 (타이머 콜백)"""
+        self.pot1_discharge_timer_id = None
+        if self.pot1_collecting:
+            print(f"[로봇상태] POT1(왼쪽) 배출 후 {RECORDING_DELAY_AFTER_DISCHARGE}초 경과 - 수집 종료")
+            self.stop_pot1_collection()
+
+    def _delayed_stop_pot2_collection(self):
+        """배출 후 지연 종료 (타이머 콜백)"""
+        self.pot2_discharge_timer_id = None
+        if self.pot2_collecting:
+            print(f"[로봇상태] POT2(오른쪽) 배출 후 {RECORDING_DELAY_AFTER_DISCHARGE}초 경과 - 수집 종료")
+            self.stop_pot2_collection()
 
     def save_pot1_data(self, frying_left, observe_left, observe_right):
         """Save POT1 frames (cameras 0, 2, 3) - 별도 프로세스에서 저장"""
