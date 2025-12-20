@@ -1565,8 +1565,8 @@ class IntegratedMonitorApp:
             self.root.after(50, self.update_stirfry_left_camera)
             return
 
-        # If recording POT1, save frames (skip frames to prevent freezing + save storage)
-        if self.stirfry_pot1_recording:
+        # If recording POT1 or manual recording, save frames (skip frames to prevent freezing + save storage)
+        if self.stirfry_pot1_recording or self.stirfry_recording:
             # Each camera manages its own counter independently
             if not hasattr(self, 'stirfry_left_skip_counter'):
                 self.stirfry_left_skip_counter = 0
@@ -1606,8 +1606,8 @@ class IntegratedMonitorApp:
             self.root.after(50, self.update_stirfry_right_camera)
             return
 
-        # If recording POT2, save frames (skip frames to prevent freezing + save storage)
-        if self.stirfry_pot2_recording:
+        # If recording POT2 or manual recording, save frames (skip frames to prevent freezing + save storage)
+        if self.stirfry_pot2_recording or self.stirfry_recording:
             # Each camera manages its own counter independently
             if not hasattr(self, 'stirfry_right_skip_counter'):
                 self.stirfry_right_skip_counter = 0
