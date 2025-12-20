@@ -176,6 +176,7 @@ STIRFRY_SAVE_DIR = config.get('stirfry_save_dir', 'StirFry_Data')
 STIRFRY_SAVE_RESOLUTION = config.get('stirfry_save_resolution', {'width': 960, 'height': 768})
 STIRFRY_JPEG_QUALITY = config.get('stirfry_jpeg_quality', 70)
 STIRFRY_FRAME_SKIP = config.get('stirfry_frame_skip', 6)
+RECORDING_DELAY_AFTER_DISCHARGE = config.get('recording_delay_after_discharge', 20)  # 배출 후 추가 녹화 시간 (초)
 
 # Motion detection & YOLO parameters (configurable via config.json)
 YOLO_IMGSZ = config.get('yolo_imgsz', 416)  # YOLO 입력 이미지 크기 (높을수록 정확, 느림)
@@ -307,6 +308,10 @@ class IntegratedMonitorApp:
         # POT2 timeout (auto-stop if no message for N seconds)
         self.pot2_timeout_id = None
         self.pot2_timeout_seconds = 5  # 5초 동안 메시지 없으면 자동 중지
+
+        # 배출 후 지연 종료 타이머
+        self.pot1_discharge_timer_id = None
+        self.pot2_discharge_timer_id = None
 
         # Manual stir-fry recording state (수동 녹화용)
         self.stirfry_recording = False
@@ -1118,28 +1123,40 @@ class IntegratedMonitorApp:
 
                 print(f"[로봇상태] 볶음솥 PT{pt_num} | {process_type} | {recipe} | 온도:{temp} | {running_time}")
 
-                # 조리 시작/중지 트리거
+                # 녹화 시작/중지 트리거: 투입 시 시작, 배출 후 N초 뒤 종료
                 if pt_num == "0":  # 왼쪽 = POT1
-                    if process_type == "조리":
+                    if process_type == "투입":
+                        # 배출 타이머가 있으면 취소 (다시 투입된 경우)
+                        if self.pot1_discharge_timer_id:
+                            self.root.after_cancel(self.pot1_discharge_timer_id)
+                            self.pot1_discharge_timer_id = None
+                            print(f"[로봇상태] POT1(왼쪽) 배출 타이머 취소 (재투입)")
                         if not self.stirfry_pot1_recording:
                             self.stirfry_pot1_food_type = recipe if recipe else "unknown"
                             print(f"[로봇상태] POT1(왼쪽) 녹화 시작 - {self.stirfry_pot1_food_type}")
                             self.root.after(0, self.start_stirfry_pot1_recording)
-                    elif process_type == "배출" or process_type == "":
-                        if self.stirfry_pot1_recording:
-                            print(f"[로봇상태] POT1(왼쪽) 녹화 중지")
-                            self.root.after(0, self.stop_stirfry_pot1_recording)
+                    elif process_type == "배출":
+                        if self.stirfry_pot1_recording and not self.pot1_discharge_timer_id:
+                            delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
+                            print(f"[로봇상태] POT1(왼쪽) 배출 감지 - {RECORDING_DELAY_AFTER_DISCHARGE}초 후 녹화 종료 예정")
+                            self.pot1_discharge_timer_id = self.root.after(delay_ms, self._delayed_stop_pot1_recording)
 
                 elif pt_num == "1":  # 오른쪽 = POT2
-                    if process_type == "조리":
+                    if process_type == "투입":
+                        # 배출 타이머가 있으면 취소 (다시 투입된 경우)
+                        if self.pot2_discharge_timer_id:
+                            self.root.after_cancel(self.pot2_discharge_timer_id)
+                            self.pot2_discharge_timer_id = None
+                            print(f"[로봇상태] POT2(오른쪽) 배출 타이머 취소 (재투입)")
                         if not self.stirfry_pot2_recording:
                             self.stirfry_pot2_food_type = recipe if recipe else "unknown"
                             print(f"[로봇상태] POT2(오른쪽) 녹화 시작 - {self.stirfry_pot2_food_type}")
                             self.root.after(0, self.start_stirfry_pot2_recording)
-                    elif process_type == "배출" or process_type == "":
-                        if self.stirfry_pot2_recording:
-                            print(f"[로봇상태] POT2(오른쪽) 녹화 중지")
-                            self.root.after(0, self.stop_stirfry_pot2_recording)
+                    elif process_type == "배출":
+                        if self.stirfry_pot2_recording and not self.pot2_discharge_timer_id:
+                            delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
+                            print(f"[로봇상태] POT2(오른쪽) 배출 감지 - {RECORDING_DELAY_AFTER_DISCHARGE}초 후 녹화 종료 예정")
+                            self.pot2_discharge_timer_id = self.root.after(delay_ms, self._delayed_stop_pot2_recording)
 
         except json.JSONDecodeError as e:
             print(f"[로봇상태] JSON 파싱 오류: {e}")
@@ -2086,6 +2103,13 @@ class IntegratedMonitorApp:
 
         print(f"[볶음 POT1] 녹화 중지 - 프레임: {self.stirfry_pot1_frame_count}장")
 
+    def _delayed_stop_pot1_recording(self):
+        """배출 후 지연 종료 (타이머 콜백)"""
+        self.pot1_discharge_timer_id = None
+        if self.stirfry_pot1_recording:
+            print(f"[로봇상태] POT1(왼쪽) 배출 후 {RECORDING_DELAY_AFTER_DISCHARGE}초 경과 - 녹화 종료")
+            self.stop_stirfry_pot1_recording()
+
     # POT2 Recording Control (Right Camera = camera_1)
     def start_stirfry_pot2_recording(self):
         """Start stir-fry POT2 data recording (right camera = camera_1)"""
@@ -2165,6 +2189,13 @@ class IntegratedMonitorApp:
                 print(f"[오류] POT2 메타데이터 저장 실패: {e}")
 
         print(f"[볶음 POT2] 녹화 중지 - 프레임: {self.stirfry_pot2_frame_count}장")
+
+    def _delayed_stop_pot2_recording(self):
+        """배출 후 지연 종료 (타이머 콜백)"""
+        self.pot2_discharge_timer_id = None
+        if self.stirfry_pot2_recording:
+            print(f"[로봇상태] POT2(오른쪽) 배출 후 {RECORDING_DELAY_AFTER_DISCHARGE}초 경과 - 녹화 종료")
+            self.stop_stirfry_pot2_recording()
 
     # LEGACY: Old combined recording functions (kept for backward compatibility)
     def start_stirfry_recording(self):
