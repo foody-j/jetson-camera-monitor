@@ -451,78 +451,92 @@ class IntegratedMonitorApp:
 
     def create_gui(self):
         """Create the main GUI layout - AUTO-ADAPTIVE for any screen"""
-        # Calculate adaptive dimensions (세로 모드 최적화 - 더 작게)
-        header_height = int(90 * self.scale_factor)  # 축소 (140 → 90)
+        # Calculate adaptive dimensions (1줄 컴팩트 레이아웃)
+        header_height = int(45 * self.scale_factor)  # 1줄 레이아웃 (90 → 45)
         padding = int(8 * self.scale_factor)
 
-        # Top header - Adaptive height with more info (세로 모드 최적화)
+        # Top header - 1줄 컴팩트 레이아웃
         header_frame = tk.Frame(self.root, bg=COLOR_PANEL, height=header_height, bd=1, relief=tk.FLAT)
         header_frame.pack(fill=tk.X, padx=0, pady=0)
         header_frame.pack_propagate(False)
 
-        # Header layout: 3 columns
-        header_frame.columnconfigure(0, weight=1)  # Left: System status
-        header_frame.columnconfigure(1, weight=1)  # Center: Title + Time
-        header_frame.columnconfigure(2, weight=1)  # Right: Vibration button
+        # 1줄 레이아웃: 모든 요소를 가로로 배치
+        # LEFT: MQTT 상태 (클릭 시 팝업)
+        self.mqtt_status_btn = tk.Button(header_frame, text="● MQTT(0)",
+                 font=(FONT_FAMILY, int(10 * self.scale_factor), "bold"),
+                 command=self.show_mqtt_status_popup,
+                 bg=COLOR_PANEL, fg=COLOR_ERROR,
+                 relief=tk.FLAT, bd=0, cursor="hand2",
+                 padx=5, pady=8)
+        self.mqtt_status_btn.pack(side=tk.LEFT, padx=(5, 2))
 
-        # LEFT: System status + Date (축소)
-        left_frame = tk.Frame(header_frame, bg=COLOR_PANEL)
-        left_frame.grid(row=0, column=0, sticky="w", padx=5, pady=3)
+        # 구분선
+        tk.Frame(header_frame, width=1, bg=COLOR_TEXT_LIGHT).pack(side=tk.LEFT, fill=tk.Y, padx=3, pady=8)
 
-        self.system_status_label = tk.Label(left_frame, text="시스템 정상",
-                                           font=(FONT_FAMILY, int(self.normal_font_size * 0.85)), bg=COLOR_PANEL, fg=COLOR_OK)
-        self.system_status_label.pack(anchor="w")
+        # 수집 상태 표시
+        self.recording_status_label = tk.Label(header_frame, text="",
+                                           font=(FONT_FAMILY, int(10 * self.scale_factor), "bold"),
+                                           bg=COLOR_PANEL, fg=COLOR_ERROR)
+        self.recording_status_label.pack(side=tk.LEFT, padx=3)
 
-        self.date_label = tk.Label(left_frame, text="----/--/--",
-                                   font=(FONT_FAMILY, int(self.normal_font_size * 0.75)),
-                                   bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT)
-        self.date_label.pack(anchor="w")
+        # 구분선 (수집 상태용 - 수집 중일 때만 보임)
+        self.recording_separator = tk.Frame(header_frame, width=1, bg=COLOR_TEXT_LIGHT)
 
-        # CENTER: Title + Time (축소)
-        center_frame = tk.Frame(header_frame, bg=COLOR_PANEL)
-        center_frame.grid(row=0, column=1, sticky="n", pady=3)
+        # 시스템 상태
+        self.system_status_label = tk.Label(header_frame, text="정상",
+                                           font=(FONT_FAMILY, int(10 * self.scale_factor)),
+                                           bg=COLOR_PANEL, fg=COLOR_OK)
+        self.system_status_label.pack(side=tk.LEFT, padx=3)
 
-        tk.Label(center_frame, text="단국대학교 스마트식품공학연구실(SFLAB)",
-                font=(FONT_FAMILY, int(self.large_font_size * 0.6), "bold"),
-                bg=COLOR_PANEL, fg=COLOR_ACCENT).pack()
+        # 구분선
+        tk.Frame(header_frame, width=1, bg=COLOR_TEXT_LIGHT).pack(side=tk.LEFT, fill=tk.Y, padx=3, pady=8)
 
-        self.time_label = tk.Label(center_frame, text="--:--:--",
-                                   font=(FONT_FAMILY, int(18 * self.scale_factor), "bold"),
+        # 날짜/시간 통합
+        self.datetime_label = tk.Label(header_frame, text="--/-- --:--",
+                                   font=(FONT_FAMILY, int(11 * self.scale_factor), "bold"),
                                    bg=COLOR_PANEL, fg=COLOR_INFO)
-        self.time_label.pack()
+        self.datetime_label.pack(side=tk.LEFT, padx=3)
 
-        # Disk space indicator (below time)
-        self.disk_label = tk.Label(center_frame, text="💾 ---GB / ---GB",
+        # 구분선
+        tk.Frame(header_frame, width=1, bg=COLOR_TEXT_LIGHT).pack(side=tk.LEFT, fill=tk.Y, padx=3, pady=8)
+
+        # 연구실 이름 (축소)
+        tk.Label(header_frame, text="SFLAB",
+                font=(FONT_FAMILY, int(11 * self.scale_factor), "bold"),
+                bg=COLOR_PANEL, fg=COLOR_ACCENT).pack(side=tk.LEFT, padx=3)
+
+        # 구분선
+        tk.Frame(header_frame, width=1, bg=COLOR_TEXT_LIGHT).pack(side=tk.LEFT, fill=tk.Y, padx=3, pady=8)
+
+        # 디스크 용량 (축소)
+        self.disk_label = tk.Label(header_frame, text="💾 --/--GB",
                                    font=(FONT_FAMILY, int(10 * self.scale_factor)),
                                    bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT)
-        self.disk_label.pack()
+        self.disk_label.pack(side=tk.LEFT, padx=3)
 
-        # RIGHT: Vibration check button + Settings button (축소)
-        right_frame = tk.Frame(header_frame, bg=COLOR_PANEL)
-        right_frame.grid(row=0, column=2, sticky="e", padx=5, pady=3)
-
-        # PC Status button
-        tk.Button(right_frame, text="PC 상태",
-                 font=(FONT_FAMILY, int(self.button_font_size * 0.65), "bold"),
-                 command=self.open_pc_status, bg="#00897B", fg="white",
-                 relief=tk.FLAT, bd=0, activebackground="#00796B",
-                 padx=8, pady=5).pack(side=tk.LEFT, padx=2)
-
-        # Vibration check toggle button
-        self.vibration_check_btn = tk.Button(right_frame, text="진동 시작",
-                 font=(FONT_FAMILY, int(self.button_font_size * 0.65), "bold"),
-                 command=self.toggle_vibration_check, bg=COLOR_INFO, fg="white",
-                 relief=tk.FLAT, bd=0, activebackground=COLOR_BUTTON_HOVER,
-                 padx=8, pady=5)
-        self.vibration_check_btn.pack(side=tk.LEFT, padx=2)
-
-        # Settings button (moved from bottom)
-        self.settings_btn = tk.Button(right_frame, text="설정",
-                 font=(FONT_FAMILY, int(self.button_font_size * 0.65), "bold"),
+        # RIGHT: 버튼들 (오른쪽 정렬)
+        # Settings button
+        self.settings_btn = tk.Button(header_frame, text="설정",
+                 font=(FONT_FAMILY, int(10 * self.scale_factor), "bold"),
                  command=self.handle_settings_tap, bg=COLOR_BUTTON, fg="white",
                  relief=tk.FLAT, bd=0, activebackground=COLOR_BUTTON_HOVER,
-                 padx=8, pady=5)
-        self.settings_btn.pack(side=tk.LEFT, padx=2)
+                 padx=6, pady=4)
+        self.settings_btn.pack(side=tk.RIGHT, padx=2)
+
+        # Vibration check toggle button
+        self.vibration_check_btn = tk.Button(header_frame, text="진동",
+                 font=(FONT_FAMILY, int(10 * self.scale_factor), "bold"),
+                 command=self.toggle_vibration_check, bg=COLOR_INFO, fg="white",
+                 relief=tk.FLAT, bd=0, activebackground=COLOR_BUTTON_HOVER,
+                 padx=6, pady=4)
+        self.vibration_check_btn.pack(side=tk.RIGHT, padx=2)
+
+        # PC Status button
+        tk.Button(header_frame, text="PC",
+                 font=(FONT_FAMILY, int(10 * self.scale_factor), "bold"),
+                 command=self.open_pc_status, bg="#00897B", fg="white",
+                 relief=tk.FLAT, bd=0, activebackground="#00796B",
+                 padx=6, pady=4).pack(side=tk.RIGHT, padx=2)
 
         # Bottom control bar FIRST (so it's always visible at bottom)
         self.create_bottom_control_bar()
@@ -1271,11 +1285,17 @@ class IntegratedMonitorApp:
         current_second = now.second
         if not hasattr(self, '_last_second') or self._last_second != current_second:
             self._last_second = current_second
-            self.time_label.config(text=now.strftime("%H:%M:%S"))
+            # 날짜/시간 통합 표시
+            self.datetime_label.config(text=now.strftime("%m/%d %H:%M:%S"))
+
+            # MQTT 상태 업데이트
+            self._update_mqtt_status_display()
+
+            # 수집 상태 업데이트
+            self._update_recording_status_display()
 
             # Only update date once per minute (at second 0)
             if current_second == 0 or not hasattr(self, '_date_set'):
-                self.date_label.config(text=now.strftime("%Y년 %m월 %d일"))
                 self._date_set = True
 
                 # Check night review time (every minute)
@@ -1291,11 +1311,11 @@ class IntegratedMonitorApp:
                     percent = disk.percent
                     disk_color = COLOR_OK if percent < 70 else COLOR_WARNING if percent < 90 else COLOR_ERROR
                     self.disk_label.config(
-                        text=f"💾 {used_gb:.0f}GB / {total_gb:.0f}GB ({percent:.1f}%)",
+                        text=f"💾 {used_gb:.0f}/{total_gb:.0f}GB",
                         fg=disk_color
                     )
                 except Exception as e:
-                    self.disk_label.config(text="💾 용량 정보 없음", fg=COLOR_TEXT)
+                    self.disk_label.config(text="💾 --", fg=COLOR_TEXT)
 
         # Update every 200ms for smooth second transitions
         self.root.after(200, self.update_clock)
@@ -2667,6 +2687,133 @@ class IntegratedMonitorApp:
         """Open vibration sensor monitoring program (deprecated - use toggle)"""
         print("[진동] GUI 버튼으로 수동 실행 (MQTT 호환)")
         self.start_vibration_check()
+
+    def _get_mqtt_subscribed_topics(self):
+        """MQTT 구독 중인 토픽 목록 반환"""
+        topics = []
+        if MQTT_ENABLED and self.mqtt_client:
+            topics = [
+                MQTT_TOPIC_STIRFRY_POT1_FOOD_TYPE,
+                MQTT_TOPIC_STIRFRY_POT1_CONTROL,
+                MQTT_TOPIC_STIRFRY_POT2_FOOD_TYPE,
+                MQTT_TOPIC_STIRFRY_POT2_CONTROL,
+                "calibration/vibration/control",
+                MQTT_TOPIC_ROBOT_STATUS,
+            ]
+        return topics
+
+    def _update_mqtt_status_display(self):
+        """MQTT 상태 버튼 업데이트"""
+        if not hasattr(self, 'mqtt_status_btn'):
+            return
+
+        if MQTT_ENABLED and self.mqtt_client:
+            topic_count = len(self._get_mqtt_subscribed_topics())
+            self.mqtt_status_btn.config(
+                text=f"● MQTT({topic_count})",
+                fg=COLOR_OK
+            )
+        else:
+            self.mqtt_status_btn.config(
+                text="● MQTT(X)",
+                fg=COLOR_ERROR
+            )
+
+    def _update_recording_status_display(self):
+        """상단 헤더에 수집 상태 표시 업데이트"""
+        if not hasattr(self, 'recording_status_label'):
+            return
+
+        recording_parts = []
+        if self.stirfry_pot1_recording:
+            recording_parts.append("POT1")
+        if self.stirfry_pot2_recording:
+            recording_parts.append("POT2")
+        if self.stirfry_recording:
+            recording_parts.append("수동")
+
+        if recording_parts:
+            status_text = f"🔴 {'+'.join(recording_parts)} 수집중"
+            self.recording_status_label.config(text=status_text, fg=COLOR_ERROR)
+            # 구분선 표시
+            self.recording_separator.pack(side=tk.LEFT, fill=tk.Y, padx=3, pady=8)
+        else:
+            self.recording_status_label.config(text="")
+            # 구분선 숨김
+            self.recording_separator.pack_forget()
+
+    def show_mqtt_status_popup(self):
+        """MQTT 상태 상세 팝업 표시"""
+        popup = tk.Toplevel(self.root)
+        popup.title("MQTT 상태")
+        popup.geometry("450x350")
+        popup.configure(bg=COLOR_PANEL)
+        popup.transient(self.root)
+        popup.grab_set()
+
+        # 연결 상태
+        status_frame = tk.Frame(popup, bg=COLOR_PANEL)
+        status_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        if MQTT_ENABLED and self.mqtt_client:
+            status_text = f"● 연결됨: {MQTT_BROKER}:{MQTT_PORT}"
+            status_color = COLOR_OK
+        elif MQTT_ENABLED:
+            status_text = "● 연결 끊김"
+            status_color = COLOR_ERROR
+        else:
+            status_text = "● MQTT 비활성화 (config)"
+            status_color = COLOR_TEXT_LIGHT
+
+        tk.Label(status_frame, text=status_text,
+                font=(FONT_FAMILY, 12, "bold"),
+                bg=COLOR_PANEL, fg=status_color).pack(anchor="w")
+
+        tk.Label(status_frame, text=f"Client ID: {MQTT_CLIENT_ID}",
+                font=(FONT_FAMILY, 10),
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w")
+
+        # 구분선
+        tk.Frame(popup, height=1, bg=COLOR_TEXT_LIGHT).pack(fill=tk.X, padx=10, pady=5)
+
+        # 구독 토픽 목록
+        tk.Label(popup, text="구독 중인 토픽:",
+                font=(FONT_FAMILY, 11, "bold"),
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=10)
+
+        # 스크롤 가능한 토픽 리스트
+        list_frame = tk.Frame(popup, bg=COLOR_BG)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        scrollbar = tk.Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        topic_listbox = tk.Listbox(list_frame, font=(FONT_FAMILY, 9),
+                                   bg=COLOR_BG, fg=COLOR_TEXT,
+                                   yscrollcommand=scrollbar.set,
+                                   selectmode=tk.SINGLE)
+        topic_listbox.pack(fill=tk.BOTH, expand=True)
+        scrollbar.config(command=topic_listbox.yview)
+
+        topics = self._get_mqtt_subscribed_topics()
+        for i, topic in enumerate(topics, 1):
+            topic_listbox.insert(tk.END, f"{i}. {topic}")
+
+        if not topics:
+            topic_listbox.insert(tk.END, "(구독 중인 토픽 없음)")
+
+        # 발행 토픽
+        tk.Frame(popup, height=1, bg=COLOR_TEXT_LIGHT).pack(fill=tk.X, padx=10, pady=5)
+        tk.Label(popup, text=f"발행 토픽: {MQTT_TOPIC_STATUS}",
+                font=(FONT_FAMILY, 10),
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=10)
+
+        # 닫기 버튼
+        tk.Button(popup, text="닫기",
+                 font=(FONT_FAMILY, 11, "bold"),
+                 command=popup.destroy,
+                 bg=COLOR_BUTTON, fg="white",
+                 relief=tk.FLAT, padx=20, pady=5).pack(pady=10)
 
     def handle_settings_tap(self):
         """Handle settings button tap - 5 taps reveals shutdown"""
