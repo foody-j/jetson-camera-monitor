@@ -2748,7 +2748,7 @@ class IntegratedMonitorApp:
             self.recording_separator.pack_forget()
 
     def _log_mqtt_message(self, topic, payload):
-        """MQTT 메시지를 로그에 저장 (원본 보기용)"""
+        """MQTT 메시지를 로그에 저장 (원본 보기용 + 파일 저장)"""
         from datetime import datetime
         timestamp = datetime.now().strftime("%H:%M:%S")
         log_entry = {
@@ -2760,6 +2760,19 @@ class IntegratedMonitorApp:
         # 최대 개수 초과 시 오래된 것 삭제
         if len(self.mqtt_message_log) > self.mqtt_message_log_max:
             self.mqtt_message_log.pop(0)
+
+        # 파일로도 저장 (날짜별)
+        try:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            log_dir = os.path.join(os.path.dirname(__file__), "mqtt_logs")
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = os.path.join(log_dir, f"mqtt_{date_str}.log")
+
+            full_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(f"[{full_timestamp}] {topic}\n{payload}\n\n")
+        except Exception as e:
+            print(f"[MQTT 로그] 파일 저장 실패: {e}")
 
     def show_mqtt_status_popup(self):
         """MQTT 상태 상세 팝업 표시 (탭 형태)"""
