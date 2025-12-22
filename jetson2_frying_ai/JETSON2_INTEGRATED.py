@@ -1111,8 +1111,17 @@ class JetsonIntegratedApp:
         # 구분선
         tk.Frame(header_frame, width=1, bg=COLOR_TEXT_LIGHT).pack(side=tk.LEFT, fill=tk.Y, padx=3, pady=8)
 
+        # 수집 상태 표시
+        self.recording_status_label = tk.Label(header_frame, text="",
+                                           font=(FONT_FAMILY, 10, "bold"),
+                                           bg=COLOR_PANEL, fg=COLOR_ERROR)
+        self.recording_status_label.pack(side=tk.LEFT, padx=3)
+
+        # 구분선 (수집 상태용 - 수집 중일 때만 보임)
+        self.recording_separator = tk.Frame(header_frame, width=1, bg=COLOR_TEXT_LIGHT)
+
         # 시스템 상태
-        self.system_status_label = tk.Label(header_frame, text="시스템 정상",
+        self.system_status_label = tk.Label(header_frame, text="정상",
                                            font=(FONT_FAMILY, 10),
                                            bg=COLOR_PANEL, fg=COLOR_OK)
         self.system_status_label.pack(side=tk.LEFT, padx=3)
@@ -1575,6 +1584,9 @@ class JetsonIntegratedApp:
 
             # MQTT 상태 업데이트
             self._update_mqtt_status_display()
+
+            # 수집 상태 업데이트
+            self._update_recording_status_display()
 
             # Update disk space (every minute to avoid overhead)
             if current_second == 0 or not hasattr(self, '_disk_updated'):
@@ -2582,6 +2594,29 @@ class JetsonIntegratedApp:
                 text="● MQTT(X)",
                 fg=COLOR_ERROR
             )
+
+    def _update_recording_status_display(self):
+        """상단 헤더에 수집 상태 표시 업데이트"""
+        if not hasattr(self, 'recording_status_label'):
+            return
+
+        recording_parts = []
+        if self.pot1_collecting:
+            recording_parts.append("POT1")
+        if self.pot2_collecting:
+            recording_parts.append("POT2")
+        if self.data_collection_active:
+            recording_parts.append("수동")
+
+        if recording_parts:
+            status_text = f"🔴 {'+'.join(recording_parts)} 수집중"
+            self.recording_status_label.config(text=status_text, fg=COLOR_ERROR)
+            # 구분선 표시
+            self.recording_separator.pack(side=tk.LEFT, fill=tk.Y, padx=3, pady=8)
+        else:
+            self.recording_status_label.config(text="")
+            # 구분선 숨김
+            self.recording_separator.pack_forget()
 
     def show_mqtt_status_popup(self):
         """MQTT 상태 상세 팝업 표시"""
