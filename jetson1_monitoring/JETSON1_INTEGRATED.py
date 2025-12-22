@@ -2850,13 +2850,8 @@ class IntegratedMonitorApp:
         showinfo_topmost("설정", "설정 기능은 준비 중입니다.\nconfig.json 파일을 직접 수정하세요.")
 
     def confirm_shutdown(self):
-        """Confirm shutdown and close"""
-        if askokcancel_topmost("종료 확인", "정말 시스템을 종료하시겠습니까?"):
-            self.on_closing()
-        else:
-            # Cancel - hide shutdown button, show settings again
-            self.shutdown_btn.pack_forget()
-            self.settings_btn.pack(side=tk.LEFT, padx=3)
+        """Confirm shutdown and close - 바로 종료"""
+        self.on_closing()
 
     def toggle_fullscreen(self):
         """Toggle fullscreen mode"""
@@ -2869,107 +2864,106 @@ class IntegratedMonitorApp:
 
     def on_closing(self):
         """Handle window close - 백그라운드에서 정리"""
-        # Ask for confirmation
-        if askokcancel_topmost("종료", "프로그램을 종료하시겠습니까?"):
-            print("[종료] 시스템 종료 중...")
-            self.running = False
+        # 확인 팝업 없이 바로 종료
+        print("[종료] 시스템 종료 중...")
+        self.running = False
 
-            # 백그라운드 스레드에서 정리 작업 수행 (UI 프리징 방지)
-            def cleanup_and_exit():
-                try:
-                    # Stop ongoing recordings/data collection to save metadata
-                    print("[종료] 녹화/수집 중지 및 메타데이터 저장 중...")
-                    if self.stirfry_recording:
-                        self.stop_stirfry_recording()
-                    if hasattr(self, 'stirfry_pot1_recording') and self.stirfry_pot1_recording:
-                        self.stop_pot1_recording()
-                    if hasattr(self, 'stirfry_pot2_recording') and self.stirfry_pot2_recording:
-                        self.stop_pot2_recording()
+        # 백그라운드 스레드에서 정리 작업 수행 (UI 프리징 방지)
+        def cleanup_and_exit():
+            try:
+                # Stop ongoing recordings/data collection to save metadata
+                print("[종료] 녹화/수집 중지 및 메타데이터 저장 중...")
+                if self.stirfry_recording:
+                    self.stop_stirfry_recording()
+                if hasattr(self, 'stirfry_pot1_recording') and self.stirfry_pot1_recording:
+                    self.stop_pot1_recording()
+                if hasattr(self, 'stirfry_pot2_recording') and self.stirfry_pot2_recording:
+                    self.stop_pot2_recording()
 
-                    # Cleanup child processes (진동센서 등)
-                    for proc in self.child_processes:
-                        try:
-                            if proc.poll() is None:
-                                print(f"[종료] 자식 프로세스 종료 중... (PID: {proc.pid})")
-                                proc.terminate()
-                                try:
-                                    proc.wait(timeout=1)  # 1초만 대기
-                                except:
-                                    proc.kill()
-                        except Exception as e:
-                            print(f"[종료] 자식 프로세스 종료 오류: {e}")
-
-                    # Cleanup GstCamera cameras with timeout
-                    print("[종료] 카메라 해제 중...")
-                    import threading
-
-                    def stop_camera_safe(cap, name):
-                        try:
-                            cap.stop()
-                            print(f"[종료] {name} 해제 완료")
-                        except Exception as e:
-                            print(f"[종료] {name} 해제 오류: {e}")
-
-                    threads = []
-                    if self.auto_cap is not None:
-                        t = threading.Thread(target=stop_camera_safe, args=(self.auto_cap, "auto_cap"))
-                        t.daemon = True
-                        t.start()
-                        threads.append(t)
-
-                    if self.stirfry_left_cap is not None:
-                        t = threading.Thread(target=stop_camera_safe, args=(self.stirfry_left_cap, "stirfry_left"))
-                        t.daemon = True
-                        t.start()
-                        threads.append(t)
-
-                    if self.stirfry_right_cap is not None:
-                        t = threading.Thread(target=stop_camera_safe, args=(self.stirfry_right_cap, "stirfry_right"))
-                        t.daemon = True
-                        t.start()
-                        threads.append(t)
-
-                    # Wait for all threads with timeout
-                    for t in threads:
-                        t.join(timeout=2.0)
-
-                    print("[종료] 카메라 해제 완료")
-
-                    # Cleanup MQTT
-                    if self.mqtt_client is not None:
-                        try:
-                            self.mqtt_client.disconnect()
-                        except:
-                            pass
-
-                    # Cleanup GPIO
+                # Cleanup child processes (진동센서 등)
+                for proc in self.child_processes:
                     try:
-                        print("[종료] GPIO 정리 중...")
-                        # Set pins to LOW before cleanup
-                        GPIO.output(29, GPIO.LOW)
-                        GPIO.output(31, GPIO.LOW)
-                        time.sleep(0.1)
-
-                        # Change to input mode with pull-down for clean shutdown
-                        GPIO.setup(29, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-                        GPIO.setup(31, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-                        time.sleep(0.1)
-
-                        GPIO.cleanup()
-                        print("[종료] GPIO 정리 완료")
+                        if proc.poll() is None:
+                            print(f"[종료] 자식 프로세스 종료 중... (PID: {proc.pid})")
+                            proc.terminate()
+                            try:
+                                proc.wait(timeout=1)  # 1초만 대기
+                            except:
+                                proc.kill()
                     except Exception as e:
-                        print(f"[종료] GPIO 정리 오류: {e}")
+                        print(f"[종료] 자식 프로세스 종료 오류: {e}")
 
+                # Cleanup GstCamera cameras with timeout
+                print("[종료] 카메라 해제 중...")
+                import threading
+
+                def stop_camera_safe(cap, name):
+                    try:
+                        cap.stop()
+                        print(f"[종료] {name} 해제 완료")
+                    except Exception as e:
+                        print(f"[종료] {name} 해제 오류: {e}")
+
+                threads = []
+                if self.auto_cap is not None:
+                    t = threading.Thread(target=stop_camera_safe, args=(self.auto_cap, "auto_cap"))
+                    t.daemon = True
+                    t.start()
+                    threads.append(t)
+
+                if self.stirfry_left_cap is not None:
+                    t = threading.Thread(target=stop_camera_safe, args=(self.stirfry_left_cap, "stirfry_left"))
+                    t.daemon = True
+                    t.start()
+                    threads.append(t)
+
+                if self.stirfry_right_cap is not None:
+                    t = threading.Thread(target=stop_camera_safe, args=(self.stirfry_right_cap, "stirfry_right"))
+                    t.daemon = True
+                    t.start()
+                    threads.append(t)
+
+                # Wait for all threads with timeout
+                for t in threads:
+                    t.join(timeout=2.0)
+
+                print("[종료] 카메라 해제 완료")
+
+                # Cleanup MQTT
+                if self.mqtt_client is not None:
+                    try:
+                        self.mqtt_client.disconnect()
+                    except:
+                        pass
+
+                # Cleanup GPIO
+                try:
+                    print("[종료] GPIO 정리 중...")
+                    # Set pins to LOW before cleanup
+                    GPIO.output(29, GPIO.LOW)
+                    GPIO.output(31, GPIO.LOW)
+                    time.sleep(0.1)
+
+                    # Change to input mode with pull-down for clean shutdown
+                    GPIO.setup(29, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+                    GPIO.setup(31, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+                    time.sleep(0.1)
+
+                    GPIO.cleanup()
+                    print("[종료] GPIO 정리 완료")
                 except Exception as e:
-                    print(f"[종료] 정리 중 오류: {e}")
-                finally:
-                    # UI는 메인 스레드에서 종료
-                    self.root.after(0, self._final_destroy)
+                    print(f"[종료] GPIO 정리 오류: {e}")
 
-            # 백그라운드 스레드 시작
-            import threading
-            cleanup_thread = threading.Thread(target=cleanup_and_exit, daemon=True)
-            cleanup_thread.start()
+            except Exception as e:
+                print(f"[종료] 정리 중 오류: {e}")
+            finally:
+                # UI는 메인 스레드에서 종료
+                self.root.after(0, self._final_destroy)
+
+        # 백그라운드 스레드 시작
+        import threading
+        cleanup_thread = threading.Thread(target=cleanup_and_exit, daemon=True)
+        cleanup_thread.start()
 
     def _final_destroy(self):
         """최종 창 파괴 (메인 스레드에서 실행)"""
