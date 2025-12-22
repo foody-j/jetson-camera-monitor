@@ -293,6 +293,7 @@ class IntegratedMonitorApp:
         self.stirfry_pot1_metadata = []
         self.stirfry_pot1_session_id = None
         self.stirfry_pot1_session_start_time = None
+        self.stirfry_pot1_robot_status = {}  # 로봇 상태 메타데이터 (이미지 저장용)
 
         # Stir-fry monitoring state - POT2 (right camera = camera_1)
         self.stirfry_pot2_recording = False  # 수동 시작
@@ -302,6 +303,7 @@ class IntegratedMonitorApp:
         self.stirfry_pot2_metadata = []
         self.stirfry_pot2_session_id = None
         self.stirfry_pot2_session_start_time = None
+        self.stirfry_pot2_robot_status = {}  # 로봇 상태 메타데이터 (이미지 저장용)
 
         # POT1 timeout (auto-stop if no message for N seconds)
         self.pot1_timeout_id = None
@@ -1137,8 +1139,34 @@ class IntegratedMonitorApp:
                 recipe = status.get("NowRecipe", "")
                 process_type = status.get("ProcessType", "")  # 투입/조리/배출
                 running_time = status.get("RunningTime", "")
+                target_time = status.get("TargetTime", "")
+                mode = status.get("Mode", "")
+                rb_status = status.get("RBstatus", "")
                 pot_status = status.get("Potstatus", {})
                 temp = pot_status.get("PT_Temp", 0)
+                pt_level = pot_status.get("PT_Level", 0)
+                pt_power = pot_status.get("PT_Power", "False")
+                rt_speed = pot_status.get("RT_Speed", 0)
+                rt_dir = pot_status.get("RT_Dir", 0)
+
+                # 로봇 상태 메타데이터 저장 (이미지 저장 시 사용)
+                robot_meta = {
+                    "recipe": recipe,
+                    "process_type": process_type,
+                    "running_time": running_time,
+                    "target_time": target_time,
+                    "mode": mode,
+                    "pot_temp": temp,
+                    "pot_level": pt_level,
+                    "pot_power": pt_power,
+                    "rt_speed": rt_speed,
+                    "rt_dir": rt_dir,
+                    "rb_status": rb_status
+                }
+                if pt_num == "0":
+                    self.stirfry_pot1_robot_status = robot_meta
+                elif pt_num == "1":
+                    self.stirfry_pot2_robot_status = robot_meta
 
                 print(f"[로봇상태] 볶음솥 PT{pt_num} | {process_type} | {recipe} | 온도:{temp} | {running_time}")
 
@@ -1980,6 +2008,7 @@ class IntegratedMonitorApp:
         try:
             now = datetime.now()
             ts_name = now.strftime("%H%M%S_%f")[:-3]  # Include milliseconds
+            full_timestamp = now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
             # Use POT1 session-based folder structure with camera_0
             base_dir = os.path.expanduser(f"~/{STIRFRY_SAVE_DIR}")
@@ -1999,6 +2028,19 @@ class IntegratedMonitorApp:
             cv2.imwrite(out_path, resized, [cv2.IMWRITE_JPEG_QUALITY, STIRFRY_JPEG_QUALITY])
             self.stirfry_pot1_frame_count += 1
 
+            # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프)
+            meta_dir = os.path.join(session_dir, "meta")
+            os.makedirs(meta_dir, mode=0o755, exist_ok=True)
+            meta_path = os.path.join(meta_dir, f"meta_{ts_name}.json")
+            meta_data = {
+                "timestamp": full_timestamp,
+                "frame_id": ts_name,
+                "pot": "pot1",
+                **self.stirfry_pot1_robot_status
+            }
+            with open(meta_path, 'w', encoding='utf-8') as f:
+                json.dump(meta_data, f, ensure_ascii=False)
+
             # Update GUI on main thread
             self.root.after(0, lambda: self.stirfry_left_count_label.config(text=f"POT1: {self.stirfry_pot1_frame_count}장"))
 
@@ -2015,6 +2057,7 @@ class IntegratedMonitorApp:
         try:
             now = datetime.now()
             ts_name = now.strftime("%H%M%S_%f")[:-3]  # Include milliseconds
+            full_timestamp = now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
             # Use POT2 session-based folder structure with camera_1
             base_dir = os.path.expanduser(f"~/{STIRFRY_SAVE_DIR}")
@@ -2033,6 +2076,19 @@ class IntegratedMonitorApp:
             # Save with configurable JPEG quality
             cv2.imwrite(out_path, resized, [cv2.IMWRITE_JPEG_QUALITY, STIRFRY_JPEG_QUALITY])
             self.stirfry_pot2_frame_count += 1
+
+            # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프)
+            meta_dir = os.path.join(session_dir, "meta")
+            os.makedirs(meta_dir, mode=0o755, exist_ok=True)
+            meta_path = os.path.join(meta_dir, f"meta_{ts_name}.json")
+            meta_data = {
+                "timestamp": full_timestamp,
+                "frame_id": ts_name,
+                "pot": "pot2",
+                **self.stirfry_pot2_robot_status
+            }
+            with open(meta_path, 'w', encoding='utf-8') as f:
+                json.dump(meta_data, f, ensure_ascii=False)
 
             # Update GUI on main thread
             self.root.after(0, lambda: self.stirfry_right_count_label.config(text=f"POT2: {self.stirfry_pot2_frame_count}장"))

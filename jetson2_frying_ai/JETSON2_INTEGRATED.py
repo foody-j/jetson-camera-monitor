@@ -416,6 +416,7 @@ class JetsonIntegratedApp:
         self.pot1_completion_marked = False
         self.pot1_completion_time = None
         self.pot1_completion_info = {}
+        self.pot1_robot_status = {}  # 로봇 상태 메타데이터 (이미지 저장용)
         # POT1 timeout (auto-stop if no message for N seconds)
         self.pot1_timeout_id = None
         self.pot1_timeout_seconds = 5  # 5초 동안 메시지 없으면 자동 중지
@@ -433,6 +434,7 @@ class JetsonIntegratedApp:
         self.pot2_completion_marked = False
         self.pot2_completion_time = None
         self.pot2_completion_info = {}
+        self.pot2_robot_status = {}  # 로봇 상태 메타데이터 (이미지 저장용)
         # POT2 timeout (auto-stop if no message for N seconds)
         self.pot2_timeout_id = None
         self.pot2_timeout_seconds = 5  # 5초 동안 메시지 없으면 자동 중지
@@ -961,9 +963,31 @@ class JetsonIntegratedApp:
                 pot_status = pot_data.get("Potstatus", {})
                 temp = pot_status.get("PT_Temp", 0)
                 power = pot_status.get("PT_Power", "False")
+                pt_level = pot_status.get("PT_Level", 0)
+                rt_speed = pot_status.get("RT_Speed", 0)
+                rt_dir = pot_status.get("RT_Dir", 0)
 
                 # GUI 업데이트 요청을 Queue에 저장 (스레드 안전)
                 self._robot_status_update = (pot_num, process_type, recipe, temp, running_time)
+
+                # 로봇 상태 메타데이터 저장 (이미지 저장 시 사용)
+                robot_meta = {
+                    "recipe": recipe,
+                    "process_type": process_type,
+                    "running_time": running_time,
+                    "target_time": target_time,
+                    "mode": mode,
+                    "pot_temp": temp,
+                    "pot_level": pt_level,
+                    "pot_power": power,
+                    "rt_speed": rt_speed,
+                    "rt_dir": rt_dir,
+                    "rb_status": rb_status
+                }
+                if pot_num == "0":
+                    self.pot1_robot_status = robot_meta
+                elif pot_num == "1":
+                    self.pot2_robot_status = robot_meta
 
                 # 디버그 출력
                 print(f"[로봇상태] 튀김솥 PT{pot_num} | {process_type} | {recipe} | 온도:{temp}°C | {running_time}")
@@ -3282,6 +3306,7 @@ class JetsonIntegratedApp:
         from datetime import datetime
 
         timestamp = datetime.now().strftime("%H%M%S_%f")[:-3]  # HHMMss_mmm
+        full_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         saver = get_image_saver(JPEG_QUALITY, SAVE_WIDTH, SAVE_HEIGHT)
 
         # Save POT1 cameras: camera_0 (frying left), camera_2 (observe left), camera_3 (observe right)
@@ -3290,6 +3315,21 @@ class JetsonIntegratedApp:
                 save_path = os.path.join(self.pot1_session_dir, f"camera_{cam_idx}", f"camera_{cam_idx}_{timestamp}.jpg")
                 saver.save(save_path, frame)
                 self.pot1_frame_counter += 1
+
+        # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프)
+        meta_path = os.path.join(self.pot1_session_dir, "meta", f"meta_{timestamp}.json")
+        os.makedirs(os.path.dirname(meta_path), exist_ok=True)
+        meta_data = {
+            "timestamp": full_timestamp,
+            "frame_id": timestamp,
+            "pot": "pot1",
+            **self.pot1_robot_status
+        }
+        try:
+            with open(meta_path, 'w', encoding='utf-8') as f:
+                json.dump(meta_data, f, ensure_ascii=False)
+        except Exception as e:
+            print(f"[POT1 메타] 저장 실패: {e}")
 
         if self.pot1_frame_counter % 10 == 0:
             print(f"[POT1 수집] {self.pot1_frame_counter}장 저장됨 (대기: {saver.get_queue_size()})")
@@ -3302,6 +3342,7 @@ class JetsonIntegratedApp:
         from datetime import datetime
 
         timestamp = datetime.now().strftime("%H%M%S_%f")[:-3]  # HHMMss_mmm
+        full_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         saver = get_image_saver(JPEG_QUALITY, SAVE_WIDTH, SAVE_HEIGHT)
 
         # Save POT2 cameras: camera_1 (frying right), camera_2 (observe left), camera_3 (observe right)
@@ -3310,6 +3351,21 @@ class JetsonIntegratedApp:
                 save_path = os.path.join(self.pot2_session_dir, f"camera_{cam_idx}", f"camera_{cam_idx}_{timestamp}.jpg")
                 saver.save(save_path, frame)
                 self.pot2_frame_counter += 1
+
+        # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프)
+        meta_path = os.path.join(self.pot2_session_dir, "meta", f"meta_{timestamp}.json")
+        os.makedirs(os.path.dirname(meta_path), exist_ok=True)
+        meta_data = {
+            "timestamp": full_timestamp,
+            "frame_id": timestamp,
+            "pot": "pot2",
+            **self.pot2_robot_status
+        }
+        try:
+            with open(meta_path, 'w', encoding='utf-8') as f:
+                json.dump(meta_data, f, ensure_ascii=False)
+        except Exception as e:
+            print(f"[POT2 메타] 저장 실패: {e}")
 
         if self.pot2_frame_counter % 10 == 0:
             print(f"[POT2 수집] {self.pot2_frame_counter}장 저장됨 (대기: {saver.get_queue_size()})")
