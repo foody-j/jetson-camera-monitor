@@ -191,7 +191,7 @@ SAVE_HEIGHT = SAVE_RESOLUTION['height']
 TARGET_PROBE_TEMP = config.get('target_probe_temp', 75.0)
 JPEG_QUALITY = config.get('jpeg_quality', 85)
 FOOD_TYPES = config.get('food_types', ["chicken", "shrimp", "potato", "dumpling", "pork_cutlet", "fish"])
-RECORDING_DELAY_AFTER_DISCHARGE = config.get('recording_delay_after_discharge', 20)  # 배출 후 추가 녹화 시간 (초)
+RECORDING_DELAY_AFTER_DISCHARGE = config.get('recording_delay_after_discharge', 50)  # 배출 후 추가 녹화 시간 (초)
 
 # GUI Configuration - WHITE MODE (768x1024 세로 모드)
 WINDOW_WIDTH = config.get('window_width', 768)
