@@ -2340,6 +2340,12 @@ class IntegratedMonitorApp:
         self.stirfry_session_start_time = datetime.now()
         self.stirfry_metadata = []  # Reset metadata
 
+        # POT1/POT2 개별 세션 ID도 설정 (save_stirfry_left/right_frame에서 사용)
+        self.stirfry_pot1_session_id = self.stirfry_session_id
+        self.stirfry_pot2_session_id = self.stirfry_session_id
+        self.stirfry_pot1_food_type = self.current_stirfry_food_type
+        self.stirfry_pot2_food_type = self.current_stirfry_food_type
+
         # Store initial metadata
         self.stirfry_metadata.append({
             "timestamp": self.stirfry_session_start_time.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
