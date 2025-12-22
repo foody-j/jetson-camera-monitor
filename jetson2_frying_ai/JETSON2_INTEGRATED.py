@@ -278,6 +278,8 @@ class JetsonIntegratedApp:
 
         # MQTT client
         self.mqtt_client = None
+        self.mqtt_message_log = []  # 최근 MQTT 메시지 저장 (원본 보기용)
+        self.mqtt_message_log_max = 50  # 최대 저장 개수
         if MQTT_ENABLED:
             self.init_mqtt()
 
@@ -914,6 +916,9 @@ class JetsonIntegratedApp:
         try:
             payload = message.payload.decode()
             data = json.loads(payload)
+
+            # MQTT 메시지 로그에 저장 (원본 보기용)
+            self._log_mqtt_message(message.topic, payload)
 
             # VibrationRequest 처리
             vibration_request = data.get("VibrationRequest", False)
@@ -2692,16 +2697,32 @@ class JetsonIntegratedApp:
             # 구분선 숨김
             self.recording_separator.pack_forget()
 
+    def _log_mqtt_message(self, topic, payload):
+        """MQTT 메시지를 로그에 저장 (원본 보기용)"""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        log_entry = {
+            "time": timestamp,
+            "topic": topic,
+            "payload": payload
+        }
+        self.mqtt_message_log.append(log_entry)
+        # 최대 개수 초과 시 오래된 것 삭제
+        if len(self.mqtt_message_log) > self.mqtt_message_log_max:
+            self.mqtt_message_log.pop(0)
+
     def show_mqtt_status_popup(self):
-        """MQTT 상태 상세 팝업 표시"""
+        """MQTT 상태 상세 팝업 표시 (탭 형태)"""
+        from tkinter import ttk
+
         popup = tk.Toplevel(self.root)
         popup.title("MQTT 상태")
-        popup.geometry("450x400")
+        popup.geometry("550x500")
         popup.configure(bg=COLOR_PANEL)
         popup.transient(self.root)
         popup.grab_set()
 
-        # 연결 상태
+        # 연결 상태 (상단 고정)
         status_frame = tk.Frame(popup, bg=COLOR_PANEL)
         status_frame.pack(fill=tk.X, padx=10, pady=10)
 
@@ -2723,17 +2744,24 @@ class JetsonIntegratedApp:
                 font=(FONT_FAMILY, 10),
                 bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w")
 
-        # 구분선
-        tk.Frame(popup, height=1, bg=COLOR_TEXT_LIGHT).pack(fill=tk.X, padx=10, pady=5)
+        # 탭 컨테이너
+        style = ttk.Style()
+        style.configure("TNotebook", background=COLOR_PANEL)
+        style.configure("TNotebook.Tab", font=(FONT_FAMILY, 10, "bold"), padding=[10, 5])
 
-        # 구독 토픽 목록
-        tk.Label(popup, text="구독 중인 토픽:",
+        notebook = ttk.Notebook(popup)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        # === 탭 1: 구독 토픽 ===
+        tab_topics = tk.Frame(notebook, bg=COLOR_PANEL)
+        notebook.add(tab_topics, text="구독 토픽")
+
+        tk.Label(tab_topics, text="구독 중인 토픽:",
                 font=(FONT_FAMILY, 11, "bold"),
-                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=10)
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=5, pady=5)
 
-        # 스크롤 가능한 토픽 리스트
-        list_frame = tk.Frame(popup, bg=COLOR_BG)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        list_frame = tk.Frame(tab_topics, bg=COLOR_BG)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         scrollbar = tk.Scrollbar(list_frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -2752,11 +2780,63 @@ class JetsonIntegratedApp:
         if not topics:
             topic_listbox.insert(tk.END, "(구독 중인 토픽 없음)")
 
-        # 발행 토픽
-        tk.Frame(popup, height=1, bg=COLOR_TEXT_LIGHT).pack(fill=tk.X, padx=10, pady=5)
-        tk.Label(popup, text=f"발행 토픽: {MQTT_TOPIC_STATUS}",
+        tk.Label(tab_topics, text=f"발행 토픽: {MQTT_TOPIC_STATUS}",
                 font=(FONT_FAMILY, 10),
-                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=10)
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=5, pady=5)
+
+        # === 탭 2: 원본 메시지 ===
+        tab_messages = tk.Frame(notebook, bg=COLOR_PANEL)
+        notebook.add(tab_messages, text=f"원본 메시지 ({len(self.mqtt_message_log)})")
+
+        msg_header = tk.Frame(tab_messages, bg=COLOR_PANEL)
+        msg_header.pack(fill=tk.X, padx=5, pady=5)
+
+        tk.Label(msg_header, text=f"최근 {self.mqtt_message_log_max}개 메시지:",
+                font=(FONT_FAMILY, 11, "bold"),
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(side=tk.LEFT)
+
+        def refresh_messages():
+            msg_text.config(state=tk.NORMAL)
+            msg_text.delete(1.0, tk.END)
+            if not self.mqtt_message_log:
+                msg_text.insert(tk.END, "(수신된 메시지 없음)")
+            else:
+                for entry in reversed(self.mqtt_message_log):  # 최신순
+                    msg_text.insert(tk.END, f"[{entry['time']}] {entry['topic']}\n", "topic")
+                    # JSON 예쁘게 포맷팅
+                    try:
+                        formatted = json.dumps(json.loads(entry['payload']), indent=2, ensure_ascii=False)
+                        msg_text.insert(tk.END, f"{formatted}\n\n")
+                    except:
+                        msg_text.insert(tk.END, f"{entry['payload']}\n\n")
+            msg_text.config(state=tk.DISABLED)
+            # 탭 제목 업데이트
+            notebook.tab(tab_messages, text=f"원본 메시지 ({len(self.mqtt_message_log)})")
+
+        tk.Button(msg_header, text="새로고침",
+                 font=(FONT_FAMILY, 9),
+                 command=refresh_messages,
+                 bg=COLOR_BUTTON, fg="white",
+                 relief=tk.FLAT, padx=10).pack(side=tk.RIGHT)
+
+        msg_frame = tk.Frame(tab_messages, bg=COLOR_BG)
+        msg_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        msg_scrollbar = tk.Scrollbar(msg_frame)
+        msg_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        msg_text = tk.Text(msg_frame, font=(FONT_FAMILY, 9),
+                          bg=COLOR_BG, fg=COLOR_TEXT,
+                          yscrollcommand=msg_scrollbar.set,
+                          wrap=tk.WORD, state=tk.DISABLED)
+        msg_text.pack(fill=tk.BOTH, expand=True)
+        msg_scrollbar.config(command=msg_text.yview)
+
+        # 토픽 강조 태그
+        msg_text.tag_configure("topic", foreground=COLOR_OK, font=(FONT_FAMILY, 9, "bold"))
+
+        # 초기 메시지 로드
+        refresh_messages()
 
         # 닫기 버튼
         tk.Button(popup, text="닫기",
