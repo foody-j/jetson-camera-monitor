@@ -964,6 +964,7 @@ class JetsonIntegratedApp:
                 print(f"[로봇상태] 튀김솥 PT{pot_num} | {process_type} | {recipe} | 온도:{temp}°C | {running_time}")
 
                 # 녹화 시작/중지 트리거: 투입 시 시작, 배출 후 N초 뒤 종료
+                # + 카메라 동적 ON/OFF (3-of-4 전략)
                 if pot_num == "0":  # 왼쪽 = POT1
                     if process_type == "투입":
                         # 배출 타이머가 있으면 취소 (다시 투입된 경우)
@@ -974,6 +975,8 @@ class JetsonIntegratedApp:
                         if not self.pot1_collecting:
                             self.pot1_food_type = recipe if recipe else "unknown"
                             print(f"[로봇상태] POT1(왼쪽) 데이터 수집 시작 - {self.pot1_food_type}")
+                            # 카메라 동적 ON (3-of-4 전략)
+                            self.root.after(0, lambda: self.start_frying_camera("0"))
                             self.root.after(0, self.start_pot1_collection)
                     elif process_type == "배출":
                         if self.pot1_collecting and not self.pot1_discharge_timer_id:
@@ -991,6 +994,8 @@ class JetsonIntegratedApp:
                         if not self.pot2_collecting:
                             self.pot2_food_type = recipe if recipe else "unknown"
                             print(f"[로봇상태] POT2(오른쪽) 데이터 수집 시작 - {self.pot2_food_type}")
+                            # 카메라 동적 ON (3-of-4 전략)
+                            self.root.after(0, lambda: self.start_frying_camera("1"))
                             self.root.after(0, self.start_pot2_collection)
                     elif process_type == "배출":
                         if self.pot2_collecting and not self.pot2_discharge_timer_id:
@@ -1492,44 +1497,19 @@ class JetsonIntegratedApp:
         self.observe_left_cap = None
         self.observe_right_cap = None
 
+        # 튀김솥 카메라 스트리밍 상태 (동적 ON/OFF용)
+        self.frying_left_streaming = False
+        self.frying_right_streaming = False
+
         # 카메라 초기화 딜레이 (드라이버 안정화)
         CAMERA_INIT_DELAY = 4.0  # 초 (현장 IVC 채널 과부하 방지)
 
-        # Frying AI cameras (video0, video1)
-        if FRYING_ENABLED:
-            print(f"[카메라] 튀김솥 왼쪽 초기화 중...")
-            self.frying_left_cap = GstCamera(
-                device_index=FRYING_LEFT_CAMERA_INDEX,
-                width=CAMERA_WIDTH,
-                height=CAMERA_HEIGHT,
-                fps=CAMERA_FPS
-            )
-            if self.frying_left_cap.start():
-                print(f"[카메라] 튀김솥 왼쪽 (video{FRYING_LEFT_CAMERA_INDEX}) 초기화 완료 ✓")
-            else:
-                print(f"[카메라] 튀김솥 왼쪽 (video{FRYING_LEFT_CAMERA_INDEX}) 초기화 실패 ✗")
-                self.frying_left_cap = None
+        # ==============================================
+        # 3-of-4 카메라 전략: 바켓(2,3) 항상 ON, 튀김솥(0,1) 동적 전환
+        # GMSL2 4대 동시 스트림 시 ISP 과부하로 프리징 발생
+        # ==============================================
 
-            time.sleep(CAMERA_INIT_DELAY)  # 순차 초기화 딜레이
-
-            print(f"[카메라] 튀김솥 오른쪽 초기화 중...")
-            self.frying_right_cap = GstCamera(
-                device_index=FRYING_RIGHT_CAMERA_INDEX,
-                width=CAMERA_WIDTH,
-                height=CAMERA_HEIGHT,
-                fps=CAMERA_FPS
-            )
-            if self.frying_right_cap.start():
-                print(f"[카메라] 튀김솥 오른쪽 (video{FRYING_RIGHT_CAMERA_INDEX}) 초기화 완료 ✓")
-            else:
-                print(f"[카메라] 튀김솥 오른쪽 (video{FRYING_RIGHT_CAMERA_INDEX}) 초기화 실패 ✗")
-                self.frying_right_cap = None
-
-            time.sleep(CAMERA_INIT_DELAY)  # 순차 초기화 딜레이
-        else:
-            print(f"[카메라] 튀김솥 카메라 비활성화됨 (frying_enabled=false)")
-
-        # Observe_add cameras (video2, video3)
+        # Observe_add cameras (video2, video3) - 항상 ON
         if OBSERVE_ENABLED:
             if OBSERVE_LEFT_ENABLED:
                 print(f"[카메라] 바스켓 왼쪽 초기화 중...")
@@ -1561,12 +1541,106 @@ class JetsonIntegratedApp:
                 else:
                     print(f"[카메라] 바스켓 오른쪽 (video{OBSERVE_RIGHT_CAMERA_INDEX}) 초기화 실패 ✗")
                     self.observe_right_cap = None
+                time.sleep(CAMERA_INIT_DELAY)
             else:
                 print(f"[카메라] 바스켓 오른쪽 비활성화됨 (observe_right_enabled=false)")
         else:
             print(f"[카메라] 바스켓 카메라 비활성화됨 (observe_enabled=false)")
 
-        print("[카메라] 카메라 순차 초기화 완료!")
+        # Frying AI cameras (video0, video1) - 대기 상태 (투입 시 동적 ON)
+        if FRYING_ENABLED:
+            print(f"[카메라] 튀김솥 카메라는 투입 시 동적으로 활성화됩니다 (3-of-4 전략)")
+            print(f"[카메라]   - video{FRYING_LEFT_CAMERA_INDEX}: POT1 투입 시 ON")
+            print(f"[카메라]   - video{FRYING_RIGHT_CAMERA_INDEX}: POT2 투입 시 ON")
+        else:
+            print(f"[카메라] 튀김솥 카메라 비활성화됨 (frying_enabled=false)")
+
+        print("[카메라] 카메라 초기화 완료! (바켓 ON, 튀김솥 대기)")
+
+    def start_frying_camera(self, pot_num):
+        """튀김솥 카메라 동적 시작 (3-of-4 전략)
+
+        Args:
+            pot_num: "0" = 왼쪽(POT1), "1" = 오른쪽(POT2)
+        """
+        if not FRYING_ENABLED:
+            return
+
+        if pot_num == "0":
+            # POT1 (왼쪽) 카메라 시작
+            if self.frying_left_streaming:
+                print(f"[카메라] 튀김솥 왼쪽 이미 스트리밍 중")
+                return
+
+            print(f"[카메라] 튀김솥 왼쪽 동적 시작 중...")
+            self.frying_left_cap = GstCamera(
+                device_index=FRYING_LEFT_CAMERA_INDEX,
+                width=CAMERA_WIDTH,
+                height=CAMERA_HEIGHT,
+                fps=CAMERA_FPS
+            )
+            if self.frying_left_cap.start():
+                self.frying_left_streaming = True
+                print(f"[카메라] 튀김솥 왼쪽 (video{FRYING_LEFT_CAMERA_INDEX}) 시작 완료 ✓")
+            else:
+                print(f"[카메라] 튀김솥 왼쪽 시작 실패 ✗")
+                self.frying_left_cap = None
+
+        elif pot_num == "1":
+            # POT2 (오른쪽) 카메라 시작
+            if self.frying_right_streaming:
+                print(f"[카메라] 튀김솥 오른쪽 이미 스트리밍 중")
+                return
+
+            print(f"[카메라] 튀김솥 오른쪽 동적 시작 중...")
+            self.frying_right_cap = GstCamera(
+                device_index=FRYING_RIGHT_CAMERA_INDEX,
+                width=CAMERA_WIDTH,
+                height=CAMERA_HEIGHT,
+                fps=CAMERA_FPS
+            )
+            if self.frying_right_cap.start():
+                self.frying_right_streaming = True
+                print(f"[카메라] 튀김솥 오른쪽 (video{FRYING_RIGHT_CAMERA_INDEX}) 시작 완료 ✓")
+            else:
+                print(f"[카메라] 튀김솥 오른쪽 시작 실패 ✗")
+                self.frying_right_cap = None
+
+    def stop_frying_camera(self, pot_num):
+        """튀김솥 카메라 동적 중지 (3-of-4 전략)
+
+        Args:
+            pot_num: "0" = 왼쪽(POT1), "1" = 오른쪽(POT2)
+        """
+        if pot_num == "0":
+            # POT1 (왼쪽) 카메라 중지
+            if not self.frying_left_streaming:
+                return
+
+            print(f"[카메라] 튀김솥 왼쪽 동적 중지 중...")
+            if self.frying_left_cap:
+                try:
+                    self.frying_left_cap.stop()
+                except Exception as e:
+                    print(f"[카메라] 튀김솥 왼쪽 중지 오류: {e}")
+                self.frying_left_cap = None
+            self.frying_left_streaming = False
+            print(f"[카메라] 튀김솥 왼쪽 중지 완료 ✓")
+
+        elif pot_num == "1":
+            # POT2 (오른쪽) 카메라 중지
+            if not self.frying_right_streaming:
+                return
+
+            print(f"[카메라] 튀김솥 오른쪽 동적 중지 중...")
+            if self.frying_right_cap:
+                try:
+                    self.frying_right_cap.stop()
+                except Exception as e:
+                    print(f"[카메라] 튀김솥 오른쪽 중지 오류: {e}")
+                self.frying_right_cap = None
+            self.frying_right_streaming = False
+            print(f"[카메라] 튀김솥 오른쪽 중지 완료 ✓")
 
     def update_clock(self):
         """Update time and date in header"""
@@ -3095,6 +3169,8 @@ class JetsonIntegratedApp:
         if self.pot1_collecting:
             print(f"[로봇상태] POT1(왼쪽) 배출 후 {RECORDING_DELAY_AFTER_DISCHARGE}초 경과 - 수집 종료")
             self.stop_pot1_collection()
+            # 3-of-4 전략: 수집 종료 후 카메라도 OFF
+            self.stop_frying_camera("0")
 
     def _delayed_stop_pot2_collection(self):
         """배출 후 지연 종료 (타이머 콜백)"""
@@ -3102,6 +3178,8 @@ class JetsonIntegratedApp:
         if self.pot2_collecting:
             print(f"[로봇상태] POT2(오른쪽) 배출 후 {RECORDING_DELAY_AFTER_DISCHARGE}초 경과 - 수집 종료")
             self.stop_pot2_collection()
+            # 3-of-4 전략: 수집 종료 후 카메라도 OFF
+            self.stop_frying_camera("1")
 
     def save_pot1_data(self, frying_left, observe_left, observe_right):
         """Save POT1 frames (cameras 0, 2, 3) - 별도 프로세스에서 저장"""
