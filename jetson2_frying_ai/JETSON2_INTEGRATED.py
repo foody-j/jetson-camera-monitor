@@ -1009,6 +1009,9 @@ class JetsonIntegratedApp:
                             if DYNAMIC_CAMERA_ENABLED:
                                 self.root.after(0, lambda: self.start_frying_camera("0"))
                             self.root.after(0, self.start_pot1_collection)
+                            # Observe AI 자동 시작
+                            if not self.observe_running:
+                                self.root.after(0, self.start_observe_ai)
                             # 토스트 메시지 표시
                             self.root.after(0, lambda r=recipe: self.show_toast(f"튀김 POT1: {r}" if r else "튀김 POT1: 투입"))
                     elif process_type == "배출":
@@ -1031,6 +1034,9 @@ class JetsonIntegratedApp:
                             if DYNAMIC_CAMERA_ENABLED:
                                 self.root.after(0, lambda: self.start_frying_camera("1"))
                             self.root.after(0, self.start_pot2_collection)
+                            # Observe AI 자동 시작
+                            if not self.observe_running:
+                                self.root.after(0, self.start_observe_ai)
                             # 토스트 메시지 표시
                             self.root.after(0, lambda r=recipe: self.show_toast(f"튀김 POT2: {r}" if r else "튀김 POT2: 투입"))
                     elif process_type == "배출":
