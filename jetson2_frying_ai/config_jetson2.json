@@ -106,5 +106,9 @@
   "// Defaults: data_collection_interval=3 (seconds), save_resolution=1280x720 (resize from 1920x1536), jpeg_quality=100 (maximum quality, ~800KB per image), target_probe_temp=75.0 (celsius)": "",
 
   "_comment_vibration_test_mode": "진동센서 테스트 모드 (true=VibrationRequest 시 즉시 NORMAL 응답, false=실제 측정)",
-  "vibration_test_mode": true
+  "vibration_test_mode": true,
+
+  "_comment_dynamic_camera": "동적 카메라 ON/OFF (3-of-4 전략)",
+  "_comment_dynamic_camera2": "true=투입 시 튀김솥 카메라 ON/배출 후 OFF, false=카메라 0,1,2 항상 ON",
+  "dynamic_camera_enabled": false
 }
