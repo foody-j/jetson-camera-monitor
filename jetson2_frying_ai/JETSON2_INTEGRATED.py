@@ -1007,6 +1007,8 @@ class JetsonIntegratedApp:
                             # 카메라 동적 ON (3-of-4 전략)
                             self.root.after(0, lambda: self.start_frying_camera("0"))
                             self.root.after(0, self.start_pot1_collection)
+                            # 토스트 메시지 표시
+                            self.root.after(0, lambda r=recipe: self.show_toast(f"튀김 POT1: {r}" if r else "튀김 POT1: 투입"))
                     elif process_type == "배출":
                         if self.pot1_collecting and not self.pot1_discharge_timer_id:
                             delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
@@ -1026,6 +1028,8 @@ class JetsonIntegratedApp:
                             # 카메라 동적 ON (3-of-4 전략)
                             self.root.after(0, lambda: self.start_frying_camera("1"))
                             self.root.after(0, self.start_pot2_collection)
+                            # 토스트 메시지 표시
+                            self.root.after(0, lambda r=recipe: self.show_toast(f"튀김 POT2: {r}" if r else "튀김 POT2: 투입"))
                     elif process_type == "배출":
                         if self.pot2_collecting and not self.pot2_discharge_timer_id:
                             delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
@@ -1670,6 +1674,49 @@ class JetsonIntegratedApp:
                 self.frying_right_cap = None
             self.frying_right_streaming = False
             print(f"[카메라] 튀김솥 오른쪽 중지 완료 ✓")
+
+    # =========================
+    # Toast Message (투입 시 레시피 표시)
+    # =========================
+    def show_toast(self, message, duration_ms=1500):
+        """화면 중앙에 토스트 메시지 표시 후 자동 사라짐"""
+        try:
+            # 기존 토스트가 있으면 제거
+            if hasattr(self, '_toast_label') and self._toast_label:
+                self._toast_label.destroy()
+                self._toast_label = None
+            if hasattr(self, '_toast_timer') and self._toast_timer:
+                self.root.after_cancel(self._toast_timer)
+                self._toast_timer = None
+
+            # 토스트 라벨 생성 (화면 중앙 상단)
+            self._toast_label = tk.Label(
+                self.root,
+                text=message,
+                font=(FONT_FAMILY, 24, "bold"),
+                fg="white",
+                bg="#E74C3C",  # 빨간색 배경
+                padx=20,
+                pady=10
+            )
+            # 화면 상단 중앙에 배치
+            self._toast_label.place(relx=0.5, rely=0.15, anchor="center")
+
+            # 일정 시간 후 자동 제거
+            self._toast_timer = self.root.after(duration_ms, self._hide_toast)
+
+        except Exception as e:
+            print(f"[토스트] 표시 오류: {e}")
+
+    def _hide_toast(self):
+        """토스트 메시지 숨기기"""
+        try:
+            if hasattr(self, '_toast_label') and self._toast_label:
+                self._toast_label.destroy()
+                self._toast_label = None
+            self._toast_timer = None
+        except:
+            pass
 
     def update_clock(self):
         """Update time and date in header"""
