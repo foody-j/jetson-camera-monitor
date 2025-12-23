@@ -110,5 +110,5 @@
 
   "_comment_dynamic_camera": "동적 카메라 ON/OFF (3-of-4 전략)",
   "_comment_dynamic_camera2": "true=투입 시 튀김솥 카메라 ON/배출 후 OFF, false=카메라 0,1,2 항상 ON",
-  "dynamic_camera_enabled": false
+  "dynamic_camera_enabled": true
 }
