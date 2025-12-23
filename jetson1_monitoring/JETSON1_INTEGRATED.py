@@ -1512,8 +1512,16 @@ class IntegratedMonitorApp:
             self.night_check_active = False
             self.night_no_person_deadline = None
             self.off_triggered_once = False
+            self.periodic_off_active = False  # 주기적 OFF 중지
             print("[모드] 주간 모드로 전환됨")
             self.auto_mode_label.config(text="모드: 주간", fg=COLOR_INFO)
+
+            # 주간 시작 시 ON 펄스 전송
+            if AUTO_RELAY_ENABLED:
+                print("[ON 펄스] 주간 모드 시작 - ON 펄스 전송")
+                self.relay_turn_on(publish_to_jetson2=True)
+                self.publish_mqtt("ON")
+                self.auto_detection_label.config(text="감지: ON 전송 ✓", fg=COLOR_OK)
 
         self.prev_daytime = daytime
 
