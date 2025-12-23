@@ -160,6 +160,9 @@ VIBRATION_TEST_MODE = config.get('vibration_test_mode', False)  # True=Vibration
 RELAY_MODE = config.get('relay_mode', 'pulse')
 AUTO_RELAY_ENABLED = config.get('auto_relay_enabled', True)
 JETSON2_SHUTDOWN_DELAY_SEC = config.get('jetson2_shutdown_delay_sec', 3)
+PERIODIC_OFF_PULSE_ENABLED = config.get('periodic_off_pulse_enabled', True)
+PERIODIC_OFF_PULSE_INTERVAL_MIN = config.get('periodic_off_pulse_interval_min', 5)
+PERIODIC_OFF_TEST_MODE = config.get('periodic_off_test_mode', False)  # 테스트: 즉시 주기적 OFF
 
 # Stir-fry monitoring configuration - TWO CAMERAS
 STIRFRY_LEFT_ENABLED = config.get('stirfry_left_enabled', True)
@@ -351,6 +354,15 @@ class IntegratedMonitorApp:
 
         # Relay control via GPIO
         self.relay_enabled = False  # Relay current state
+
+        # 주기적 OFF 펄스 (브로커 PC 상시전원용)
+        self.last_periodic_off_pulse_time = None
+        self.periodic_off_active = False  # 주기적 OFF 모드 활성화 여부
+
+        # 테스트 모드: 시작 시 바로 주기적 OFF 활성화
+        if PERIODIC_OFF_TEST_MODE:
+            self.periodic_off_active = True
+            print(f"[OFF 펄스] 테스트 모드 활성화 - {PERIODIC_OFF_PULSE_INTERVAL_MIN}분 간격 OFF 펄스")
 
         # OpenCV background subtractor
         self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
@@ -921,6 +933,53 @@ class IntegratedMonitorApp:
             except Exception as e:
                 print(f"[GPIO] Relay OFF 실패: {e}")
 
+    def send_off_pulse(self, now):
+        """OFF 펄스 전송 (Jetson2 + 로봇 PC + 릴레이)"""
+        print("[OFF 펄스] 전송 시작...")
+
+        if AUTO_RELAY_ENABLED:
+            # Jetson #2에 OFF 신호
+            self.publish_relay_status("OFF")
+            print("[OFF 펄스] Jetson #2에 OFF 전송")
+
+            # 로봇 PC OFF
+            self.publish_mqtt("OFF")
+            print("[OFF 펄스] 로봇 PC OFF 전송")
+
+            # Jetson #1 릴레이 OFF
+            self.relay_turn_off()
+            print("[OFF 펄스] Jetson #1 릴레이 OFF")
+        else:
+            self.publish_mqtt("OFF")
+            print("[OFF 펄스] MQTT OFF만 전송 (릴레이 비활성화)")
+
+        self.last_periodic_off_pulse_time = now
+        self.auto_detection_label.config(text="감지: OFF 전송 ✓", fg=COLOR_OK)
+        print("[OFF 펄스] 전송 완료")
+
+    def check_periodic_off_pulse(self, now):
+        """주기적 OFF 펄스 체크 및 전송"""
+        if not PERIODIC_OFF_PULSE_ENABLED:
+            return
+
+        if not self.periodic_off_active:
+            return
+
+        # 테스트 모드: 즉시 활성화
+        if PERIODIC_OFF_TEST_MODE and self.last_periodic_off_pulse_time is None:
+            print("[OFF 펄스] 테스트 모드 - 즉시 첫 펄스 전송")
+            self.send_off_pulse(now)
+            return
+
+        # 주기 체크
+        if self.last_periodic_off_pulse_time is not None:
+            elapsed = (now - self.last_periodic_off_pulse_time).total_seconds()
+            interval_sec = PERIODIC_OFF_PULSE_INTERVAL_MIN * 60
+
+            if elapsed >= interval_sec:
+                print(f"[OFF 펄스] {PERIODIC_OFF_PULSE_INTERVAL_MIN}분 경과 - 주기적 OFF 펄스 전송")
+                self.send_off_pulse(now)
+
     def init_mqtt(self):
         """Initialize MQTT connection with new centralized client"""
         if not MQTT_ENABLED:
@@ -1461,8 +1520,13 @@ class IntegratedMonitorApp:
         # Process based on mode
         if daytime:
             self.process_day_mode(frame, now)
+            # 주간 모드로 전환되면 주기적 OFF 비활성화
+            self.periodic_off_active = False
         else:
             self.process_night_mode(frame, now)
+
+        # 주기적 OFF 펄스 체크 (야간 + 사람 미감지 시)
+        self.check_periodic_off_pulse(now)
 
         # Update preview
         self.update_auto_preview(frame)
@@ -1585,28 +1649,15 @@ class IntegratedMonitorApp:
                     print("야간 모드 종료 시퀀스 시작")
                     print("=" * 50)
 
-                    # Step 1: Turn off Jetson #2 first (via MQTT relay sync)
-                    if AUTO_RELAY_ENABLED:
-                        print("[1/3] Jetson #2 제어 PC 종료 신호 전송 중...")
-                        self.publish_relay_status("OFF")
-                        print("[1/3] Jetson #2에 OFF 신호 전송 완료")
-
-                        # Step 2: Wait for Jetson #2 to receive and shutdown
-                        print(f"[2/3] Jetson #2 종료 대기 중... ({JETSON2_SHUTDOWN_DELAY_SEC}초)")
-                        time.sleep(JETSON2_SHUTDOWN_DELAY_SEC)
-
-                        # Step 3: Turn off Robot PC and Jetson #1
-                        print("[3/3] 로봇 PC 및 Jetson #1 제어 PC 종료 중...")
-                        self.publish_mqtt("OFF")  # Turn off Robot PC
-                        self.relay_turn_off()     # Turn off Jetson #1's control PC
-                        print("[3/3] 전체 종료 완료")
-                    else:
-                        # If auto relay is disabled, just send MQTT OFF
-                        print("[릴레이] 자동 제어 비활성화됨 - MQTT OFF만 전송")
-                        self.publish_mqtt("OFF")
-
+                    # 첫 OFF 펄스 전송
+                    self.send_off_pulse(now)
                     self.off_triggered_once = True
-                    self.auto_detection_label.config(text="감지: OFF 전송 ✓", fg=COLOR_OK)
+
+                    # 주기적 OFF 펄스 모드 활성화
+                    if PERIODIC_OFF_PULSE_ENABLED:
+                        self.periodic_off_active = True
+                        print(f"[릴레이] 주기적 OFF 펄스 활성화 ({PERIODIC_OFF_PULSE_INTERVAL_MIN}분 간격)")
+
                 self.night_check_active = False
                 self.night_no_person_deadline = None
             else:
