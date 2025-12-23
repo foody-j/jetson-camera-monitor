@@ -1007,13 +1007,9 @@ class JetsonIntegratedApp:
                         if not self.pot1_collecting:
                             self.pot1_food_type = recipe if recipe else "unknown"
                             print(f"[로봇상태] POT1(왼쪽) 데이터 수집 시작 - {self.pot1_food_type}")
-                            # 카메라 동적 ON (3-of-4 전략) - dynamic_camera_enabled=true인 경우만
-                            if DYNAMIC_CAMERA_ENABLED:
-                                self.root.after(0, lambda: self.start_frying_camera("0"))
+                            # 카메라 동적 ON (1-of-4 전략: 항상 전환)
+                            self.root.after(0, lambda: self.start_frying_camera("0"))
                             self.root.after(0, self.start_pot1_collection)
-                            # Observe AI 자동 시작
-                            if not self.observe_running:
-                                self.root.after(0, self.start_observe_ai)
                             # 토스트 메시지 표시
                             self.root.after(0, lambda r=recipe: self.show_toast(f"튀김 POT1: {r}" if r else "튀김 POT1: 투입"))
                     elif process_type == "배출":
@@ -1032,13 +1028,9 @@ class JetsonIntegratedApp:
                         if not self.pot2_collecting:
                             self.pot2_food_type = recipe if recipe else "unknown"
                             print(f"[로봇상태] POT2(오른쪽) 데이터 수집 시작 - {self.pot2_food_type}")
-                            # 카메라 동적 ON (3-of-4 전략) - dynamic_camera_enabled=true인 경우만
-                            if DYNAMIC_CAMERA_ENABLED:
-                                self.root.after(0, lambda: self.start_frying_camera("1"))
+                            # 카메라 동적 ON (1-of-4 전략: 항상 전환)
+                            self.root.after(0, lambda: self.start_frying_camera("1"))
                             self.root.after(0, self.start_pot2_collection)
-                            # Observe AI 자동 시작
-                            if not self.observe_running:
-                                self.root.after(0, self.start_observe_ai)
                             # 토스트 메시지 표시
                             self.root.after(0, lambda r=recipe: self.show_toast(f"튀김 POT2: {r}" if r else "튀김 POT2: 투입"))
                     elif process_type == "배출":
@@ -2842,13 +2834,9 @@ class JetsonIntegratedApp:
             if not self.pot1_collecting:
                 self.pot1_food_type = recipe
                 print(f"[시뮬레이션] POT1 데이터 수집 시작")
-                # 카메라 동적 ON (dynamic_camera_enabled=true인 경우만)
-                if DYNAMIC_CAMERA_ENABLED:
-                    self.root.after(0, lambda: self.start_frying_camera("0"))
+                # 카메라 동적 ON (1-of-4 전략: 항상 전환)
+                self.root.after(0, lambda: self.start_frying_camera("0"))
                 self.root.after(0, self.start_pot1_collection)
-                # Observe AI 자동 시작
-                if not self.observe_running:
-                    self.root.after(0, self.start_observe_ai)
                 # 토스트 메시지 표시
                 self.show_toast(f"[시뮬] POT1 투입: {recipe}")
             else:
@@ -2865,13 +2853,9 @@ class JetsonIntegratedApp:
             if not self.pot2_collecting:
                 self.pot2_food_type = recipe
                 print(f"[시뮬레이션] POT2 데이터 수집 시작")
-                # 카메라 동적 ON (dynamic_camera_enabled=true인 경우만)
-                if DYNAMIC_CAMERA_ENABLED:
-                    self.root.after(0, lambda: self.start_frying_camera("1"))
+                # 카메라 동적 ON (1-of-4 전략: 항상 전환)
+                self.root.after(0, lambda: self.start_frying_camera("1"))
                 self.root.after(0, self.start_pot2_collection)
-                # Observe AI 자동 시작
-                if not self.observe_running:
-                    self.root.after(0, self.start_observe_ai)
                 # 토스트 메시지 표시
                 self.show_toast(f"[시뮬] POT2 투입: {recipe}")
             else:
