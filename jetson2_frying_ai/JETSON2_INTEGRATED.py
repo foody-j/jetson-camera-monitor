@@ -1672,7 +1672,7 @@ class JetsonIntegratedApp:
             print("[카메라] 카메라 초기화 완료! (0,1,2 항상 ON)")
 
     def start_frying_camera(self, pot_num):
-        """튀김솥 카메라 동적 시작 (3-of-4 전략)
+        """튀김솥 카메라 동적 시작 (2-of-4 전략: 최대 2개 카메라만 동시 스트리밍)
 
         Args:
             pot_num: "0" = 왼쪽(POT1), "1" = 오른쪽(POT2)
@@ -1685,6 +1685,16 @@ class JetsonIntegratedApp:
             if self.frying_left_streaming:
                 print(f"[카메라] 튀김솥 왼쪽 이미 스트리밍 중")
                 return
+
+            # 2-of-4 전략: 바켓 오른쪽(video3) 끄고 튀김솥 왼쪽(video0) 시작
+            if self.observe_right_cap:
+                print(f"[카메라] 2-of-4 전략: 바켓 오른쪽 OFF → 튀김솥 왼쪽 ON")
+                try:
+                    self.observe_right_cap.stop()
+                except:
+                    pass
+                self.observe_right_cap = None
+                time.sleep(0.5)  # 장치 해제 대기
 
             print(f"[카메라] 튀김솥 왼쪽 동적 시작 중...")
             self.frying_left_cap = GstCamera(
@@ -1706,6 +1716,16 @@ class JetsonIntegratedApp:
                 print(f"[카메라] 튀김솥 오른쪽 이미 스트리밍 중")
                 return
 
+            # 2-of-4 전략: 바켓 왼쪽(video2) 끄고 튀김솥 오른쪽(video1) 시작
+            if self.observe_left_cap:
+                print(f"[카메라] 2-of-4 전략: 바켓 왼쪽 OFF → 튀김솥 오른쪽 ON")
+                try:
+                    self.observe_left_cap.stop()
+                except:
+                    pass
+                self.observe_left_cap = None
+                time.sleep(0.5)  # 장치 해제 대기
+
             print(f"[카메라] 튀김솥 오른쪽 동적 시작 중...")
             self.frying_right_cap = GstCamera(
                 device_index=FRYING_RIGHT_CAMERA_INDEX,
@@ -1721,7 +1741,7 @@ class JetsonIntegratedApp:
                 self.frying_right_cap = None
 
     def stop_frying_camera(self, pot_num):
-        """튀김솥 카메라 동적 중지 (3-of-4 전략)
+        """튀김솥 카메라 동적 중지 (2-of-4 전략: 튀김솥 OFF → 바켓 ON)
 
         Args:
             pot_num: "0" = 왼쪽(POT1), "1" = 오른쪽(POT2)
@@ -1741,6 +1761,22 @@ class JetsonIntegratedApp:
             self.frying_left_streaming = False
             print(f"[카메라] 튀김솥 왼쪽 중지 완료 ✓")
 
+            # 2-of-4 전략: 바켓 오른쪽(video3) 다시 시작
+            if OBSERVE_ENABLED and OBSERVE_RIGHT_ENABLED and self.observe_right_cap is None:
+                time.sleep(0.5)  # 장치 해제 대기
+                print(f"[카메라] 2-of-4 전략: 바켓 오른쪽 다시 ON")
+                self.observe_right_cap = GstCamera(
+                    device_index=OBSERVE_RIGHT_CAMERA_INDEX,
+                    width=CAMERA_WIDTH,
+                    height=CAMERA_HEIGHT,
+                    fps=CAMERA_FPS
+                )
+                if self.observe_right_cap.start():
+                    print(f"[카메라] 바켓 오른쪽 (video{OBSERVE_RIGHT_CAMERA_INDEX}) 재시작 완료 ✓")
+                else:
+                    print(f"[카메라] 바켓 오른쪽 재시작 실패 ✗")
+                    self.observe_right_cap = None
+
         elif pot_num == "1":
             # POT2 (오른쪽) 카메라 중지
             if not self.frying_right_streaming:
@@ -1755,6 +1791,22 @@ class JetsonIntegratedApp:
                 self.frying_right_cap = None
             self.frying_right_streaming = False
             print(f"[카메라] 튀김솥 오른쪽 중지 완료 ✓")
+
+            # 2-of-4 전략: 바켓 왼쪽(video2) 다시 시작
+            if OBSERVE_ENABLED and OBSERVE_LEFT_ENABLED and self.observe_left_cap is None:
+                time.sleep(0.5)  # 장치 해제 대기
+                print(f"[카메라] 2-of-4 전략: 바켓 왼쪽 다시 ON")
+                self.observe_left_cap = GstCamera(
+                    device_index=OBSERVE_LEFT_CAMERA_INDEX,
+                    width=CAMERA_WIDTH,
+                    height=CAMERA_HEIGHT,
+                    fps=CAMERA_FPS
+                )
+                if self.observe_left_cap.start():
+                    print(f"[카메라] 바켓 왼쪽 (video{OBSERVE_LEFT_CAMERA_INDEX}) 재시작 완료 ✓")
+                else:
+                    print(f"[카메라] 바켓 왼쪽 재시작 실패 ✗")
+                    self.observe_left_cap = None
 
     # =========================
     # Toast Message (투입 시 레시피 표시)
