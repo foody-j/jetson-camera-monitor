@@ -3749,42 +3749,26 @@ class JetsonIntegratedApp:
                     except Exception as e:
                         print(f"[종료] 자식 프로세스 종료 오류: {e}")
 
-                # Stop cameras with timeout
-                print("[종료] 카메라 해제 중...")
-                import threading
+                # Stop cameras SEQUENTIALLY (RTCPU 보호를 위해 순차 종료)
+                print("[종료] 카메라 순차 해제 중... (RTCPU 보호)")
 
                 def stop_camera_safe(cap, name):
                     try:
                         cap.stop()
                         print(f"[종료] {name} 해제 완료")
+                        time.sleep(0.5)  # 장치 해제 대기
                     except Exception as e:
                         print(f"[종료] {name} 해제 오류: {e}")
 
-                threads = []
+                # 순차적으로 하나씩 종료 (병렬 종료하면 RTCPU 꼬임)
                 if self.frying_left_cap:
-                    t = threading.Thread(target=stop_camera_safe, args=(self.frying_left_cap, "frying_left"))
-                    t.daemon = True
-                    t.start()
-                    threads.append(t)
+                    stop_camera_safe(self.frying_left_cap, "frying_left")
                 if self.frying_right_cap:
-                    t = threading.Thread(target=stop_camera_safe, args=(self.frying_right_cap, "frying_right"))
-                    t.daemon = True
-                    t.start()
-                    threads.append(t)
+                    stop_camera_safe(self.frying_right_cap, "frying_right")
                 if self.observe_left_cap:
-                    t = threading.Thread(target=stop_camera_safe, args=(self.observe_left_cap, "observe_left"))
-                    t.daemon = True
-                    t.start()
-                    threads.append(t)
+                    stop_camera_safe(self.observe_left_cap, "observe_left")
                 if self.observe_right_cap:
-                    t = threading.Thread(target=stop_camera_safe, args=(self.observe_right_cap, "observe_right"))
-                    t.daemon = True
-                    t.start()
-                    threads.append(t)
-
-                # Wait for all threads with timeout
-                for t in threads:
-                    t.join(timeout=2.0)
+                    stop_camera_safe(self.observe_right_cap, "observe_right")
 
                 print("[종료] 카메라 해제 완료")
 

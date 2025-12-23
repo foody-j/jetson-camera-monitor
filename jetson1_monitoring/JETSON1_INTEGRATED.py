@@ -3112,39 +3112,24 @@ class IntegratedMonitorApp:
                     except Exception as e:
                         print(f"[종료] 자식 프로세스 종료 오류: {e}")
 
-                # Cleanup GstCamera cameras with timeout
-                print("[종료] 카메라 해제 중...")
-                import threading
+                # Cleanup GstCamera cameras SEQUENTIALLY (RTCPU 보호)
+                print("[종료] 카메라 순차 해제 중... (RTCPU 보호)")
 
                 def stop_camera_safe(cap, name):
                     try:
                         cap.stop()
                         print(f"[종료] {name} 해제 완료")
+                        time.sleep(0.5)  # 장치 해제 대기
                     except Exception as e:
                         print(f"[종료] {name} 해제 오류: {e}")
 
-                threads = []
+                # 순차적으로 하나씩 종료 (병렬 종료하면 RTCPU 꼬임)
                 if self.auto_cap is not None:
-                    t = threading.Thread(target=stop_camera_safe, args=(self.auto_cap, "auto_cap"))
-                    t.daemon = True
-                    t.start()
-                    threads.append(t)
-
+                    stop_camera_safe(self.auto_cap, "auto_cap")
                 if self.stirfry_left_cap is not None:
-                    t = threading.Thread(target=stop_camera_safe, args=(self.stirfry_left_cap, "stirfry_left"))
-                    t.daemon = True
-                    t.start()
-                    threads.append(t)
-
+                    stop_camera_safe(self.stirfry_left_cap, "stirfry_left")
                 if self.stirfry_right_cap is not None:
-                    t = threading.Thread(target=stop_camera_safe, args=(self.stirfry_right_cap, "stirfry_right"))
-                    t.daemon = True
-                    t.start()
-                    threads.append(t)
-
-                # Wait for all threads with timeout
-                for t in threads:
-                    t.join(timeout=2.0)
+                    stop_camera_safe(self.stirfry_right_cap, "stirfry_right")
 
                 print("[종료] 카메라 해제 완료")
 
