@@ -2431,7 +2431,7 @@ class JetsonIntegratedApp:
         # Create popup window
         status_window = tk.Toplevel(self.root)
         status_window.title("PC 상태")
-        status_window.geometry("700x900")
+        status_window.geometry("700x800")
         status_window.configure(bg=COLOR_BG)
 
         # Center the window
@@ -2441,12 +2441,41 @@ class JetsonIntegratedApp:
         status_window.lift()
         status_window.focus_force()
 
+        # Scrollable frame setup
+        canvas = tk.Canvas(status_window, bg=COLOR_BG, highlightthickness=0)
+        scrollbar = tk.Scrollbar(status_window, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=COLOR_BG)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Mouse wheel scroll
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        def _on_mousewheel_linux(event):
+            if event.num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                canvas.yview_scroll(1, "units")
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        canvas.bind_all("<Button-4>", _on_mousewheel_linux)
+        canvas.bind_all("<Button-5>", _on_mousewheel_linux)
+
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
         # Title
-        tk.Label(status_window, text="[ PC 시스템 상태 ]", font=LARGE_FONT,
+        tk.Label(scrollable_frame, text="[ PC 시스템 상태 ]", font=LARGE_FONT,
                 bg=COLOR_BG, fg=COLOR_TEXT).pack(pady=20)
 
         # Info frame
-        info_frame = tk.Frame(status_window, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
+        info_frame = tk.Frame(scrollable_frame, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
         info_frame.pack(pady=20, padx=40, fill=tk.BOTH, expand=True)
 
         if psutil is None:
@@ -2538,7 +2567,7 @@ class JetsonIntegratedApp:
                         bg=COLOR_PANEL, fg=COLOR_ERROR).pack(pady=20)
 
         # Relay Control Section
-        control_frame = tk.Frame(status_window, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
+        control_frame = tk.Frame(scrollable_frame, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
         control_frame.pack(pady=10, padx=40, fill=tk.X)
 
         tk.Label(control_frame, text="[ 릴레이 제어 ]", font=LARGE_FONT,
@@ -2601,7 +2630,7 @@ class JetsonIntegratedApp:
                 font=NORMAL_FONT, bg=COLOR_PANEL, fg=COLOR_WARNING).pack(pady=5)
 
         # ========== 카메라 테스트 섹션 ==========
-        camera_frame = tk.Frame(status_window, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
+        camera_frame = tk.Frame(scrollable_frame, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
         camera_frame.pack(fill=tk.X, padx=20, pady=10)
 
         tk.Label(camera_frame, text="[ 카메라 테스트 ]", font=MEDIUM_FONT,
@@ -2632,7 +2661,7 @@ class JetsonIntegratedApp:
                  command=lambda: self._test_camera_off(3)).pack(side=tk.LEFT, padx=3)
 
         # ========== 투입/배출 시뮬레이션 섹션 ==========
-        sim_frame = tk.Frame(status_window, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
+        sim_frame = tk.Frame(scrollable_frame, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
         sim_frame.pack(fill=tk.X, padx=20, pady=10)
 
         tk.Label(sim_frame, text="[ 투입/배출 시뮬레이션 ]", font=MEDIUM_FONT,
@@ -2650,7 +2679,7 @@ class JetsonIntegratedApp:
                  command=lambda: self._simulate_discharge("1")).pack(side=tk.LEFT, padx=3)
 
         # Close button
-        tk.Button(status_window, text="[ 닫기 ]", font=MEDIUM_FONT,
+        tk.Button(scrollable_frame, text="[ 닫기 ]", font=MEDIUM_FONT,
                  command=status_window.destroy, width=15,
                  bg=COLOR_INFO, fg="white", relief=tk.FLAT).pack(pady=20)
 
