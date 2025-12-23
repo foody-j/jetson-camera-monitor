@@ -78,6 +78,8 @@
   "periodic_off_pulse_interval_min": 5,
   "_comment_periodic_off_test_mode": "테스트 모드: true=야간/사람감지 무관하게 즉시 주기적 OFF 펄스",
   "periodic_off_test_mode": false,
+  "_comment_startup_on_pulse": "시작 시 즉시 ON 펄스 전송 (테스트용)",
+  "startup_on_pulse_enabled": false,
   "_comment_jetson2_shutdown_delay": "Jetson #2 종료 대기 시간 (초) - Jetson #2 OFF 신호 후 Jetson #1 OFF까지 대기",
   "jetson2_shutdown_delay_sec": 3,
   "_comment_camera_person_enabled": "사람 감지 카메라 사용 여부 (true=사용, false=미사용)",

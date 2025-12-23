@@ -163,6 +163,7 @@ JETSON2_SHUTDOWN_DELAY_SEC = config.get('jetson2_shutdown_delay_sec', 3)
 PERIODIC_OFF_PULSE_ENABLED = config.get('periodic_off_pulse_enabled', True)
 PERIODIC_OFF_PULSE_INTERVAL_MIN = config.get('periodic_off_pulse_interval_min', 5)
 PERIODIC_OFF_TEST_MODE = config.get('periodic_off_test_mode', False)  # 테스트: 즉시 주기적 OFF
+STARTUP_ON_PULSE_ENABLED = config.get('startup_on_pulse_enabled', False)  # 테스트: 시작 시 ON
 
 # Stir-fry monitoring configuration - TWO CAMERAS
 STIRFRY_LEFT_ENABLED = config.get('stirfry_left_enabled', True)
@@ -390,6 +391,13 @@ class IntegratedMonitorApp:
         self.init_mqtt()
         self.init_cameras()
         self.init_yolo()
+
+        # 테스트 모드: 시작 시 ON 펄스 전송
+        if STARTUP_ON_PULSE_ENABLED and AUTO_RELAY_ENABLED:
+            print("[ON 펄스] 테스트 모드 - 시작 시 ON 펄스 전송")
+            self.relay_turn_on(publish_to_jetson2=True)
+            self.publish_mqtt("ON")
+            print("[ON 펄스] 전송 완료")
 
         # Start update loops
         self.update_clock()
