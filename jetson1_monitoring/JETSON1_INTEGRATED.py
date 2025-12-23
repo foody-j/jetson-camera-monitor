@@ -942,7 +942,7 @@ class IntegratedMonitorApp:
                 print(f"[GPIO] Relay OFF 실패: {e}")
 
     def send_off_pulse(self, now):
-        """OFF 펄스 전송 (Jetson2 + 로봇 PC + 릴레이)"""
+        """OFF 펄스 전송 (Jetson2 + 로봇 PC + 릴레이) - relay_enabled 상태 무관하게 전송"""
         print("[OFF 펄스] 전송 시작...")
 
         if AUTO_RELAY_ENABLED:
@@ -954,9 +954,19 @@ class IntegratedMonitorApp:
             self.publish_mqtt("OFF")
             print("[OFF 펄스] 로봇 PC OFF 전송")
 
-            # Jetson #1 릴레이 OFF
-            self.relay_turn_off()
-            print("[OFF 펄스] Jetson #1 릴레이 OFF")
+            # Jetson #1 릴레이 OFF (상태 무관하게 직접 펄스)
+            try:
+                if self.relay_mode == 'pulse':
+                    GPIO.output(29, GPIO.HIGH)
+                    time.sleep(0.2)
+                    GPIO.output(29, GPIO.LOW)
+                    print("[OFF 펄스] Jetson #1 릴레이 OFF (Pin 29 펄스)")
+                else:
+                    GPIO.output(29, GPIO.LOW)
+                    print("[OFF 펄스] Jetson #1 릴레이 OFF (Pin 29 LOW)")
+                self.relay_enabled = False
+            except Exception as e:
+                print(f"[OFF 펄스] GPIO 오류: {e}")
         else:
             self.publish_mqtt("OFF")
             print("[OFF 펄스] MQTT OFF만 전송 (릴레이 비활성화)")
