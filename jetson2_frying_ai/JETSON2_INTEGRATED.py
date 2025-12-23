@@ -1849,6 +1849,8 @@ class JetsonIntegratedApp:
             return
 
         if self.frying_left_cap is None:
+            # 카메라 없어도 다음 스케줄 유지 (동적 ON/OFF 지원)
+            self.root.after(GUI_UPDATE_INTERVAL, self.update_frying_left)
             return
 
         ret, frame = self.frying_left_cap.read()
@@ -1967,6 +1969,8 @@ class JetsonIntegratedApp:
             return
 
         if self.frying_right_cap is None:
+            # 카메라 없어도 다음 스케줄 유지 (동적 ON/OFF 지원)
+            self.root.after(GUI_UPDATE_INTERVAL, self.update_frying_right)
             return
 
         ret, frame = self.frying_right_cap.read()
@@ -2070,6 +2074,8 @@ class JetsonIntegratedApp:
             return
 
         if self.observe_left_cap is None:
+            # 카메라 없어도 다음 스케줄 유지 (동적 ON/OFF 지원)
+            self.root.after(GUI_UPDATE_INTERVAL, self.update_observe_left)
             return
 
         ret, frame = self.observe_left_cap.read()
@@ -2228,6 +2234,8 @@ class JetsonIntegratedApp:
             return
 
         if self.observe_right_cap is None:
+            # 카메라 없어도 다음 스케줄 유지 (동적 ON/OFF 지원)
+            self.root.after(GUI_UPDATE_INTERVAL, self.update_observe_right)
             return
 
         ret, frame = self.observe_right_cap.read()
