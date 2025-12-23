@@ -2583,12 +2583,288 @@ class JetsonIntegratedApp:
         tk.Label(control_frame, text="※ 수동으로 제어하면 자동 모드가 재개됩니다",
                 font=NORMAL_FONT, bg=COLOR_PANEL, fg=COLOR_WARNING).pack(pady=5)
 
+        # ========== 카메라 테스트 섹션 ==========
+        camera_frame = tk.Frame(status_window, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
+        camera_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        tk.Label(camera_frame, text="[ 카메라 테스트 ]", font=MEDIUM_FONT,
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(pady=10)
+
+        # Video 0, 1 (튀김솥)
+        row1 = tk.Frame(camera_frame, bg=COLOR_PANEL)
+        row1.pack(pady=5)
+        tk.Button(row1, text="Video0 ON", font=NORMAL_FONT, width=10, bg="#27AE60", fg="white",
+                 command=lambda: self._test_camera_on(0)).pack(side=tk.LEFT, padx=3)
+        tk.Button(row1, text="Video0 OFF", font=NORMAL_FONT, width=10, bg="#E74C3C", fg="white",
+                 command=lambda: self._test_camera_off(0)).pack(side=tk.LEFT, padx=3)
+        tk.Button(row1, text="Video1 ON", font=NORMAL_FONT, width=10, bg="#27AE60", fg="white",
+                 command=lambda: self._test_camera_on(1)).pack(side=tk.LEFT, padx=3)
+        tk.Button(row1, text="Video1 OFF", font=NORMAL_FONT, width=10, bg="#E74C3C", fg="white",
+                 command=lambda: self._test_camera_off(1)).pack(side=tk.LEFT, padx=3)
+
+        # Video 2, 3 (바켓)
+        row2 = tk.Frame(camera_frame, bg=COLOR_PANEL)
+        row2.pack(pady=5)
+        tk.Button(row2, text="Video2 ON", font=NORMAL_FONT, width=10, bg="#27AE60", fg="white",
+                 command=lambda: self._test_camera_on(2)).pack(side=tk.LEFT, padx=3)
+        tk.Button(row2, text="Video2 OFF", font=NORMAL_FONT, width=10, bg="#E74C3C", fg="white",
+                 command=lambda: self._test_camera_off(2)).pack(side=tk.LEFT, padx=3)
+        tk.Button(row2, text="Video3 ON", font=NORMAL_FONT, width=10, bg="#27AE60", fg="white",
+                 command=lambda: self._test_camera_on(3)).pack(side=tk.LEFT, padx=3)
+        tk.Button(row2, text="Video3 OFF", font=NORMAL_FONT, width=10, bg="#E74C3C", fg="white",
+                 command=lambda: self._test_camera_off(3)).pack(side=tk.LEFT, padx=3)
+
+        # ========== 투입/배출 시뮬레이션 섹션 ==========
+        sim_frame = tk.Frame(status_window, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
+        sim_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        tk.Label(sim_frame, text="[ 투입/배출 시뮬레이션 ]", font=MEDIUM_FONT,
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(pady=10)
+
+        sim_row = tk.Frame(sim_frame, bg=COLOR_PANEL)
+        sim_row.pack(pady=5)
+        tk.Button(sim_row, text="POT1 투입", font=NORMAL_FONT, width=10, bg="#3498DB", fg="white",
+                 command=lambda: self._simulate_input("0")).pack(side=tk.LEFT, padx=3)
+        tk.Button(sim_row, text="POT1 배출", font=NORMAL_FONT, width=10, bg="#9B59B6", fg="white",
+                 command=lambda: self._simulate_discharge("0")).pack(side=tk.LEFT, padx=3)
+        tk.Button(sim_row, text="POT2 투입", font=NORMAL_FONT, width=10, bg="#3498DB", fg="white",
+                 command=lambda: self._simulate_input("1")).pack(side=tk.LEFT, padx=3)
+        tk.Button(sim_row, text="POT2 배출", font=NORMAL_FONT, width=10, bg="#9B59B6", fg="white",
+                 command=lambda: self._simulate_discharge("1")).pack(side=tk.LEFT, padx=3)
+
         # Close button
         tk.Button(status_window, text="[ 닫기 ]", font=MEDIUM_FONT,
                  command=status_window.destroy, width=15,
                  bg=COLOR_INFO, fg="white", relief=tk.FLAT).pack(pady=20)
 
         print("[PC상태] PC 상태 창 열림")
+
+    def _test_camera_on(self, video_index):
+        """카메라 테스트: 특정 video 인덱스 카메라 켜기
+
+        Args:
+            video_index: 0=튀김 왼쪽, 1=튀김 오른쪽, 2=바켓 왼쪽, 3=바켓 오른쪽
+        """
+        print(f"[카메라 테스트] video{video_index} ON 요청")
+
+        if video_index == 0:
+            # 튀김 왼쪽 (POT1)
+            if self.frying_left_streaming:
+                print(f"[카메라 테스트] video{video_index} 이미 스트리밍 중")
+                return
+            self.frying_left_cap = GstCamera(
+                device_index=FRYING_LEFT_CAMERA_INDEX,
+                width=CAMERA_WIDTH,
+                height=CAMERA_HEIGHT,
+                fps=CAMERA_FPS
+            )
+            if self.frying_left_cap.start():
+                self.frying_left_streaming = True
+                print(f"[카메라 테스트] video{video_index} (튀김 왼쪽) ON 성공 ✓")
+            else:
+                print(f"[카메라 테스트] video{video_index} ON 실패 ✗")
+                self.frying_left_cap = None
+
+        elif video_index == 1:
+            # 튀김 오른쪽 (POT2)
+            if self.frying_right_streaming:
+                print(f"[카메라 테스트] video{video_index} 이미 스트리밍 중")
+                return
+            self.frying_right_cap = GstCamera(
+                device_index=FRYING_RIGHT_CAMERA_INDEX,
+                width=CAMERA_WIDTH,
+                height=CAMERA_HEIGHT,
+                fps=CAMERA_FPS
+            )
+            if self.frying_right_cap.start():
+                self.frying_right_streaming = True
+                print(f"[카메라 테스트] video{video_index} (튀김 오른쪽) ON 성공 ✓")
+            else:
+                print(f"[카메라 테스트] video{video_index} ON 실패 ✗")
+                self.frying_right_cap = None
+
+        elif video_index == 2:
+            # 바켓 왼쪽
+            if self.observe_left_cap:
+                print(f"[카메라 테스트] video{video_index} 이미 스트리밍 중")
+                return
+            self.observe_left_cap = GstCamera(
+                device_index=OBSERVE_LEFT_CAMERA_INDEX,
+                width=CAMERA_WIDTH,
+                height=CAMERA_HEIGHT,
+                fps=CAMERA_FPS
+            )
+            if self.observe_left_cap.start():
+                print(f"[카메라 테스트] video{video_index} (바켓 왼쪽) ON 성공 ✓")
+            else:
+                print(f"[카메라 테스트] video{video_index} ON 실패 ✗")
+                self.observe_left_cap = None
+
+        elif video_index == 3:
+            # 바켓 오른쪽
+            if self.observe_right_cap:
+                print(f"[카메라 테스트] video{video_index} 이미 스트리밍 중")
+                return
+            self.observe_right_cap = GstCamera(
+                device_index=OBSERVE_RIGHT_CAMERA_INDEX,
+                width=CAMERA_WIDTH,
+                height=CAMERA_HEIGHT,
+                fps=CAMERA_FPS
+            )
+            if self.observe_right_cap.start():
+                print(f"[카메라 테스트] video{video_index} (바켓 오른쪽) ON 성공 ✓")
+            else:
+                print(f"[카메라 테스트] video{video_index} ON 실패 ✗")
+                self.observe_right_cap = None
+
+    def _test_camera_off(self, video_index):
+        """카메라 테스트: 특정 video 인덱스 카메라 끄기
+
+        Args:
+            video_index: 0=튀김 왼쪽, 1=튀김 오른쪽, 2=바켓 왼쪽, 3=바켓 오른쪽
+        """
+        print(f"[카메라 테스트] video{video_index} OFF 요청")
+
+        if video_index == 0:
+            # 튀김 왼쪽 (POT1)
+            if not self.frying_left_streaming and not self.frying_left_cap:
+                print(f"[카메라 테스트] video{video_index} 이미 꺼져있음")
+                return
+            if self.frying_left_cap:
+                try:
+                    self.frying_left_cap.stop()
+                except Exception as e:
+                    print(f"[카메라 테스트] video{video_index} 중지 오류: {e}")
+                self.frying_left_cap = None
+            self.frying_left_streaming = False
+            print(f"[카메라 테스트] video{video_index} (튀김 왼쪽) OFF 완료 ✓")
+
+        elif video_index == 1:
+            # 튀김 오른쪽 (POT2)
+            if not self.frying_right_streaming and not self.frying_right_cap:
+                print(f"[카메라 테스트] video{video_index} 이미 꺼져있음")
+                return
+            if self.frying_right_cap:
+                try:
+                    self.frying_right_cap.stop()
+                except Exception as e:
+                    print(f"[카메라 테스트] video{video_index} 중지 오류: {e}")
+                self.frying_right_cap = None
+            self.frying_right_streaming = False
+            print(f"[카메라 테스트] video{video_index} (튀김 오른쪽) OFF 완료 ✓")
+
+        elif video_index == 2:
+            # 바켓 왼쪽
+            if not self.observe_left_cap:
+                print(f"[카메라 테스트] video{video_index} 이미 꺼져있음")
+                return
+            try:
+                self.observe_left_cap.stop()
+            except Exception as e:
+                print(f"[카메라 테스트] video{video_index} 중지 오류: {e}")
+            self.observe_left_cap = None
+            print(f"[카메라 테스트] video{video_index} (바켓 왼쪽) OFF 완료 ✓")
+
+        elif video_index == 3:
+            # 바켓 오른쪽
+            if not self.observe_right_cap:
+                print(f"[카메라 테스트] video{video_index} 이미 꺼져있음")
+                return
+            try:
+                self.observe_right_cap.stop()
+            except Exception as e:
+                print(f"[카메라 테스트] video{video_index} 중지 오류: {e}")
+            self.observe_right_cap = None
+            print(f"[카메라 테스트] video{video_index} (바켓 오른쪽) OFF 완료 ✓")
+
+    def _simulate_input(self, pot_num):
+        """투입 시뮬레이션: MQTT 메시지 없이 직접 투입 처리
+
+        Args:
+            pot_num: "0" = POT1 (왼쪽), "1" = POT2 (오른쪽)
+        """
+        recipe = "테스트_레시피"
+        print(f"[시뮬레이션] POT{int(pot_num)+1} 투입 시뮬레이션 시작 - {recipe}")
+
+        if pot_num == "0":
+            # POT1 (왼쪽) 투입 처리
+            # 배출 타이머가 있으면 취소
+            if self.pot1_discharge_timer_id:
+                self.root.after_cancel(self.pot1_discharge_timer_id)
+                self.pot1_discharge_timer_id = None
+                print(f"[시뮬레이션] POT1 배출 타이머 취소")
+
+            if not self.pot1_collecting:
+                self.pot1_food_type = recipe
+                print(f"[시뮬레이션] POT1 데이터 수집 시작")
+                # 카메라 동적 ON (dynamic_camera_enabled=true인 경우만)
+                if DYNAMIC_CAMERA_ENABLED:
+                    self.root.after(0, lambda: self.start_frying_camera("0"))
+                self.root.after(0, self.start_pot1_collection)
+                # Observe AI 자동 시작
+                if not self.observe_running:
+                    self.root.after(0, self.start_observe_ai)
+                # 토스트 메시지 표시
+                self.show_toast(f"[시뮬] POT1 투입: {recipe}")
+            else:
+                print(f"[시뮬레이션] POT1 이미 수집 중")
+
+        elif pot_num == "1":
+            # POT2 (오른쪽) 투입 처리
+            # 배출 타이머가 있으면 취소
+            if self.pot2_discharge_timer_id:
+                self.root.after_cancel(self.pot2_discharge_timer_id)
+                self.pot2_discharge_timer_id = None
+                print(f"[시뮬레이션] POT2 배출 타이머 취소")
+
+            if not self.pot2_collecting:
+                self.pot2_food_type = recipe
+                print(f"[시뮬레이션] POT2 데이터 수집 시작")
+                # 카메라 동적 ON (dynamic_camera_enabled=true인 경우만)
+                if DYNAMIC_CAMERA_ENABLED:
+                    self.root.after(0, lambda: self.start_frying_camera("1"))
+                self.root.after(0, self.start_pot2_collection)
+                # Observe AI 자동 시작
+                if not self.observe_running:
+                    self.root.after(0, self.start_observe_ai)
+                # 토스트 메시지 표시
+                self.show_toast(f"[시뮬] POT2 투입: {recipe}")
+            else:
+                print(f"[시뮬레이션] POT2 이미 수집 중")
+
+    def _simulate_discharge(self, pot_num):
+        """배출 시뮬레이션: MQTT 메시지 없이 직접 배출 처리
+
+        Args:
+            pot_num: "0" = POT1 (왼쪽), "1" = POT2 (오른쪽)
+        """
+        print(f"[시뮬레이션] POT{int(pot_num)+1} 배출 시뮬레이션")
+
+        if pot_num == "0":
+            # POT1 (왼쪽) 배출 처리
+            if self.pot1_collecting and not self.pot1_discharge_timer_id:
+                delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
+                print(f"[시뮬레이션] POT1 배출 - {RECORDING_DELAY_AFTER_DISCHARGE}초 후 수집 종료")
+                self.pot1_discharge_timer_id = self.root.after(delay_ms, self._delayed_stop_pot1_collection)
+                self.show_toast(f"[시뮬] POT1 배출 ({RECORDING_DELAY_AFTER_DISCHARGE}초 후 종료)")
+            else:
+                if not self.pot1_collecting:
+                    print(f"[시뮬레이션] POT1 수집 중이 아님")
+                else:
+                    print(f"[시뮬레이션] POT1 이미 배출 대기 중")
+
+        elif pot_num == "1":
+            # POT2 (오른쪽) 배출 처리
+            if self.pot2_collecting and not self.pot2_discharge_timer_id:
+                delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
+                print(f"[시뮬레이션] POT2 배출 - {RECORDING_DELAY_AFTER_DISCHARGE}초 후 수집 종료")
+                self.pot2_discharge_timer_id = self.root.after(delay_ms, self._delayed_stop_pot2_collection)
+                self.show_toast(f"[시뮬] POT2 배출 ({RECORDING_DELAY_AFTER_DISCHARGE}초 후 종료)")
+            else:
+                if not self.pot2_collecting:
+                    print(f"[시뮬레이션] POT2 수집 중이 아님")
+                else:
+                    print(f"[시뮬레이션] POT2 이미 배출 대기 중")
 
     def on_jetson1_relay_status(self, client, userdata, message):
         """MQTT callback for Jetson #1 relay status synchronization"""
