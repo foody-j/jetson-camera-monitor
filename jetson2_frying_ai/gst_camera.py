@@ -162,14 +162,26 @@ class GstCamera:
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=0.3)
 
-        # Kill subprocess group
+        # Kill subprocess group - 먼저 SIGTERM으로 시도 (깔끔한 종료)
         if self.process:
             try:
-                os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
-                self.process.wait(timeout=0.3)
+                pgid = os.getpgid(self.process.pid)
+                # 먼저 SIGTERM으로 종료 시도 (v4l2 장치 해제를 위해)
+                os.killpg(pgid, signal.SIGTERM)
+                try:
+                    self.process.wait(timeout=0.5)
+                except subprocess.TimeoutExpired:
+                    # SIGTERM 실패시 SIGKILL
+                    os.killpg(pgid, signal.SIGKILL)
+                    self.process.wait(timeout=0.3)
             except:
                 pass
             self.process = None
+            self.thread = None
+            self.latest_frame = None
+
+        # 장치 해제 대기 (v4l2 장치가 완전히 해제되도록)
+        time.sleep(0.3)
 
         print(f"[GstCamera] Camera {self.device_index} stopped")
 

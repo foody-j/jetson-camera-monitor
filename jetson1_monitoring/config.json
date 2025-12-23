@@ -71,7 +71,7 @@
   "_comment_relay": "24V 옴론 릴레이 제어 (ULN2803 경유, Pin 29, 31)",
   "relay_mode": "pulse",
   "_comment_relay_mode": "pulse=펄스 신호(HIGH->LOW, 자기유지 릴레이용), continuous=계속 HIGH(일반 릴레이용)",
-  "auto_relay_enabled": false,
+  "auto_relay_enabled": true,
   "_comment_auto_relay": "자동 릴레이 제어 활성화 (true=자동 ON/OFF, false=수동 제어만)",
   "_comment_jetson2_shutdown_delay": "Jetson #2 종료 대기 시간 (초) - Jetson #2 OFF 신호 후 Jetson #1 OFF까지 대기",
   "jetson2_shutdown_delay_sec": 3,

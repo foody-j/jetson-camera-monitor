@@ -51,7 +51,8 @@
       "Bash(npx --version:*)",
       "Bash(source:*)",
       "Bash(nvm use:*)",
-      "Bash(timeout 10 npx:*)"
+      "Bash(timeout 10 npx:*)",
+      "Bash(git remote set-url:*)"
     ],
     "deny": [],
     "ask": []
