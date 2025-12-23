@@ -2489,16 +2489,12 @@ class IntegratedMonitorApp:
                 if not self.relay_enabled:
                     self.relay_turn_on()
                     status_label.config(text="현재 상태: 켜짐 (ON)", fg=COLOR_OK)
-                    showinfo_topmost("릴레이 제어", "릴레이가 켜졌습니다 (ON)")
-                else:
-                    showinfo_topmost("릴레이 제어", "이미 켜져 있습니다")
+                # 이미 켜져있으면 상태만 유지 (팝업 없음)
             elif action == 'OFF':
                 if self.relay_enabled:
                     self.relay_turn_off()
                     status_label.config(text="현재 상태: 꺼짐 (OFF)", fg=COLOR_ERROR)
-                    showinfo_topmost("릴레이 제어", "릴레이가 꺼졌습니다 (OFF)")
-                else:
-                    showinfo_topmost("릴레이 제어", "이미 꺼져 있습니다")
+                # 이미 꺼져있으면 상태만 유지 (팝업 없음)
         except Exception as e:
             showerror_topmost("오류", f"릴레이 제어 실패: {e}")
             print(f"[릴레이] 수동 제어 오류: {e}")

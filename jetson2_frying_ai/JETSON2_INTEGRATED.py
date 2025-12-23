@@ -1516,6 +1516,27 @@ class JetsonIntegratedApp:
         )
         self.collection_status_label.pack()
 
+        # 테스트 버튼 (투입/배출 시뮬레이션)
+        separator2 = tk.Frame(btn_frame, width=2, bg="#BDC3C7")
+        separator2.pack(side=tk.LEFT, fill=tk.Y, padx=8, pady=3)
+
+        tk.Button(
+            btn_frame, text="P1투입", font=(FONT_FAMILY, 9), bg="#3498DB", fg="white",
+            command=lambda: self._simulate_input("0"), width=5, relief=tk.FLAT
+        ).pack(side=tk.LEFT, padx=1)
+        tk.Button(
+            btn_frame, text="P1배출", font=(FONT_FAMILY, 9), bg="#9B59B6", fg="white",
+            command=lambda: self._simulate_discharge("0"), width=5, relief=tk.FLAT
+        ).pack(side=tk.LEFT, padx=1)
+        tk.Button(
+            btn_frame, text="P2투입", font=(FONT_FAMILY, 9), bg="#3498DB", fg="white",
+            command=lambda: self._simulate_input("1"), width=5, relief=tk.FLAT
+        ).pack(side=tk.LEFT, padx=1)
+        tk.Button(
+            btn_frame, text="P2배출", font=(FONT_FAMILY, 9), bg="#9B59B6", fg="white",
+            command=lambda: self._simulate_discharge("1"), width=5, relief=tk.FLAT
+        ).pack(side=tk.LEFT, padx=1)
+
         # Exit button (세로 모드 - 버튼 크기 축소)
         self.btn_exit = tk.Button(
             control_frame,
@@ -2395,16 +2416,12 @@ class JetsonIntegratedApp:
                 if not self.relay_enabled:
                     self.relay_turn_on()
                     status_label.config(text="현재 상태: 켜짐 (ON)", fg=COLOR_OK)
-                    showinfo_topmost("릴레이 제어", "릴레이가 켜졌습니다 (ON)")
-                else:
-                    showinfo_topmost("릴레이 제어", "이미 켜져 있습니다")
+                # 이미 켜져있으면 상태만 유지 (팝업 없음)
             elif action == 'OFF':
                 if self.relay_enabled:
                     self.relay_turn_off()
                     status_label.config(text="현재 상태: 꺼짐 (OFF)", fg=COLOR_ERROR)
-                    showinfo_topmost("릴레이 제어", "릴레이가 꺼졌습니다 (OFF)")
-                else:
-                    showinfo_topmost("릴레이 제어", "이미 꺼져 있습니다")
+                # 이미 꺼져있으면 상태만 유지 (팝업 없음)
         except Exception as e:
             showerror_topmost("오류", f"릴레이 제어 실패: {e}")
             print(f"[릴레이] 수동 제어 오류: {e}")
