@@ -1641,6 +1641,8 @@ class JetsonIntegratedApp:
                     print(f"[카메라] 튀김솥 왼쪽 초기화 오류: {e}")
                     self.frying_left_cap = None
 
+                time.sleep(CAMERA_INIT_DELAY)  # ISP 과부하 방지
+
                 # 오른쪽 (POT2) 카메라 시작
                 try:
                     print(f"[카메라] 튀김솥 오른쪽 (video{FRYING_RIGHT_CAMERA_INDEX}) 시작 중...")
@@ -1659,6 +1661,8 @@ class JetsonIntegratedApp:
                 except Exception as e:
                     print(f"[카메라] 튀김솥 오른쪽 초기화 오류: {e}")
                     self.frying_right_cap = None
+
+                time.sleep(CAMERA_INIT_DELAY)  # ISP 안정화 대기
         else:
             print(f"[카메라] 튀김솥 카메라 비활성화됨 (frying_enabled=false)")
 
