@@ -519,9 +519,13 @@ class JetsonIntegratedApp:
             except Exception as e:
                 print(f"[GPIO] Relay ON 실패: {e}")
 
-    def relay_turn_off(self):
-        """Turn off 24V Omron Relay (자체 장비 OFF)"""
-        if self.relay_enabled:
+    def relay_turn_off(self, force=False):
+        """Turn off 24V Omron Relay (자체 장비 OFF)
+
+        Args:
+            force: True면 relay_enabled 상태 무관하게 강제 전송
+        """
+        if self.relay_enabled or force:
             try:
                 if self.relay_mode == 'pulse':
                     # Pulse mode: Pin 29 (OFF signal) -> HIGH -> wait -> LOW
@@ -529,13 +533,13 @@ class JetsonIntegratedApp:
                     time.sleep(0.2)  # 200ms pulse
                     GPIO.output(29, GPIO.LOW)
                     print("=" * 50)
-                    print("Jetson #2 장비 OFF (Pin 29 펄스 신호)")
+                    print(f"Jetson #2 장비 OFF (Pin 29 펄스 신호){' [강제]' if force else ''}")
                     print("=" * 50)
                 else:
                     # Continuous mode: Set LOW
                     GPIO.output(29, GPIO.LOW)
                     print("=" * 50)
-                    print("Jetson #2 장비 OFF (Pin 29 LOW)")
+                    print(f"Jetson #2 장비 OFF (Pin 29 LOW){' [강제]' if force else ''}")
                     print("=" * 50)
 
                 self.relay_enabled = False
