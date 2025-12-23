@@ -8,6 +8,8 @@
 
   "// Frying AI Configuration (video0, video1)": "",
   "frying_enabled": true,
+  "frying_left_enabled": true,
+  "frying_right_enabled": false,
   "frying_left_camera_index": 0,
   "frying_right_camera_index": 1,
   "frying_seg_model": "frying_seg.pt",
@@ -15,8 +17,8 @@
   "// Defaults: frying_enabled=true, frying_left_camera_index=0, frying_right_camera_index=1": "",
 
   "// Observe_add Configuration (video2, video3)": "",
-  "observe_enabled": false,
-  "observe_left_enabled": false,
+  "observe_enabled": true,
+  "observe_left_enabled": true,
   "observe_right_enabled": false,
   "observe_left_camera_index": 2,
   "observe_right_camera_index": 3,

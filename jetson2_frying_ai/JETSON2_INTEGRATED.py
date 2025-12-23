@@ -113,6 +113,8 @@ config = load_config()
 
 # Frying AI Configuration (video0, video1)
 FRYING_ENABLED = config.get('frying_enabled', True)
+FRYING_LEFT_ENABLED = config.get('frying_left_enabled', True)
+FRYING_RIGHT_ENABLED = config.get('frying_right_enabled', True)
 FRYING_LEFT_CAMERA_INDEX = config.get('frying_left_camera_index', 0)
 FRYING_RIGHT_CAMERA_INDEX = config.get('frying_right_camera_index', 1)
 FRYING_SEG_MODEL = config.get('frying_seg_model', 'frying_seg.pt')
@@ -1581,38 +1583,50 @@ class JetsonIntegratedApp:
         else:
             print(f"[카메라] 바스켓 카메라 비활성화됨")
 
-        # Frying AI cameras (video0, video1) - 항상 ON
+        # Frying AI cameras (video0, video1)
         if FRYING_ENABLED:
-            print(f"[카메라] 튀김솥 왼쪽 (video{FRYING_LEFT_CAMERA_INDEX}) 시작 중...")
-            self.frying_left_cap = GstCamera(
-                device_index=FRYING_LEFT_CAMERA_INDEX,
-                width=CAMERA_WIDTH,
-                height=CAMERA_HEIGHT,
-                fps=CAMERA_FPS
-            )
-            if self.frying_left_cap.start():
-                self.frying_left_streaming = True
-                print(f"[카메라] 튀김솥 왼쪽 (video{FRYING_LEFT_CAMERA_INDEX}) 초기화 완료 ✓")
+            if FRYING_LEFT_ENABLED:
+                print(f"[카메라] 튀김솥 왼쪽 (video{FRYING_LEFT_CAMERA_INDEX}) 시작 중...")
+                self.frying_left_cap = GstCamera(
+                    device_index=FRYING_LEFT_CAMERA_INDEX,
+                    width=CAMERA_WIDTH,
+                    height=CAMERA_HEIGHT,
+                    fps=CAMERA_FPS
+                )
+                if self.frying_left_cap.start():
+                    self.frying_left_streaming = True
+                    print(f"[카메라] 튀김솥 왼쪽 (video{FRYING_LEFT_CAMERA_INDEX}) 초기화 완료 ✓")
+                else:
+                    print(f"[카메라] 튀김솥 왼쪽 초기화 실패 ✗")
+                    self.frying_left_cap = None
+                time.sleep(CAMERA_INIT_DELAY)
             else:
-                print(f"[카메라] 튀김솥 왼쪽 초기화 실패 ✗")
-                self.frying_left_cap = None
-            time.sleep(CAMERA_INIT_DELAY)
+                print(f"[카메라] 튀김솥 왼쪽 비활성화됨 (config)")
 
-            print(f"[카메라] 튀김솥 오른쪽 (video{FRYING_RIGHT_CAMERA_INDEX}) 시작 중...")
-            self.frying_right_cap = GstCamera(
-                device_index=FRYING_RIGHT_CAMERA_INDEX,
-                width=CAMERA_WIDTH,
-                height=CAMERA_HEIGHT,
-                fps=CAMERA_FPS
-            )
-            if self.frying_right_cap.start():
-                self.frying_right_streaming = True
-                print(f"[카메라] 튀김솥 오른쪽 (video{FRYING_RIGHT_CAMERA_INDEX}) 초기화 완료 ✓")
+            if FRYING_RIGHT_ENABLED:
+                print(f"[카메라] 튀김솥 오른쪽 (video{FRYING_RIGHT_CAMERA_INDEX}) 시작 중...")
+                self.frying_right_cap = GstCamera(
+                    device_index=FRYING_RIGHT_CAMERA_INDEX,
+                    width=CAMERA_WIDTH,
+                    height=CAMERA_HEIGHT,
+                    fps=CAMERA_FPS
+                )
+                if self.frying_right_cap.start():
+                    self.frying_right_streaming = True
+                    print(f"[카메라] 튀김솥 오른쪽 (video{FRYING_RIGHT_CAMERA_INDEX}) 초기화 완료 ✓")
+                else:
+                    print(f"[카메라] 튀김솥 오른쪽 초기화 실패 ✗")
+                    self.frying_right_cap = None
             else:
-                print(f"[카메라] 튀김솥 오른쪽 초기화 실패 ✗")
-                self.frying_right_cap = None
+                print(f"[카메라] 튀김솥 오른쪽 비활성화됨 (config)")
 
-        print("[카메라] 카메라 초기화 완료! (video0,1,2 ON, video3 OFF)")
+        # 활성화된 카메라 목록 출력
+        active_cams = []
+        if self.frying_left_cap: active_cams.append("video0(튀김L)")
+        if self.frying_right_cap: active_cams.append("video1(튀김R)")
+        if self.observe_left_cap: active_cams.append("video2(바켓L)")
+        if self.observe_right_cap: active_cams.append("video3(바켓R)")
+        print(f"[카메라] 초기화 완료! 활성: {', '.join(active_cams) if active_cams else '없음'}")
 
     def start_frying_camera(self, pot_num):
         """튀김솥 카메라 - 항상 ON 모드에서는 사용하지 않음"""
