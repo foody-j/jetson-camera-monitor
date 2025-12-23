@@ -1763,19 +1763,40 @@ class IntegratedMonitorApp:
                     self.auto_preview_visible = True
                     print("[화면복구] 자동 카메라 화면 복구")
 
-            # FIXED SIZE: Resize to 640x512 to maintain 5:4 aspect ratio (1920x1536)
+            # Get container size for aspect-fit resize (show full image, no crop)
+            container_width = self.auto_preview_label.winfo_width()
+            container_height = self.auto_preview_label.winfo_height()
+
+            # Use default size if container not yet rendered
+            if container_width <= 1 or container_height <= 1:
+                container_width = int(740 * self.scale_factor)  # 768 - padding
+                container_height = int(280 * self.scale_factor)
+
+            # Resize to fit container while maintaining aspect ratio (no crop)
+            h, w = frame.shape[:2]
+            aspect_frame = w / h  # 1920/1536 = 1.25
+            aspect_container = container_width / container_height
+
+            if aspect_frame > aspect_container:
+                # Frame is wider - fit to container width
+                new_w = container_width
+                new_h = int(container_width / aspect_frame)
+            else:
+                # Frame is taller - fit to container height
+                new_h = container_height
+                new_w = int(container_height * aspect_frame)
+
             # Use GPU acceleration if available
             if USE_CUDA:
                 try:
                     gpu_frame = cv2.cuda_GpuMat()
                     gpu_frame.upload(frame)
-                    gpu_resized = cv2.cuda.resize(gpu_frame, (640, 512))
+                    gpu_resized = cv2.cuda.resize(gpu_frame, (new_w, new_h))
                     preview = gpu_resized.download()
                 except:
-                    # Fallback to CPU if GPU fails
-                    preview = cv2.resize(frame, (640, 512), interpolation=cv2.INTER_NEAREST)
+                    preview = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
             else:
-                preview = cv2.resize(frame, (640, 512), interpolation=cv2.INTER_NEAREST)
+                preview = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
 
             preview_rgb = cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(preview_rgb)
