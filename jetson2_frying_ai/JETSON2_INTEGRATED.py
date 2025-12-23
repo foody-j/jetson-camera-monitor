@@ -1516,28 +1516,8 @@ class JetsonIntegratedApp:
         )
         self.collection_status_label.pack()
 
-        # 테스트 버튼 (투입/배출 시뮬레이션)
-        separator2 = tk.Frame(btn_frame, width=2, bg="#BDC3C7")
-        separator2.pack(side=tk.LEFT, fill=tk.Y, padx=8, pady=3)
-
-        tk.Button(
-            btn_frame, text="P1투입", font=(FONT_FAMILY, 9), bg="#3498DB", fg="white",
-            command=lambda: self._simulate_input("0"), width=5, relief=tk.FLAT
-        ).pack(side=tk.LEFT, padx=1)
-        tk.Button(
-            btn_frame, text="P1배출", font=(FONT_FAMILY, 9), bg="#9B59B6", fg="white",
-            command=lambda: self._simulate_discharge("0"), width=5, relief=tk.FLAT
-        ).pack(side=tk.LEFT, padx=1)
-        tk.Button(
-            btn_frame, text="P2투입", font=(FONT_FAMILY, 9), bg="#3498DB", fg="white",
-            command=lambda: self._simulate_input("1"), width=5, relief=tk.FLAT
-        ).pack(side=tk.LEFT, padx=1)
-        tk.Button(
-            btn_frame, text="P2배출", font=(FONT_FAMILY, 9), bg="#9B59B6", fg="white",
-            command=lambda: self._simulate_discharge("1"), width=5, relief=tk.FLAT
-        ).pack(side=tk.LEFT, padx=1)
-
         # Exit button (세로 모드 - 버튼 크기 축소)
+        # 투입/배출 시뮬레이션은 PC상태 창에서 가능
         self.btn_exit = tk.Button(
             control_frame,
             text="종료",
