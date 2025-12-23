@@ -277,12 +277,10 @@ class JetsonIntegratedApp:
         self.relay_mode = config.get('relay_mode', 'pulse')
         self.init_gpio()
 
-        # MQTT client
+        # MQTT client (init_mqtt()는 모든 상태 변수 초기화 후 호출)
         self.mqtt_client = None
         self.mqtt_message_log = []  # 최근 MQTT 메시지 저장 (원본 보기용)
         self.mqtt_message_log_max = 50  # 최대 저장 개수
-        if MQTT_ENABLED:
-            self.init_mqtt()
 
         # Load AI models with GPU (if available)
         print("[모델] AI 모델 로딩 중...")
@@ -447,6 +445,10 @@ class JetsonIntegratedApp:
         self.latest_frying_right_frame = None
         self.latest_observe_left_frame = None
         self.latest_observe_right_frame = None
+
+        # Initialize MQTT (모든 상태 변수 초기화 완료 후)
+        if MQTT_ENABLED:
+            self.init_mqtt()
 
         # Pre-load fonts to avoid Segfault
         print(f"[DEBUG] 폰트 사전 로딩...")
