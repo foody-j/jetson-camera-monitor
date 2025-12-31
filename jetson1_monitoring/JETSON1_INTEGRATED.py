@@ -184,8 +184,8 @@ RECORDING_DELAY_AFTER_DISCHARGE = config.get('recording_delay_after_discharge', 
 
 # Person data collection settings (로봇회사 요청 - 평일 08:30~12:00, 5초 간격)
 PERSON_DATA_COLLECTION_ENABLED = config.get('person_data_collection_enabled', False)
-PERSON_COLLECTION_START_TIME = datetime.datetime.strptime(config.get('person_collection_start_time', '08:30'), '%H:%M').time()
-PERSON_COLLECTION_END_TIME = datetime.datetime.strptime(config.get('person_collection_end_time', '12:00'), '%H:%M').time()
+PERSON_COLLECTION_START_TIME = datetime.strptime(config.get('person_collection_start_time', '08:30'), '%H:%M').time()
+PERSON_COLLECTION_END_TIME = datetime.strptime(config.get('person_collection_end_time', '12:00'), '%H:%M').time()
 PERSON_COLLECTION_INTERVAL_SEC = config.get('person_collection_interval_sec', 5)
 PERSON_COLLECTION_SAVE_DIR = config.get('person_collection_save_dir', 'AI_Data/PersonData')
 PERSON_COLLECTION_JPEG_QUALITY = config.get('person_collection_jpeg_quality', 100)
@@ -1204,7 +1204,7 @@ class IntegratedMonitorApp:
     # =========================================
     def is_weekday(self):
         """현재 평일인지 확인 (월~금 = 0~4)"""
-        return datetime.datetime.now().weekday() < 5
+        return datetime.now().weekday() < 5
 
     def is_person_collection_time(self):
         """현재 사람 데이터 수집 시간인지 확인"""
@@ -1212,7 +1212,7 @@ class IntegratedMonitorApp:
             return False
         if not self.is_weekday():
             return False
-        now = datetime.datetime.now().time()
+        now = datetime.now().time()
         return PERSON_COLLECTION_START_TIME <= now <= PERSON_COLLECTION_END_TIME
 
     def check_person_collection_schedule(self):
@@ -1240,7 +1240,7 @@ class IntegratedMonitorApp:
 
         self.person_collection_active = True
         self.person_collection_frame_count = 0
-        self.person_collection_session_date = datetime.datetime.now().strftime("%Y%m%d")
+        self.person_collection_session_date = datetime.now().strftime("%Y%m%d")
 
         # 저장 디렉토리 생성
         base_dir = os.path.expanduser(f"~/{PERSON_COLLECTION_SAVE_DIR}")
@@ -1285,7 +1285,7 @@ class IntegratedMonitorApp:
                     save_dir = os.path.join(base_dir, self.person_collection_session_date)
 
                     # 파일명: HHMMSS_mmm.jpg
-                    now = datetime.datetime.now()
+                    now = datetime.now()
                     filename = now.strftime("%H%M%S") + f"_{now.microsecond // 1000:03d}.jpg"
                     filepath = os.path.join(save_dir, filename)
 

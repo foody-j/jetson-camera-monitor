@@ -50,7 +50,7 @@
   "font_button": 20,
   "_comment_mqtt": "MQTT 통신 설정",
   "mqtt_enabled": true,
-  "mqtt_broker": "192.168.0.100",
+  "mqtt_broker": "100.118.99.74",
   "mqtt_port": 1883,
   "_comment_mqtt_publish": "MQTT 발행 토픽 (Jetson → Robot PC)",
   "mqtt_topic": "robot/control",
