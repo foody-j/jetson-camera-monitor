@@ -182,6 +182,14 @@ STIRFRY_JPEG_QUALITY = config.get('stirfry_jpeg_quality', 70)
 STIRFRY_FRAME_SKIP = config.get('stirfry_frame_skip', 6)
 RECORDING_DELAY_AFTER_DISCHARGE = config.get('recording_delay_after_discharge', 20)  # 배출 후 추가 녹화 시간 (초)
 
+# Person data collection settings (로봇회사 요청 - 평일 08:30~12:00, 5초 간격)
+PERSON_DATA_COLLECTION_ENABLED = config.get('person_data_collection_enabled', False)
+PERSON_COLLECTION_START_TIME = datetime.datetime.strptime(config.get('person_collection_start_time', '08:30'), '%H:%M').time()
+PERSON_COLLECTION_END_TIME = datetime.datetime.strptime(config.get('person_collection_end_time', '12:00'), '%H:%M').time()
+PERSON_COLLECTION_INTERVAL_SEC = config.get('person_collection_interval_sec', 5)
+PERSON_COLLECTION_SAVE_DIR = config.get('person_collection_save_dir', 'AI_Data/PersonData')
+PERSON_COLLECTION_JPEG_QUALITY = config.get('person_collection_jpeg_quality', 100)
+
 # Motion detection & YOLO parameters (configurable via config.json)
 YOLO_IMGSZ = config.get('yolo_imgsz', 416)  # YOLO 입력 이미지 크기 (높을수록 정확, 느림)
 MOG2_HISTORY = 500  # MOG2 배경 모델 히스토리 프레임 수
@@ -321,6 +329,12 @@ class IntegratedMonitorApp:
         self.pot1_discharge_timer_id = None
         self.pot2_discharge_timer_id = None
 
+        # 사람 감지 데이터 수집 (로봇회사 요청 - 평일 08:30~12:00)
+        self.person_collection_active = False
+        self.person_collection_timer_id = None
+        self.person_collection_frame_count = 0
+        self.person_collection_session_date = None
+
         # Manual stir-fry recording state (수동 녹화용)
         self.stirfry_recording = False
         self.stirfry_left_frame_count = 0
@@ -413,6 +427,11 @@ class IntegratedMonitorApp:
         self.night_review_manager = NightReviewManager(self, config)
         if self.night_review_manager.enabled:
             print(f"[초기화] 야간 리뷰 활성화 (매일 {self.night_review_manager.review_time})")
+
+        # Start person data collection schedule check (로봇회사 요청)
+        if PERSON_DATA_COLLECTION_ENABLED:
+            print(f"[초기화] 사람 데이터 수집 활성화 (평일 {PERSON_COLLECTION_START_TIME.strftime('%H:%M')}~{PERSON_COLLECTION_END_TIME.strftime('%H:%M')}, {PERSON_COLLECTION_INTERVAL_SEC}초 간격)")
+            self.check_person_collection_schedule()
 
         print("[초기화] 모든 시스템 초기화 완료!")
 
@@ -1178,6 +1197,115 @@ class IntegratedMonitorApp:
             self.pot2_timeout_id = None
         except Exception as e:
             print(f"[POT2 타임아웃] 오류: {e}")
+
+    # =========================================
+    # 사람 감지 데이터 수집 (로봇회사 요청)
+    # 평일 08:30~12:00, 5초 간격 촬영
+    # =========================================
+    def is_weekday(self):
+        """현재 평일인지 확인 (월~금 = 0~4)"""
+        return datetime.datetime.now().weekday() < 5
+
+    def is_person_collection_time(self):
+        """현재 사람 데이터 수집 시간인지 확인"""
+        if not PERSON_DATA_COLLECTION_ENABLED:
+            return False
+        if not self.is_weekday():
+            return False
+        now = datetime.datetime.now().time()
+        return PERSON_COLLECTION_START_TIME <= now <= PERSON_COLLECTION_END_TIME
+
+    def check_person_collection_schedule(self):
+        """1초마다 호출되어 수집 시작/종료 확인"""
+        try:
+            should_collect = self.is_person_collection_time()
+
+            if should_collect and not self.person_collection_active:
+                # 수집 시작
+                self.start_person_data_collection()
+            elif not should_collect and self.person_collection_active:
+                # 수집 종료
+                self.stop_person_data_collection()
+
+        except Exception as e:
+            print(f"[사람수집] 스케줄 체크 오류: {e}")
+
+        # 1초 후 다시 체크
+        self.root.after(1000, self.check_person_collection_schedule)
+
+    def start_person_data_collection(self):
+        """사람 감지 데이터 수집 시작"""
+        if self.person_collection_active:
+            return
+
+        self.person_collection_active = True
+        self.person_collection_frame_count = 0
+        self.person_collection_session_date = datetime.datetime.now().strftime("%Y%m%d")
+
+        # 저장 디렉토리 생성
+        base_dir = os.path.expanduser(f"~/{PERSON_COLLECTION_SAVE_DIR}")
+        save_dir = os.path.join(base_dir, self.person_collection_session_date)
+        os.makedirs(save_dir, mode=0o755, exist_ok=True)
+
+        print(f"[사람수집] ▶ 데이터 수집 시작 - {PERSON_COLLECTION_START_TIME.strftime('%H:%M')}~{PERSON_COLLECTION_END_TIME.strftime('%H:%M')}")
+        print(f"[사람수집] 저장 경로: {save_dir}")
+        print(f"[사람수집] 촬영 간격: {PERSON_COLLECTION_INTERVAL_SEC}초, 품질: {PERSON_COLLECTION_JPEG_QUALITY}%")
+
+        # 첫 촬영 시작
+        self.capture_person_frame()
+
+    def stop_person_data_collection(self):
+        """사람 감지 데이터 수집 종료"""
+        if not self.person_collection_active:
+            return
+
+        self.person_collection_active = False
+
+        # 타이머 취소
+        if self.person_collection_timer_id:
+            self.root.after_cancel(self.person_collection_timer_id)
+            self.person_collection_timer_id = None
+
+        print(f"[사람수집] ■ 데이터 수집 종료 - 총 {self.person_collection_frame_count}장 저장됨")
+
+    def capture_person_frame(self):
+        """사람 감지 카메라 프레임 캡처 및 저장"""
+        if not self.person_collection_active:
+            return
+
+        try:
+            # 사람 감지 카메라에서 프레임 읽기
+            if self.auto_cap is None:
+                print("[사람수집] 카메라 없음 - 스킵")
+            else:
+                frame = self.auto_cap.read()
+                if frame is not None:
+                    # 저장 경로 생성
+                    base_dir = os.path.expanduser(f"~/{PERSON_COLLECTION_SAVE_DIR}")
+                    save_dir = os.path.join(base_dir, self.person_collection_session_date)
+
+                    # 파일명: HHMMSS_mmm.jpg
+                    now = datetime.datetime.now()
+                    filename = now.strftime("%H%M%S") + f"_{now.microsecond // 1000:03d}.jpg"
+                    filepath = os.path.join(save_dir, filename)
+
+                    # JPEG 저장 (품질 100%)
+                    cv2.imwrite(filepath, frame, [cv2.IMWRITE_JPEG_QUALITY, PERSON_COLLECTION_JPEG_QUALITY])
+                    self.person_collection_frame_count += 1
+
+                    # 100장마다 로그 출력
+                    if self.person_collection_frame_count % 100 == 0:
+                        print(f"[사람수집] {self.person_collection_frame_count}장 저장됨...")
+
+        except Exception as e:
+            print(f"[사람수집] 프레임 캡처 오류: {e}")
+
+        # 다음 촬영 예약
+        if self.person_collection_active:
+            self.person_collection_timer_id = self.root.after(
+                PERSON_COLLECTION_INTERVAL_SEC * 1000,
+                self.capture_person_frame
+            )
 
     def on_robot_status(self, client, userdata, message):
         """로봇 PC 상태 메시지 파싱 - Jetson1은 볶음솥(DeviceNum=1)만 처리"""

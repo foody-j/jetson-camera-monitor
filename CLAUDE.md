@@ -1,4 +1,4 @@
-# Jetson Food AI 프로젝트
+ # Jetson Food AI 프로젝트
 
 NVIDIA Jetson Orin Nano 기반 식당 모니터링 시스템 (GMSL 카메라 + AI)
 

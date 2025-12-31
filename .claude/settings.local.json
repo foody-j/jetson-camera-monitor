@@ -52,7 +52,8 @@
       "Bash(source:*)",
       "Bash(nvm use:*)",
       "Bash(timeout 10 npx:*)",
-      "Bash(git remote set-url:*)"
+      "Bash(git remote set-url:*)",
+      "Bash(du:*)"
     ],
     "deny": [],
     "ask": []
