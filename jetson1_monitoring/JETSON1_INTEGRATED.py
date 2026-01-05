@@ -1278,8 +1278,8 @@ class IntegratedMonitorApp:
             if self.auto_cap is None:
                 print("[사람수집] 카메라 없음 - 스킵")
             else:
-                frame = self.auto_cap.read()
-                if frame is not None:
+                ret, frame = self.auto_cap.read()
+                if ret and frame is not None:
                     # 저장 경로 생성
                     base_dir = os.path.expanduser(f"~/{PERSON_COLLECTION_SAVE_DIR}")
                     save_dir = os.path.join(base_dir, self.person_collection_session_date)
