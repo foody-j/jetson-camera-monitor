@@ -42,8 +42,6 @@ if os.path.exists(config_file):
         print(f"[설정] {config_file} 로드 완료")
     except Exception as e:
         print(f"[경고] 설정 파일 로드 실패: {e}, 기본값 사용")
-else:
-    print(f"[설정] {config_file} 없음, 기본값 사용")
 
 # ========== 사용자 설정 (Jetson용) ==========
 PORT = config.get("port", "/dev/ttyUSB0")  # Linux/Jetson USB 시리얼 포트
@@ -51,12 +49,18 @@ BAUD = config.get("baud", 115200)
 # Convert hex strings to integers
 unit_ids_str = config.get("unit_ids", ["0x50", "0x51", "0x52"])
 UNIT_IDS = [int(uid, 16) if isinstance(uid, str) else uid for uid in unit_ids_str]
-print(f"[설정] PORT={PORT}, BAUD={BAUD}, UNIT_IDS={','.join([f'0x{u:02X}' for u in UNIT_IDS])}")
-print(f"[설정] PARITY={PARITY}, STOPBITS={STOPBITS}, BYTESIZE={BYTESIZE}, TIMEOUT={TIMEOUT_S}")
-PARITY = config.get("parity", "N")
-STOPBITS = config.get("stopbits", 1)
-BYTESIZE = config.get("bytesize", 8)
-TIMEOUT_S = config.get("timeout_s", 0.2)  # 0.15에서 0.2로 증가 (안정적인 통신을 위해)
+PARITY = 'N'
+STOPBITS = 1
+BYTESIZE = 8
+TIMEOUT_S = 0.15
+RTS_MANUAL = config.get("rts_manual", False)
+RTS_ON_TX = config.get("rts_on_tx", True)
+RTS_ON_RX = config.get("rts_on_rx", False)
+RTS_TOGGLE_DELAY_S = config.get("rts_toggle_delay_s", 0.0)
+RTS_MANUAL = config.get("rts_manual", False)
+RTS_ON_TX = config.get("rts_on_tx", True)
+RTS_ON_RX = config.get("rts_on_rx", False)
+RTS_TOGGLE_DELAY_S = config.get("rts_toggle_delay_s", 0.0)
 
 # 폴링/버퍼
 POLL_HZ_TOTAL = config.get("poll_hz_total", 45)  # 총 루프 속도(초당 45회 → 유닛당 약 15Hz)
@@ -65,14 +69,6 @@ RECONNECT_TIMEOUT = 3.0
 WINDOW_SEC = config.get("window_sec", 5.0)  # X축 시간 범위 (초)
 SAMPLE_RATE_HINT_PER_UNIT = POLL_HZ_TOTAL / max(1, len(UNIT_IDS))
 PLOT_INTERVAL_MS = 100
-DEBUG_REG_DUMP = config.get("debug_reg_dump", True)
-RS485_ENABLED = config.get("rs485_enabled", False)
-RS485_RTS_ON_SEND = config.get("rs485_rts_on_send", True)
-RS485_RTS_ON_RECEIVE = config.get("rs485_rts_on_receive", False)
-RS485_DELAY_BEFORE_TX = config.get("rs485_delay_before_tx", 0.0)
-RS485_DELAY_BEFORE_RX = config.get("rs485_delay_before_rx", 0.0)
-
-print(f"[설정] RS485 enabled={RS485_ENABLED} rts_on_send={RS485_RTS_ON_SEND} rts_on_receive={RS485_RTS_ON_RECEIVE} delay_tx={RS485_DELAY_BEFORE_TX}s delay_rx={RS485_DELAY_BEFORE_RX}s")
 
 # 레지스터 맵
 REG_AX = 0x34; REG_AY = 0x35; REG_AZ = 0x36
@@ -339,39 +335,58 @@ buf_vel  = {uid: [deque(maxlen=maxlen) for _ in range(3)] for uid in UNIT_IDS}
 buf_disp = {uid: [deque(maxlen=maxlen) for _ in range(3)] for uid in UNIT_IDS}
 buf_freq = {uid: [deque(maxlen=maxlen) for _ in range(3)] for uid in UNIT_IDS}
 last_ok  = {uid: time.time() for uid in UNIT_IDS}
-reg_dumped = {uid: False for uid in UNIT_IDS}
 
 # ========== Modbus ==========
 def make_client():
     # pymodbus 3.x에서는 method 파라미터 불필요 (자동으로 RTU 사용)
     return ModbusSerialClient(
         port=PORT, baudrate=BAUD, bytesize=BYTESIZE,
-        parity=PARITY, stopbits=STOPBITS, timeout=TIMEOUT_S, framer="rtu"
+        parity=PARITY, stopbits=STOPBITS, timeout=TIMEOUT_S
     )
 
 client = make_client()
-def configure_rs485():
-    if not RS485_ENABLED:
+def _wrap_serial_write_for_rts(ser):
+    if not RTS_MANUAL or ser is None:
         return
-    try:
-        from serial.rs485 import RS485Settings
-        ser = getattr(client, "socket", None) or getattr(client, "serial", None)
-        if ser is None:
-            print("[RS485] 시리얼 핸들 없음")
-            return
-        ser.rs485_mode = RS485Settings(
-            rts_level_for_tx=RS485_RTS_ON_SEND,
-            rts_level_for_rx=RS485_RTS_ON_RECEIVE,
-            delay_before_tx=RS485_DELAY_BEFORE_TX,
-            delay_before_rx=RS485_DELAY_BEFORE_RX
-        )
-        print("[RS485] RS485 모드 적용")
-    except Exception as e:
-        print(f"[RS485] 설정 실패: {e}")
+    if getattr(ser, "_rts_wrapped", False):
+        return
+    orig_write = ser.write
+
+    def write_with_rts(data):
+        try:
+            try:
+                if hasattr(ser, "setRTS"):
+                    ser.setRTS(RTS_ON_TX)
+                else:
+                    ser.rts = RTS_ON_TX
+            except Exception:
+                pass
+            if RTS_TOGGLE_DELAY_S > 0:
+                time.sleep(RTS_TOGGLE_DELAY_S)
+            n = orig_write(data)
+            try:
+                ser.flush()
+            except Exception:
+                pass
+        finally:
+            try:
+                if hasattr(ser, "setRTS"):
+                    ser.setRTS(RTS_ON_RX)
+                else:
+                    ser.rts = RTS_ON_RX
+            except Exception:
+                pass
+        return n
+
+    ser.write = write_with_rts
+    ser._rts_wrapped = True
 
 def connect_client():
     if client.connect():
-        configure_rs485()
+        ser = getattr(client, "socket", None) or getattr(client, "serial", None)
+        _wrap_serial_write_for_rts(ser)
+        if RTS_MANUAL:
+            print(f"[RS485] RTS 수동 토글 사용 TX={RTS_ON_TX} RX={RTS_ON_RX} delay={RTS_TOGGLE_DELAY_S}s")
         return True
     return False
 
@@ -381,74 +396,23 @@ if not connect_client():
 
 print(f"[연결] {PORT} @ {BAUD}bps")
 
-def _call_modbus(func, **kwargs):
-    """pymodbus 2.x/3.x 호환: device_id/ slave 파라미터 자동 처리"""
-    try:
-        return func(**kwargs)
-    except TypeError:
-        if "device_id" in kwargs:
-            kwargs["slave"] = kwargs.pop("device_id")
-            return func(**kwargs)
-        if "slave" in kwargs:
-            kwargs["device_id"] = kwargs.pop("slave")
-            return func(**kwargs)
-        raise
-
 def unlock_sensor(uid):
-    try: _call_modbus(client.write_register, address=REG_UNLOCK_ADDR, value=0xB588, device_id=uid)
+    try: client.write_register(address=REG_UNLOCK_ADDR, value=0xB588, device_id=uid)
     except Exception: pass
 
 def restart_sensor(uid):
     try:
         unlock_sensor(uid); time.sleep(0.05)
-        _call_modbus(client.write_register, address=REG_SAVE, value=0x00FF, device_id=uid)
+        client.write_register(address=REG_SAVE, value=0x00FF, device_id=uid)
     except Exception as e:
         print(f"[UID 0x{uid:02X}] 재시작 오류: {e}")
 
 def read_block_retry(uid):
-    """레지스터 읽기 재시도 (0x34~0x46, 19개)"""
-    for attempt in range(RETRY_READ):
-        try:
-            rr = _call_modbus(
-                client.read_holding_registers,
-                address=REG_START,
-                count=REG_COUNT,
-                device_id=uid
-            )
-            if hasattr(rr, "isError"):
-                if not rr.isError():
-                    regs_hold = rr.registers
-                    regs_in = None
-                    rr_in = _call_modbus(
-                        client.read_input_registers,
-                        address=REG_START,
-                        count=REG_COUNT,
-                        device_id=uid
-                    )
-                    if hasattr(rr_in, "isError") and not rr_in.isError():
-                        regs_in = rr_in.registers
-                    if DEBUG_REG_DUMP and not reg_dumped[uid]:
-                        hold_hex = " ".join([f"{v:04X}" for v in regs_hold])
-                        in_hex = " ".join([f"{v:04X}" for v in regs_in]) if regs_in else "N/A"
-                        print(f"[UID 0x{uid:02X}] HOLD 0x{REG_START:02X}~0x{REG_START+REG_COUNT-1:02X}: {hold_hex}")
-                        print(f"[UID 0x{uid:02X}] INPT 0x{REG_START:02X}~0x{REG_START+REG_COUNT-1:02X}: {in_hex}")
-                        reg_dumped[uid] = True
-                    if regs_in and any(v != 0 for v in regs_in[6:19]):
-                        print(f"[UID 0x{uid:02X}] Input 레지스터 사용 (VEL/DISP/FREQ)")
-                        return regs_in
-                    return regs_hold
-                else:
-                    # 에러 상세 정보 출력
-                    error_type = type(rr).__name__
-                    error_msg = str(rr) if hasattr(rr, '__str__') else "Unknown error"
-                    print(f"[UID 0x{uid:02X}] 읽기 실패 (시도 {attempt+1}/{RETRY_READ}): {error_type} - {error_msg}")
-            time.sleep(0.01)
-        except Exception as e:
-            print(f"[UID 0x{uid:02X}] 읽기 예외 (시도 {attempt+1}/{RETRY_READ}): {type(e).__name__} - {e}")
-            time.sleep(0.01)
-
-    print(f"[UID 0x{uid:02X}] ★ 레지스터 읽기 최종 실패 (0x{REG_START:02X}~0x{REG_START+REG_COUNT-1:02X}, {REG_COUNT}개)")
-    return None  # 실패 시 None 반환
+    for _ in range(RETRY_READ):
+        rr = client.read_holding_registers(address=REG_START, count=REG_COUNT, device_id=uid)
+        if hasattr(rr, "isError") and not rr.isError(): return rr.registers
+        time.sleep(0.01)
+    raise ModbusIOException("read_holding_registers 실패")
 
 def s16(v): return v-0x10000 if v>=0x8000 else v
 
@@ -490,8 +454,6 @@ def collector_loop():
             for uid in UNIT_IDS:
                 try:
                     regs = read_block_retry(uid)
-                    if regs is None:
-                        continue  # 읽기 실패 시 다음 UID로 스킵
                     acc, vel, disp, freq = parse_map(regs)
                     t = time.time()
                     buf_time[uid].append(t)
@@ -583,29 +545,6 @@ def collector_loop():
 
         remain = poll_dt - (time.time() - t_cycle)
         if remain > 0: time.sleep(remain)
-
-# ========== 초기 읽기 테스트 ==========
-print("\n" + "="*60)
-print("[초기 테스트] 센서 통신 확인 중...")
-test_uid = UNIT_IDS[0] if UNIT_IDS else 0x50  # 첫 번째 UID 사용 (기본값 0x50)
-print(f"[초기 테스트] UID 0x{test_uid:02X}에서 레지스터 읽기 시도 (0x{REG_START:02X}~0x{REG_START+REG_COUNT-1:02X}, {REG_COUNT}개)")
-
-test_regs = read_block_retry(test_uid)
-if test_regs is not None:
-    print(f"[초기 테스트] ✓ 읽기 성공! 레지스터 {len(test_regs)}개 수신")
-    try:
-        test_acc, test_vel, test_disp, test_freq = parse_map(test_regs)
-        print(f"[초기 테스트] ACC: ({test_acc[0]:.2f}, {test_acc[1]:.2f}, {test_acc[2]:.2f}) g")
-        print(f"[초기 테스트] VEL: ({test_vel[0]:.1f}, {test_vel[1]:.1f}, {test_vel[2]:.1f}) mm/s")
-        print(f"[초기 테스트] DISP: ({test_disp[0]:.1f}, {test_disp[1]:.1f}, {test_disp[2]:.1f}) um")
-        print(f"[초기 테스트] 센서 통신 정상 - 데이터 수집을 시작합니다.")
-    except Exception as e:
-        print(f"[초기 테스트] 데이터 파싱 오류: {e}")
-        print(f"[초기 테스트] 경고: 파싱 오류 발생, 계속 진행합니다.")
-else:
-    print(f"[초기 테스트] ✗ 읽기 실패!")
-    print(f"[초기 테스트] 경고: 초기 읽기 실패했지만 계속 진행합니다. (재시도 중 복구될 수 있음)")
-print("="*60 + "\n")
 
 collector_thread = threading.Thread(target=collector_loop, daemon=True)
 collector_thread.start()
