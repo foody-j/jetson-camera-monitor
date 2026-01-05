@@ -121,21 +121,21 @@ print(f"[연결 성공] {PORT}")
 
 def unlock_sensor(uid):
     try:
-        client.write_register(address=REG_UNLOCK_ADDR, value=0xB588, slave=uid)
+        client.write_register(address=REG_UNLOCK_ADDR, value=0xB588, unit=uid)
     except Exception:
         pass
 
 def restart_sensor(uid):
     try:
         unlock_sensor(uid); time.sleep(0.05)
-        client.write_register(address=REG_SAVE, value=0x00FF, slave=uid)
+        client.write_register(address=REG_SAVE, value=0x00FF, unit=uid)
     except Exception as e:
         print(f"[UID 0x{uid:02X}] 재시작 오류: {e}")
 
 def read_block_retry(uid):
     for attempt in range(RETRY_READ):
         try:
-            rr = client.read_holding_registers(address=REG_START, count=REG_COUNT, slave=uid)
+            rr = client.read_holding_registers(address=REG_START, count=REG_COUNT, unit=uid)
             if hasattr(rr, "isError"):
                 if not rr.isError():
                     return rr.registers
