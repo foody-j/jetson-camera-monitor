@@ -32,7 +32,7 @@ except Exception:
 # ---------- 사용자 설정 ----------
 PORT = "/dev/ttyUSB0"  # Jetson USB 시리얼 포트
 BAUD = 115200
-UNIT_IDS = [0x50, 0x51, 0x52]     # 요청: 50, 51, 52
+UNIT_IDS = [0x53, 0x54, 0x55]     # 요청: 53, 54, 55
 PARITY = 'N'; STOPBITS = 1; BYTESIZE = 8
 TIMEOUT_S = 0.15
 
