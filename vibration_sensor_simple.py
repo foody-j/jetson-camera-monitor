@@ -65,6 +65,13 @@ WINDOW_SEC = config.get("window_sec", 5.0)  # X축 시간 범위 (초)
 SAMPLE_RATE_HINT_PER_UNIT = POLL_HZ_TOTAL / max(1, len(UNIT_IDS))
 PLOT_INTERVAL_MS = 100
 DEBUG_REG_DUMP = config.get("debug_reg_dump", True)
+RS485_ENABLED = config.get("rs485_enabled", False)
+RS485_RTS_ON_SEND = config.get("rs485_rts_on_send", True)
+RS485_RTS_ON_RECEIVE = config.get("rs485_rts_on_receive", False)
+RS485_DELAY_BEFORE_TX = config.get("rs485_delay_before_tx", 0.0)
+RS485_DELAY_BEFORE_RX = config.get("rs485_delay_before_rx", 0.0)
+
+print(f"[설정] RS485 enabled={RS485_ENABLED} rts_on_send={RS485_RTS_ON_SEND} rts_on_receive={RS485_RTS_ON_RECEIVE} delay_tx={RS485_DELAY_BEFORE_TX}s delay_rx={RS485_DELAY_BEFORE_RX}s")
 
 # 레지스터 맵
 REG_AX = 0x34; REG_AY = 0x35; REG_AZ = 0x36
@@ -342,7 +349,32 @@ def make_client():
     )
 
 client = make_client()
-if not client.connect():
+def configure_rs485():
+    if not RS485_ENABLED:
+        return
+    try:
+        from serial.rs485 import RS485Settings
+        ser = getattr(client, "socket", None) or getattr(client, "serial", None)
+        if ser is None:
+            print("[RS485] 시리얼 핸들 없음")
+            return
+        ser.rs485_mode = RS485Settings(
+            rts_level_for_tx=RS485_RTS_ON_SEND,
+            rts_level_for_rx=RS485_RTS_ON_RECEIVE,
+            delay_before_tx=RS485_DELAY_BEFORE_TX,
+            delay_before_rx=RS485_DELAY_BEFORE_RX
+        )
+        print("[RS485] RS485 모드 적용")
+    except Exception as e:
+        print(f"[RS485] 설정 실패: {e}")
+
+def connect_client():
+    if client.connect():
+        configure_rs485()
+        return True
+    return False
+
+if not connect_client():
     print(f"[오류] {PORT} 연결 실패. USB-RS485 변환기를 확인하세요.")
     exit(1)
 
@@ -452,7 +484,7 @@ def collector_loop():
         t_cycle = time.time()
         try:
             if not getattr(client, "connected", False):
-                client.connect()
+                connect_client()
             # 각 유닛 순차 폴링
             for uid in UNIT_IDS:
                 try:
@@ -531,7 +563,7 @@ def collector_loop():
                     try: client.close()
                     except: pass
                     time.sleep(0.2)
-                    client.connect()
+                    connect_client()
                 except Exception as e:
                     print(f"[UID 0x{uid:02X}] 예외: {e}")
 
@@ -543,7 +575,7 @@ def collector_loop():
                     try: client.close()
                     except: pass
                     time.sleep(0.2)
-                    client.connect()
+                    connect_client()
 
         except Exception as e:
             print(f"[루프 예외] {e}")
