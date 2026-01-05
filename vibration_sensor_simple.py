@@ -330,11 +330,10 @@ last_ok  = {uid: time.time() for uid in UNIT_IDS}
 
 # ========== Modbus ==========
 def make_client():
-    # Windows 호환성을 위해 method="rtu" 명시
+    # pymodbus 3.x에서는 method 파라미터 불필요 (자동으로 RTU 사용)
     return ModbusSerialClient(
         port=PORT, baudrate=BAUD, bytesize=BYTESIZE,
-        parity=PARITY, stopbits=STOPBITS, timeout=TIMEOUT_S,
-        method="rtu"  # RTU 모드 명시 (Windows 환경에서 필수)
+        parity=PARITY, stopbits=STOPBITS, timeout=TIMEOUT_S
     )
 
 client = make_client()
