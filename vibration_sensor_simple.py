@@ -379,7 +379,21 @@ def read_block_retry(uid):
             )
             if hasattr(rr, "isError"):
                 if not rr.isError():
-                    return rr.registers
+                    regs = rr.registers
+                    # VEL/DISP/FREQ가 전부 0이면 Input Register도 시도
+                    if all(v == 0 for v in regs[6:19]):
+                        rr_in = _call_modbus(
+                            client.read_input_registers,
+                            address=REG_START,
+                            count=REG_COUNT,
+                            device_id=uid
+                        )
+                        if hasattr(rr_in, "isError") and not rr_in.isError():
+                            regs_in = rr_in.registers
+                            if any(v != 0 for v in regs_in[6:19]):
+                                print(f"[UID 0x{uid:02X}] Input 레지스터 사용 (VEL/DISP/FREQ)")
+                                return regs_in
+                    return regs
                 else:
                     # 에러 상세 정보 출력
                     error_type = type(rr).__name__
