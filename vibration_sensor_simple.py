@@ -20,7 +20,11 @@ from datetime import datetime
 from collections import deque
 
 import numpy as np
-from pymodbus.client import ModbusSerialClient
+try:
+    from pymodbus.client import ModbusSerialClient
+except Exception:
+    # pymodbus 2.x fallback
+    from pymodbus.client.sync import ModbusSerialClient
 from pymodbus.exceptions import ModbusIOException
 from serial import SerialException
 from serial.tools import list_ports
