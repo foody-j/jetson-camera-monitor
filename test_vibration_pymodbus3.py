@@ -178,6 +178,15 @@ def parse_map(regs):
     VX,VY,VZ = [s16(regs[i]) for i in [6,7,8]]
     DX,DY,DZ = [s16(regs[i]) for i in [13,14,15]]
     HX,HY,HZ = [s16(regs[i]) for i in [16,17,18]]
+
+    # 디버깅: raw 값 출력 (첫 5회만)
+    global _debug_count
+    if not hasattr(parse_map, '_debug_count'):
+        parse_map._debug_count = 0
+    if parse_map._debug_count < 5:
+        print(f"[DEBUG] RAW: VX={VX}, VY={VY}, VZ={VZ}, DX={DX}, DY={DY}, DZ={DZ}")
+        parse_map._debug_count += 1
+
     acc  = (AX*ACC_SCALE, AY*ACC_SCALE, AZ*ACC_SCALE)
     vel  = (float(VX), float(VY), float(VZ))            # mm/s
     disp = (float(DX), float(DY), float(DZ))            # um
