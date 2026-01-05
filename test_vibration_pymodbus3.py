@@ -119,23 +119,42 @@ if not client.connect():
     exit(1)
 print(f"[연결 성공] {PORT}")
 
+# pymodbus 버전별 호환 래퍼
+def _modbus_call(func, **kwargs):
+    """pymodbus 2.x/3.x 호환: slave/unit/device_id 자동 처리"""
+    if 'slave' in kwargs:
+        uid = kwargs.pop('slave')
+        # 3.x 최신은 slave_id 또는 그냥 positional
+        try:
+            return func(**kwargs, slave=uid)
+        except TypeError:
+            try:
+                return func(**kwargs, unit=uid)
+            except TypeError:
+                try:
+                    return func(**kwargs, device_id=uid)
+                except TypeError:
+                    # 최후의 수단: positional로 시도
+                    return func(slave=uid, **kwargs)
+    return func(**kwargs)
+
 def unlock_sensor(uid):
     try:
-        client.write_register(address=REG_UNLOCK_ADDR, value=0xB588, unit=uid)
+        _modbus_call(client.write_register, address=REG_UNLOCK_ADDR, value=0xB588, slave=uid)
     except Exception:
         pass
 
 def restart_sensor(uid):
     try:
         unlock_sensor(uid); time.sleep(0.05)
-        client.write_register(address=REG_SAVE, value=0x00FF, unit=uid)
+        _modbus_call(client.write_register, address=REG_SAVE, value=0x00FF, slave=uid)
     except Exception as e:
         print(f"[UID 0x{uid:02X}] 재시작 오류: {e}")
 
 def read_block_retry(uid):
     for attempt in range(RETRY_READ):
         try:
-            rr = client.read_holding_registers(address=REG_START, count=REG_COUNT, unit=uid)
+            rr = _modbus_call(client.read_holding_registers, address=REG_START, count=REG_COUNT, slave=uid)
             if hasattr(rr, "isError"):
                 if not rr.isError():
                     return rr.registers
