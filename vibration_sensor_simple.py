@@ -409,19 +409,19 @@ if not connect_client():
 print(f"[연결] {PORT} @ {BAUD}bps")
 
 def unlock_sensor(uid):
-    try: client.write_register(address=REG_UNLOCK_ADDR, value=0xB588, slave=uid)
+    try: client.write_register(address=REG_UNLOCK_ADDR, value=0xB588, device_id=uid)
     except Exception: pass
 
 def restart_sensor(uid):
     try:
         unlock_sensor(uid); time.sleep(0.05)
-        client.write_register(address=REG_SAVE, value=0x00FF, slave=uid)
+        client.write_register(address=REG_SAVE, value=0x00FF, device_id=uid)
     except Exception as e:
         print(f"[UID 0x{uid:02X}] 재시작 오류: {e}")
 
 def read_block_retry(uid):
     for _ in range(RETRY_READ):
-        rr = client.read_holding_registers(address=REG_START, count=REG_COUNT, slave=uid)
+        rr = client.read_holding_registers(address=REG_START, count=REG_COUNT, device_id=uid)
         if hasattr(rr, "isError") and not rr.isError(): return rr.registers
         time.sleep(0.01)
     raise ModbusIOException("read_holding_registers 실패")
