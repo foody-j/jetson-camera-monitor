@@ -426,6 +426,19 @@ def read_block_retry(uid):
         time.sleep(0.01)
     raise ModbusIOException("read_holding_registers 실패")
 
+INITIAL_TEST = config.get("initial_test", True)
+if INITIAL_TEST and UNIT_IDS:
+    test_uid = UNIT_IDS[0]
+    print("\n" + "=" * 60)
+    print("[초기 테스트] 센서 통신 확인 중...")
+    print(f"[초기 테스트] UID 0x{test_uid:02X}에서 레지스터 읽기 시도 (0x{REG_START:02X}~0x{REG_START+REG_COUNT-1:02X}, {REG_COUNT}개)")
+    try:
+        test_regs = read_block_retry(test_uid)
+        print(f"[초기 테스트] ✓ 읽기 성공! 레지스터 {len(test_regs)}개 수신")
+    except Exception as e:
+        print(f"[초기 테스트] ✗ 읽기 실패: {e}")
+    print("=" * 60 + "\n")
+
 def s16(v): return v-0x10000 if v>=0x8000 else v
 
 def parse_map(regs):
