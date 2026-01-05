@@ -179,12 +179,17 @@ def parse_map(regs):
     DX,DY,DZ = [s16(regs[i]) for i in [13,14,15]]
     HX,HY,HZ = [s16(regs[i]) for i in [16,17,18]]
 
-    # 디버깅: raw 값 출력 (첫 5회만)
+    # 디버깅: 전체 레지스터 출력 (첫 3회만)
     global _debug_count
     if not hasattr(parse_map, '_debug_count'):
         parse_map._debug_count = 0
-    if parse_map._debug_count < 5:
-        print(f"[DEBUG] RAW: VX={VX}, VY={VY}, VZ={VZ}, DX={DX}, DY={DY}, DZ={DZ}")
+    if parse_map._debug_count < 3:
+        print(f"[DEBUG] 전체 19개 레지스터: {regs}")
+        print(f"[DEBUG] ACC인덱스[0,1,2]: {regs[0]}, {regs[1]}, {regs[2]}")
+        print(f"[DEBUG] VEL인덱스[6,7,8]: {regs[6]}, {regs[7]}, {regs[8]}")
+        print(f"[DEBUG] DISP인덱스[13,14,15]: {regs[13]}, {regs[14]}, {regs[15]}")
+        print(f"[DEBUG] RAW변환 VX={VX}, VY={VY}, VZ={VZ}, DX={DX}, DY={DY}, DZ={DZ}")
+        print("="*60)
         parse_map._debug_count += 1
 
     acc  = (AX*ACC_SCALE, AY*ACC_SCALE, AZ*ACC_SCALE)
