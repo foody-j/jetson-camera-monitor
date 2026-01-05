@@ -42,6 +42,8 @@ if os.path.exists(config_file):
         print(f"[설정] {config_file} 로드 완료")
     except Exception as e:
         print(f"[경고] 설정 파일 로드 실패: {e}, 기본값 사용")
+else:
+    print(f"[설정] {config_file} 없음, 기본값 사용")
 
 # ========== 사용자 설정 (Jetson용) ==========
 PORT = config.get("port", "/dev/ttyUSB0")  # Linux/Jetson USB 시리얼 포트
@@ -49,6 +51,7 @@ BAUD = config.get("baud", 115200)
 # Convert hex strings to integers
 unit_ids_str = config.get("unit_ids", ["0x50", "0x51", "0x52"])
 UNIT_IDS = [int(uid, 16) if isinstance(uid, str) else uid for uid in unit_ids_str]
+print(f"[설정] PORT={PORT}, BAUD={BAUD}, UNIT_IDS={','.join([f'0x{u:02X}' for u in UNIT_IDS])}")
 PARITY = 'N'
 STOPBITS = 1
 BYTESIZE = 8
@@ -61,6 +64,7 @@ RECONNECT_TIMEOUT = 3.0
 WINDOW_SEC = config.get("window_sec", 5.0)  # X축 시간 범위 (초)
 SAMPLE_RATE_HINT_PER_UNIT = POLL_HZ_TOTAL / max(1, len(UNIT_IDS))
 PLOT_INTERVAL_MS = 100
+DEBUG_REG_DUMP = config.get("debug_reg_dump", True)
 
 # 레지스터 맵
 REG_AX = 0x34; REG_AY = 0x35; REG_AZ = 0x36
@@ -327,6 +331,7 @@ buf_vel  = {uid: [deque(maxlen=maxlen) for _ in range(3)] for uid in UNIT_IDS}
 buf_disp = {uid: [deque(maxlen=maxlen) for _ in range(3)] for uid in UNIT_IDS}
 buf_freq = {uid: [deque(maxlen=maxlen) for _ in range(3)] for uid in UNIT_IDS}
 last_ok  = {uid: time.time() for uid in UNIT_IDS}
+reg_dumped = {uid: False for uid in UNIT_IDS}
 
 # ========== Modbus ==========
 def make_client():
@@ -379,21 +384,26 @@ def read_block_retry(uid):
             )
             if hasattr(rr, "isError"):
                 if not rr.isError():
-                    regs = rr.registers
-                    # VEL/DISP/FREQ가 전부 0이면 Input Register도 시도
-                    if all(v == 0 for v in regs[6:19]):
-                        rr_in = _call_modbus(
-                            client.read_input_registers,
-                            address=REG_START,
-                            count=REG_COUNT,
-                            device_id=uid
-                        )
-                        if hasattr(rr_in, "isError") and not rr_in.isError():
-                            regs_in = rr_in.registers
-                            if any(v != 0 for v in regs_in[6:19]):
-                                print(f"[UID 0x{uid:02X}] Input 레지스터 사용 (VEL/DISP/FREQ)")
-                                return regs_in
-                    return regs
+                    regs_hold = rr.registers
+                    regs_in = None
+                    rr_in = _call_modbus(
+                        client.read_input_registers,
+                        address=REG_START,
+                        count=REG_COUNT,
+                        device_id=uid
+                    )
+                    if hasattr(rr_in, "isError") and not rr_in.isError():
+                        regs_in = rr_in.registers
+                    if DEBUG_REG_DUMP and not reg_dumped[uid]:
+                        hold_hex = " ".join([f"{v:04X}" for v in regs_hold])
+                        in_hex = " ".join([f"{v:04X}" for v in regs_in]) if regs_in else "N/A"
+                        print(f"[UID 0x{uid:02X}] HOLD 0x{REG_START:02X}~0x{REG_START+REG_COUNT-1:02X}: {hold_hex}")
+                        print(f"[UID 0x{uid:02X}] INPT 0x{REG_START:02X}~0x{REG_START+REG_COUNT-1:02X}: {in_hex}")
+                        reg_dumped[uid] = True
+                    if regs_in and any(v != 0 for v in regs_in[6:19]):
+                        print(f"[UID 0x{uid:02X}] Input 레지스터 사용 (VEL/DISP/FREQ)")
+                        return regs_in
+                    return regs_hold
                 else:
                     # 에러 상세 정보 출력
                     error_type = type(rr).__name__
