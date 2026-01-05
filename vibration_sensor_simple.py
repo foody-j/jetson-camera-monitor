@@ -52,7 +52,7 @@ UNIT_IDS = [int(uid, 16) if isinstance(uid, str) else uid for uid in unit_ids_st
 PARITY = 'N'
 STOPBITS = 1
 BYTESIZE = 8
-TIMEOUT_S = 0.15
+TIMEOUT_S = 0.2  # 0.15에서 0.2로 증가 (안정적인 통신을 위해)
 
 # 폴링/버퍼
 POLL_HZ_TOTAL = config.get("poll_hz_total", 45)  # 총 루프 속도(초당 45회 → 유닛당 약 15Hz)
@@ -330,10 +330,11 @@ last_ok  = {uid: time.time() for uid in UNIT_IDS}
 
 # ========== Modbus ==========
 def make_client():
-    # pymodbus 3.x에서는 method 파라미터 불필요 (자동으로 RTU 사용)
+    # Windows 호환성을 위해 method="rtu" 명시
     return ModbusSerialClient(
         port=PORT, baudrate=BAUD, bytesize=BYTESIZE,
-        parity=PARITY, stopbits=STOPBITS, timeout=TIMEOUT_S
+        parity=PARITY, stopbits=STOPBITS, timeout=TIMEOUT_S,
+        method="rtu"  # RTU 모드 명시 (Windows 환경에서 필수)
     )
 
 client = make_client()
@@ -355,11 +356,25 @@ def restart_sensor(uid):
         print(f"[UID 0x{uid:02X}] 재시작 오류: {e}")
 
 def read_block_retry(uid):
-    for _ in range(RETRY_READ):
-        rr = client.read_holding_registers(address=REG_START, count=REG_COUNT, device_id=uid)
-        if hasattr(rr, "isError") and not rr.isError(): return rr.registers
-        time.sleep(0.01)
-    raise ModbusIOException("read_holding_registers 실패")
+    """레지스터 읽기 재시도 (0x34~0x46, 19개)"""
+    for attempt in range(RETRY_READ):
+        try:
+            rr = client.read_holding_registers(address=REG_START, count=REG_COUNT, device_id=uid)
+            if hasattr(rr, "isError"):
+                if not rr.isError():
+                    return rr.registers
+                else:
+                    # 에러 상세 정보 출력
+                    error_type = type(rr).__name__
+                    error_msg = str(rr) if hasattr(rr, '__str__') else "Unknown error"
+                    print(f"[UID 0x{uid:02X}] 읽기 실패 (시도 {attempt+1}/{RETRY_READ}): {error_type} - {error_msg}")
+            time.sleep(0.01)
+        except Exception as e:
+            print(f"[UID 0x{uid:02X}] 읽기 예외 (시도 {attempt+1}/{RETRY_READ}): {type(e).__name__} - {e}")
+            time.sleep(0.01)
+
+    print(f"[UID 0x{uid:02X}] ★ 레지스터 읽기 최종 실패 (0x{REG_START:02X}~0x{REG_START+REG_COUNT-1:02X}, {REG_COUNT}개)")
+    return None  # 실패 시 None 반환
 
 def s16(v): return v-0x10000 if v>=0x8000 else v
 
@@ -401,6 +416,8 @@ def collector_loop():
             for uid in UNIT_IDS:
                 try:
                     regs = read_block_retry(uid)
+                    if regs is None:
+                        continue  # 읽기 실패 시 다음 UID로 스킵
                     acc, vel, disp, freq = parse_map(regs)
                     t = time.time()
                     buf_time[uid].append(t)
@@ -492,6 +509,29 @@ def collector_loop():
 
         remain = poll_dt - (time.time() - t_cycle)
         if remain > 0: time.sleep(remain)
+
+# ========== 초기 읽기 테스트 ==========
+print("\n" + "="*60)
+print("[초기 테스트] 센서 통신 확인 중...")
+test_uid = UNIT_IDS[0] if UNIT_IDS else 0x50  # 첫 번째 UID 사용 (기본값 0x50)
+print(f"[초기 테스트] UID 0x{test_uid:02X}에서 레지스터 읽기 시도 (0x{REG_START:02X}~0x{REG_START+REG_COUNT-1:02X}, {REG_COUNT}개)")
+
+test_regs = read_block_retry(test_uid)
+if test_regs is not None:
+    print(f"[초기 테스트] ✓ 읽기 성공! 레지스터 {len(test_regs)}개 수신")
+    try:
+        test_acc, test_vel, test_disp, test_freq = parse_map(test_regs)
+        print(f"[초기 테스트] ACC: ({test_acc[0]:.2f}, {test_acc[1]:.2f}, {test_acc[2]:.2f}) g")
+        print(f"[초기 테스트] VEL: ({test_vel[0]:.1f}, {test_vel[1]:.1f}, {test_vel[2]:.1f}) mm/s")
+        print(f"[초기 테스트] DISP: ({test_disp[0]:.1f}, {test_disp[1]:.1f}, {test_disp[2]:.1f}) um")
+        print(f"[초기 테스트] 센서 통신 정상 - 데이터 수집을 시작합니다.")
+    except Exception as e:
+        print(f"[초기 테스트] 데이터 파싱 오류: {e}")
+        print(f"[초기 테스트] 경고: 파싱 오류 발생, 계속 진행합니다.")
+else:
+    print(f"[초기 테스트] ✗ 읽기 실패!")
+    print(f"[초기 테스트] 경고: 초기 읽기 실패했지만 계속 진행합니다. (재시도 중 복구될 수 있음)")
+print("="*60 + "\n")
 
 collector_thread = threading.Thread(target=collector_loop, daemon=True)
 collector_thread.start()
