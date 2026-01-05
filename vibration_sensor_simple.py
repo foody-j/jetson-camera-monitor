@@ -52,10 +52,11 @@ BAUD = config.get("baud", 115200)
 unit_ids_str = config.get("unit_ids", ["0x50", "0x51", "0x52"])
 UNIT_IDS = [int(uid, 16) if isinstance(uid, str) else uid for uid in unit_ids_str]
 print(f"[설정] PORT={PORT}, BAUD={BAUD}, UNIT_IDS={','.join([f'0x{u:02X}' for u in UNIT_IDS])}")
-PARITY = 'N'
-STOPBITS = 1
-BYTESIZE = 8
-TIMEOUT_S = 0.2  # 0.15에서 0.2로 증가 (안정적인 통신을 위해)
+print(f"[설정] PARITY={PARITY}, STOPBITS={STOPBITS}, BYTESIZE={BYTESIZE}, TIMEOUT={TIMEOUT_S}")
+PARITY = config.get("parity", "N")
+STOPBITS = config.get("stopbits", 1)
+BYTESIZE = config.get("bytesize", 8)
+TIMEOUT_S = config.get("timeout_s", 0.2)  # 0.15에서 0.2로 증가 (안정적인 통신을 위해)
 
 # 폴링/버퍼
 POLL_HZ_TOTAL = config.get("poll_hz_total", 45)  # 총 루프 속도(초당 45회 → 유닛당 약 15Hz)
