@@ -333,7 +333,7 @@ def make_client():
     # pymodbus 3.x에서는 method 파라미터 불필요 (자동으로 RTU 사용)
     return ModbusSerialClient(
         port=PORT, baudrate=BAUD, bytesize=BYTESIZE,
-        parity=PARITY, stopbits=STOPBITS, timeout=TIMEOUT_S
+        parity=PARITY, stopbits=STOPBITS, timeout=TIMEOUT_S, framer="rtu"
     )
 
 client = make_client()
@@ -343,14 +343,27 @@ if not client.connect():
 
 print(f"[연결] {PORT} @ {BAUD}bps")
 
+def _call_modbus(func, **kwargs):
+    """pymodbus 2.x/3.x 호환: device_id/ slave 파라미터 자동 처리"""
+    try:
+        return func(**kwargs)
+    except TypeError:
+        if "device_id" in kwargs:
+            kwargs["slave"] = kwargs.pop("device_id")
+            return func(**kwargs)
+        if "slave" in kwargs:
+            kwargs["device_id"] = kwargs.pop("slave")
+            return func(**kwargs)
+        raise
+
 def unlock_sensor(uid):
-    try: client.write_register(address=REG_UNLOCK_ADDR, value=0xB588, device_id=uid)
+    try: _call_modbus(client.write_register, address=REG_UNLOCK_ADDR, value=0xB588, device_id=uid)
     except Exception: pass
 
 def restart_sensor(uid):
     try:
         unlock_sensor(uid); time.sleep(0.05)
-        client.write_register(address=REG_SAVE, value=0x00FF, device_id=uid)
+        _call_modbus(client.write_register, address=REG_SAVE, value=0x00FF, device_id=uid)
     except Exception as e:
         print(f"[UID 0x{uid:02X}] 재시작 오류: {e}")
 
@@ -358,7 +371,12 @@ def read_block_retry(uid):
     """레지스터 읽기 재시도 (0x34~0x46, 19개)"""
     for attempt in range(RETRY_READ):
         try:
-            rr = client.read_holding_registers(address=REG_START, count=REG_COUNT, device_id=uid)
+            rr = _call_modbus(
+                client.read_holding_registers,
+                address=REG_START,
+                count=REG_COUNT,
+                device_id=uid
+            )
             if hasattr(rr, "isError"):
                 if not rr.isError():
                     return rr.registers
