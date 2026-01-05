@@ -23,6 +23,7 @@ import numpy as np
 from pymodbus.client import ModbusSerialClient
 from pymodbus.exceptions import ModbusIOException
 from serial import SerialException
+from serial.tools import list_ports
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -49,10 +50,20 @@ BAUD = config.get("baud", 115200)
 # Convert hex strings to integers
 unit_ids_str = config.get("unit_ids", ["0x50", "0x51", "0x52"])
 UNIT_IDS = [int(uid, 16) if isinstance(uid, str) else uid for uid in unit_ids_str]
-PARITY = 'N'
-STOPBITS = 1
-BYTESIZE = 8
-TIMEOUT_S = 0.15
+
+def select_port(port_setting):
+    if port_setting and port_setting != "auto":
+        return port_setting
+    ports = [p.device for p in list_ports.comports()]
+    if ports:
+        return ports[0]
+    return port_setting or "/dev/ttyUSB0"
+
+PORT = select_port(PORT)
+PARITY = config.get("parity", "N")
+STOPBITS = config.get("stopbits", 1)
+BYTESIZE = config.get("bytesize", 8)
+TIMEOUT_S = config.get("timeout_s", 0.15)
 RTS_MANUAL = config.get("rts_manual", False)
 RTS_ON_TX = config.get("rts_on_tx", True)
 RTS_ON_RX = config.get("rts_on_rx", False)
@@ -69,6 +80,7 @@ RECONNECT_TIMEOUT = 3.0
 WINDOW_SEC = config.get("window_sec", 5.0)  # X축 시간 범위 (초)
 SAMPLE_RATE_HINT_PER_UNIT = POLL_HZ_TOTAL / max(1, len(UNIT_IDS))
 PLOT_INTERVAL_MS = 100
+print(f"[설정] PORT={PORT}, BAUD={BAUD}, PARITY={PARITY}, STOPBITS={STOPBITS}, BYTESIZE={BYTESIZE}, TIMEOUT={TIMEOUT_S}, POLL_HZ_TOTAL={POLL_HZ_TOTAL}")
 
 # 레지스터 맵
 REG_AX = 0x34; REG_AY = 0x35; REG_AZ = 0x36
