@@ -97,8 +97,8 @@
   "_comment_recording_delay": "배출 신호 후 추가 녹화 시간 (초)",
   "recording_delay_after_discharge": 20,
   "stirfry_save_resolution": {
-    "width": 1280,
-    "height": 720
+    "width": 1920,
+    "height": 1536
   },
   "_comment_jpeg": "JPEG 품질 (1-100, 100=최고품질, ~800KB/장)",
   "stirfry_jpeg_quality": 100,

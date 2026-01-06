@@ -53,7 +53,8 @@
       "Bash(nvm use:*)",
       "Bash(timeout 10 npx:*)",
       "Bash(git remote set-url:*)",
-      "Bash(du:*)"
+      "Bash(du:*)",
+      "Bash(pip3 install:*)"
     ],
     "deny": [],
     "ask": []
