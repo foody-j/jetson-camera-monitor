@@ -190,6 +190,7 @@ PERSON_COLLECTION_END_TIME = datetime.strptime(config.get('person_collection_end
 PERSON_COLLECTION_INTERVAL_SEC = config.get('person_collection_interval_sec', 5)
 PERSON_COLLECTION_SAVE_DIR = config.get('person_collection_save_dir', 'AI_Data/PersonData')
 PERSON_COLLECTION_JPEG_QUALITY = config.get('person_collection_jpeg_quality', 100)
+PERSON_COLLECTION_SAVE_RESOLUTION = config.get('person_collection_save_resolution', {'width': 640, 'height': 512})
 
 # Motion detection & YOLO parameters (configurable via config.json)
 YOLO_IMGSZ = config.get('yolo_imgsz', 416)  # YOLO 입력 이미지 크기 (높을수록 정확, 느림)
@@ -1290,8 +1291,13 @@ class IntegratedMonitorApp:
                     filename = now.strftime("%H%M%S") + f"_{now.microsecond // 1000:03d}.jpg"
                     filepath = os.path.join(save_dir, filename)
 
-                    # JPEG 저장 (품질 100%)
-                    cv2.imwrite(filepath, frame, [cv2.IMWRITE_JPEG_QUALITY, PERSON_COLLECTION_JPEG_QUALITY])
+                    # Resize for storage efficiency
+                    save_width = PERSON_COLLECTION_SAVE_RESOLUTION.get('width', 640)
+                    save_height = PERSON_COLLECTION_SAVE_RESOLUTION.get('height', 512)
+                    resized = cv2.resize(frame, (save_width, save_height), interpolation=cv2.INTER_AREA)
+
+                    # JPEG 저장
+                    cv2.imwrite(filepath, resized, [cv2.IMWRITE_JPEG_QUALITY, PERSON_COLLECTION_JPEG_QUALITY])
                     self.person_collection_frame_count += 1
 
                     # 100장마다 로그 출력

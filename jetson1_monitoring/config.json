@@ -125,5 +125,9 @@
   "person_collection_interval_sec": 5,
   "_comment_person_collection_save": "저장 경로 및 품질",
   "person_collection_save_dir": "AI_Data/PersonData",
-  "person_collection_jpeg_quality": 100
+  "person_collection_save_resolution": {
+    "width": 640,
+    "height": 512
+  },
+  "person_collection_jpeg_quality": 50
 }
