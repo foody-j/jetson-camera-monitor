@@ -23,6 +23,7 @@ import threading
 import sys
 import numpy as np
 import socket
+import re
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -1307,6 +1308,20 @@ class IntegratedMonitorApp:
                 self.capture_person_frame
             )
 
+    def _parse_korean_duration_seconds(self, text):
+        """Parse durations like '15분', '1분 3초', '45초' to total seconds."""
+        if not text:
+            return 0
+        minutes = 0
+        seconds = 0
+        m = re.search(r'(\d+)\s*분', text)
+        s = re.search(r'(\d+)\s*초', text)
+        if m:
+            minutes = int(m.group(1))
+        if s:
+            seconds = int(s.group(1))
+        return minutes * 60 + seconds
+
     def on_robot_status(self, client, userdata, message):
         """로봇 PC 상태 메시지 파싱 - Jetson1은 볶음솥(DeviceNum=1)만 처리"""
         try:
@@ -1375,6 +1390,10 @@ class IntegratedMonitorApp:
 
                 print(f"[로봇상태] 볶음솥 PT{pt_num} | {process_type} | {recipe} | 온도:{temp} | {running_time}")
 
+                running_sec = self._parse_korean_duration_seconds(running_time)
+                target_sec = self._parse_korean_duration_seconds(target_time)
+                stop_by_time = target_sec > 0 and running_sec >= (target_sec + 60)
+
                 # 녹화 시작/중지 트리거: 투입 시 시작, 배출 후 N초 뒤 종료
                 if pt_num == "0":  # 왼쪽 = POT1
                     if process_type == "투입":
@@ -1394,6 +1413,12 @@ class IntegratedMonitorApp:
                             delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
                             print(f"[로봇상태] POT1(왼쪽) 배출 감지 - {RECORDING_DELAY_AFTER_DISCHARGE}초 후 녹화 종료 예정")
                             self.pot1_discharge_timer_id = self.root.after(delay_ms, self._delayed_stop_pot1_recording)
+                    if stop_by_time and self.stirfry_pot1_recording:
+                        if self.pot1_discharge_timer_id:
+                            self.root.after_cancel(self.pot1_discharge_timer_id)
+                            self.pot1_discharge_timer_id = None
+                        print(f"[로봇상태] POT1(왼쪽) 목표+1분 도달 - 녹화 종료")
+                        self.stop_stirfry_pot1_recording()
 
                 elif pt_num == "1":  # 오른쪽 = POT2
                     if process_type == "투입":
@@ -1413,6 +1438,12 @@ class IntegratedMonitorApp:
                             delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
                             print(f"[로봇상태] POT2(오른쪽) 배출 감지 - {RECORDING_DELAY_AFTER_DISCHARGE}초 후 녹화 종료 예정")
                             self.pot2_discharge_timer_id = self.root.after(delay_ms, self._delayed_stop_pot2_recording)
+                    if stop_by_time and self.stirfry_pot2_recording:
+                        if self.pot2_discharge_timer_id:
+                            self.root.after_cancel(self.pot2_discharge_timer_id)
+                            self.pot2_discharge_timer_id = None
+                        print(f"[로봇상태] POT2(오른쪽) 목표+1분 도달 - 녹화 종료")
+                        self.stop_stirfry_pot2_recording()
 
         except json.JSONDecodeError as e:
             print(f"[로봇상태] JSON 파싱 오류: {e}")

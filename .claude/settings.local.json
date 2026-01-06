@@ -54,7 +54,8 @@
       "Bash(timeout 10 npx:*)",
       "Bash(git remote set-url:*)",
       "Bash(du:*)",
-      "Bash(pip3 install:*)"
+      "Bash(pip3 install:*)",
+      "Bash(sudo dmesg:*)"
     ],
     "deny": [],
     "ask": []
