@@ -3300,9 +3300,9 @@ class IntegratedMonitorApp:
                 if self.stirfry_recording:
                     self.stop_stirfry_recording()
                 if hasattr(self, 'stirfry_pot1_recording') and self.stirfry_pot1_recording:
-                    self.stop_pot1_recording()
+                    self.stop_stirfry_pot1_recording()
                 if hasattr(self, 'stirfry_pot2_recording') and self.stirfry_pot2_recording:
-                    self.stop_pot2_recording()
+                    self.stop_stirfry_pot2_recording()
 
                 # Cleanup child processes (진동센서 등)
                 for proc in self.child_processes:
