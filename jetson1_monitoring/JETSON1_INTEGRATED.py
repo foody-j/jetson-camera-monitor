@@ -175,6 +175,7 @@ STIRFRY_RIGHT_ENABLED = config.get('stirfry_right_enabled', True)
 STIRFRY_RIGHT_CAMERA_TYPE = config.get('stirfry_right_camera_type', 'usb')
 STIRFRY_RIGHT_CAMERA_INDEX = config.get('stirfry_right_camera_index', 2)  # Video2 (CN6)
 
+STIRFRY_SAVE_ENABLED = config.get('stirfry_save_enabled', True)
 STIRFRY_SAVE_DIR = config.get('stirfry_save_dir', 'StirFry_Data')
 
 # Stir-fry save settings (configurable)
@@ -1925,7 +1926,7 @@ class IntegratedMonitorApp:
             return
 
         # If recording POT1 or manual recording, save frames (skip frames to prevent freezing + save storage)
-        if self.stirfry_pot1_recording or self.stirfry_recording:
+        if STIRFRY_SAVE_ENABLED and (self.stirfry_pot1_recording or self.stirfry_recording):
             # Each camera manages its own counter independently
             if not hasattr(self, 'stirfry_left_skip_counter'):
                 self.stirfry_left_skip_counter = 0
@@ -1966,7 +1967,7 @@ class IntegratedMonitorApp:
             return
 
         # If recording POT2 or manual recording, save frames (skip frames to prevent freezing + save storage)
-        if self.stirfry_pot2_recording or self.stirfry_recording:
+        if STIRFRY_SAVE_ENABLED and (self.stirfry_pot2_recording or self.stirfry_recording):
             # Each camera manages its own counter independently
             if not hasattr(self, 'stirfry_right_skip_counter'):
                 self.stirfry_right_skip_counter = 0
@@ -2316,6 +2317,8 @@ class IntegratedMonitorApp:
     def save_stirfry_left_frame(self, frame):
         """Save stir-fry LEFT monitoring frame (POT1, camera_0)"""
         try:
+            if not STIRFRY_SAVE_ENABLED:
+                return
             now = datetime.now()
             ts_name = now.strftime("%H%M%S_%f")[:-3]  # Include milliseconds
             full_timestamp = now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -2365,6 +2368,8 @@ class IntegratedMonitorApp:
     def save_stirfry_right_frame(self, frame):
         """Save stir-fry RIGHT monitoring frame (POT2, camera_1)"""
         try:
+            if not STIRFRY_SAVE_ENABLED:
+                return
             now = datetime.now()
             ts_name = now.strftime("%H%M%S_%f")[:-3]  # Include milliseconds
             full_timestamp = now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -2447,7 +2452,7 @@ class IntegratedMonitorApp:
         self.stirfry_left_skip_counter = 0  # Reset frame skip counter
 
         # Add session end metadata
-        if self.stirfry_pot1_session_start_time:
+        if self.stirfry_pot1_session_start_time and STIRFRY_SAVE_ENABLED:
             session_end_time = datetime.now()
             duration = (session_end_time - self.stirfry_pot1_session_start_time).total_seconds()
 
@@ -2534,7 +2539,7 @@ class IntegratedMonitorApp:
         self.stirfry_right_skip_counter = 0  # Reset frame skip counter
 
         # Add session end metadata
-        if self.stirfry_pot2_session_start_time:
+        if self.stirfry_pot2_session_start_time and STIRFRY_SAVE_ENABLED:
             session_end_time = datetime.now()
             duration = (session_end_time - self.stirfry_pot2_session_start_time).total_seconds()
 
@@ -2633,7 +2638,7 @@ class IntegratedMonitorApp:
         self.stirfry_stop_btn.config(state=tk.DISABLED)
 
         # 저장에 필요한 데이터 복사 (스레드 안전)
-        if self.stirfry_session_start_time:
+        if self.stirfry_session_start_time and STIRFRY_SAVE_ENABLED:
             save_data = {
                 "session_id": self.stirfry_session_id,
                 "food_type": self.current_stirfry_food_type,
@@ -2660,6 +2665,8 @@ class IntegratedMonitorApp:
         import json
 
         try:
+            if not STIRFRY_SAVE_ENABLED:
+                return
             session_end_time = datetime.now()
             duration = (session_end_time - save_data["start_time"]).total_seconds()
 

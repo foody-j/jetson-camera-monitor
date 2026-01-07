@@ -93,6 +93,7 @@
   "stirfry_right_camera_type": "gmsl",
   "stirfry_right_camera_index": 1,
   "_comment_stirfry_save": "볶음 데이터 저장 설정",
+  "stirfry_save_enabled": true,
   "stirfry_save_dir": "AI_Data/StirFryData",
   "_comment_recording_delay": "배출 신호 후 추가 녹화 시간 (초)",
   "recording_delay_after_discharge": 20,
