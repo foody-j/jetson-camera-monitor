@@ -949,6 +949,7 @@ class JetsonIntegratedApp:
             if not status_list:
                 print(f"[로봇상태] Status 배열 없음")
                 return
+            rb_motion = data.get("RBMotion", None)
 
             # 각 솥 정보 처리 - Jetson2는 튀김솥(DeviceNum=0)만 처리
             for pot_data in status_list:
@@ -981,6 +982,7 @@ class JetsonIntegratedApp:
 
                 # 로봇 상태 메타데이터 저장 (이미지 저장 시 사용)
                 robot_meta = {
+                    "rb_motion": rb_motion,
                     "recipe": recipe,
                     "process_type": process_type,
                     "running_time": running_time,
