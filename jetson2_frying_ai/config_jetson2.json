@@ -97,7 +97,7 @@
   "// Data Collection Settings (Manual Mode)": "",
   "_comment_recording_delay": "배출 신호 후 추가 녹화 시간 (초)",
   "recording_delay_after_discharge": 50,
-  "data_collection_interval": 3,
+  "data_collection_interval": 1,
   "save_resolution": {
     "width": 1920,
     "height": 1536
