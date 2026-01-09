@@ -154,6 +154,51 @@ sudo ./quick_bring_up.sh
 - **AI**: YOLO (ultralytics), PyTorch CUDA
 - **금지 사항**: `tkfont.families()` 사용 금지 (프리징 유발)
 
+---
+
+## WSL2-Jetson 협업 규칙 (중요!)
+
+### 환경 구조
+
+```
+WSL2 (Windows PC)              Jetson (현장)
+├── dku_frying_ai/             ├── jetson-food-ai/
+│   └── simple_checker 개발    │   └── 통합 & 운영
+└── jetson-food-ai/ (clone)    │
+    └── sync용                 └── git pull로 적용
+```
+
+### 수정 권한 (충돌 방지)
+
+| 위치 | 수정 가능 | 수정 금지 |
+|------|-----------|-----------|
+| **WSL2** | `simple_checker/` | `JETSON2_INTEGRATED.py` |
+| **Jetson** | `JETSON2_INTEGRATED.py` | `simple_checker/` |
+
+### 왜?
+
+```
+simple_checker/ = WSL2에서 sync_to_jetson.sh로 덮어씌워짐
+→ Jetson에서 수정하면 다음 sync 때 날아감!
+```
+
+### Jetson 작업 규칙
+
+1. **simple_checker 버그 발견** → 직접 수정 금지! → WSL2에 보고
+2. **JETSON2_INTEGRATED.py 수정** → 자유롭게 수정 OK
+3. **새 기능 필요** → WSL2 Claude에게 요청
+
+### AI 역할
+
+| AI | 역할 |
+|----|------|
+| **Claude** | 플래닝, 검증, 설계 |
+| **Codex** | 코딩, 구현, 테스트 |
+
+### 참고 문서
+
+- 전체 워크플로우: `dku_frying_ai/docs/development_workflow.md` (WSL2)
+
 ## 문제 해결
 
 ### GPU 사용 안 됨
