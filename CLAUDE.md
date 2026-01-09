@@ -1,83 +1,49 @@
- # Jetson Food AI 프로젝트
+# Jetson Food AI - Claude Code 가이드
 
-NVIDIA Jetson Orin Nano 기반 식당 모니터링 시스템 (GMSL 카메라 + AI)
+NVIDIA Jetson Orin Nano 기반 식당 모니터링 시스템
 
-## 시스템 구성
+## 프로젝트 구조
 
-### Jetson #1 (jetson1_monitoring/)
-- **역할**: 사람 감지 + 볶음 모니터링
-- **카메라**: GMSL 3대 (카메라0: 사람감시, 카메라1: 볶음 왼쪽, 카메라2: 볶음 오른쪽)
-- **메인 파일**: `JETSON1_INTEGRATED.py`
-- **설정**: `config.json`
-- **기능**: YOLO 사람 감지 (GPU), 주야간 자동 전환, GPIO 릴레이 제어
+```
+jetson-food-ai/
+├── jetson1_monitoring/          # Jetson #1: 사람 감지 + 볶음 모니터링
+│   ├── JETSON1_INTEGRATED.py   # 메인 프로그램 (156KB)
+│   ├── config.json             # 설정 파일
+│   └── gst_camera.py           # GMSL 카메라 핸들러
+├── jetson2_frying_ai/           # Jetson #2: 튀김 AI + 바켓 감지
+│   ├── JETSON2_INTEGRATED.py   # 메인 프로그램 (171KB)
+│   ├── config_jetson2.json     # 설정 파일
+│   └── gst_camera.py           # GMSL 카메라 핸들러
+└── SG4A-NONX-G2Y-A1.../         # GMSL 카메라 드라이버
+```
 
-### Jetson #2 (jetson2_frying_ai/)
-- **역할**: 튀김 AI 분석 + 바켓 감지
-- **카메라**: GMSL 4대
-- **메인 파일**: `JETSON2_INTEGRATED.py`
-- **설정**: `config_jetson2.json`
-- **기능**: 튀김 상태 AI 분석, 데이터 수집, MQTT 통신
+## 주요 작업 파일
 
-## 핵심 파일
+### Jetson #1 (사람 감지 + 볶음 모니터링)
+- **메인**: `jetson1_monitoring/JETSON1_INTEGRATED.py`
+- **설정**: `jetson1_monitoring/config.json`
+- **카메라**: GMSL 3대 (사람감지, 볶음좌, 볶음우)
+- **기능**:
+  - YOLO 사람 감지 (GPU)
+  - 주야간 자동 전환
+  - 볶음 데이터 수집 (`~/AI_Data/StirFryData/`)
+  - GPIO 릴레이 제어 (24V Omron)
+  - MQTT 통신
 
-| 파일 | 설명 |
-|------|------|
-| `jetson1_monitoring/JETSON1_INTEGRATED.py` | Jetson1 메인 (127KB) |
-| `jetson2_frying_ai/JETSON2_INTEGRATED.py` | Jetson2 메인 (132KB) |
-| `jetson1_monitoring/config.json` | Jetson1 설정 |
-| `jetson2_frying_ai/config_jetson2.json` | Jetson2 설정 |
+### Jetson #2 (튀김 AI + 바켓 감지)
+- **메인**: `jetson2_frying_ai/JETSON2_INTEGRATED.py`
+- **설정**: `jetson2_frying_ai/config_jetson2.json`
+- **카메라**: GMSL 4대 (튀김좌우, 바켓좌우)
+- **기능**:
+  - 튀김 상태 AI 분석 (Segmentation + Classification)
+  - 바켓 감지 (observe_add 모델)
+  - 데이터 수집 (`~/AI_Data/FryingData/`, `~/AI_Data/BucketData/`)
+  - MQTT 통신
+  - Jetson #1 릴레이 동기화
 
-## 하드웨어 설정
+## 실행 및 디버깅
 
-### GPIO 릴레이
-- **릴레이**: 24V Omron Relay
-- **핀 구성**: PIN 7 (GPIO07) + PIN 11 (GPIO416) 동시 사용
-- **제어 방식**: 펄스 (200ms HIGH → LOW)
-
-### 카메라
-- **타입**: GMSL 카메라 (SerDes)
-- **해상도**: 1920x1536 @ 30fps
-- **포맷**: UYVY
-- **드라이버**: `SG4A-NONX-G2Y-A1_ORIN_NANO_YUV_JP6.2_L4TR36.4.3/`
-
-## 최근 변경사항
-
-### 2025-12-11
-- systemctl 서비스에서 MQTT 연결 안 되는 문제 수정
-  - **원인**: `After=network-online.target` 누락으로 네트워크 준비 전 서비스 시작
-  - **해결**: 서비스 파일에 `network-online.target` 추가 필요
-  - 수정 위치: `/etc/systemd/system/jetson1-monitor.service` (또는 jetson2)
-  - `install_autostart.sh` 스크립트도 수정 완료
-- pymodbus 3.x 호환성 수정 (`fix_vibration_sensor.py`)
-  - `slave` 파라미터 → `device_id`로 변경 (pymodbus 3.11.4)
-
-### 2025-12-08
-- `tkfont.families()` 프리징 이슈 수정 (Jetson1, Jetson2 모두)
-  - 폰트 초기화 시 시스템 프리징 발생
-  - 직접 폰트 객체 생성 방식으로 변경
-
-### 2025-12-04
-- Segfault on startup 수정
-- Manual data collection 활성화
-
-### 2025-11-24
-- GPIO relay 24V Omron Relay 업그레이드
-- Dual-pin setup (PIN 7 + PIN 11)
-
-## 알려진 이슈
-
-- Jetson 2 카메라 초기화 문제 조사 필요
-- 폰트 캐시 관련 프리징 (수정 완료)
-
-## 개발 규칙
-
-- 한국어 주석/로그 사용
-- 커밋 메시지는 영어
-- GUI: tkinter 사용, 흰색 테마
-- AI: YOLO (ultralytics), PyTorch CUDA
-
-## 실행 방법
-
+### 직접 실행
 ```bash
 # Jetson #1
 cd ~/jetson-food-ai/jetson1_monitoring
@@ -88,56 +54,138 @@ cd ~/jetson-food-ai/jetson2_frying_ai
 python3 JETSON2_INTEGRATED.py
 ```
 
-## 서비스 관리
-
+### systemctl 서비스
 ```bash
 # 상태 확인
 sudo systemctl status jetson1-monitor
 sudo systemctl status jetson2-monitor
 
-# 로그 확인
+# 실시간 로그 (가장 유용!)
 sudo journalctl -u jetson1-monitor -f
 sudo journalctl -u jetson2-monitor -f
+
+# 재시작
+sudo systemctl restart jetson1-monitor
+sudo systemctl restart jetson2-monitor
 ```
 
-## 디버깅 팁
+### 카메라 확인
+```bash
+# GMSL 카메라 확인
+ls -l /dev/video*
 
-- `tkfont.families()` 사용 금지 (프리징 유발)
-- GMSL 카메라는 `/dev/video*`로 확인
-- GPIO 테스트: `test_relay_pulse.py`, `test_both_pins.py`
+# GMSL 드라이버 수동 로드
+cd ~/jetson-food-ai/SG4A-NONX-G2Y-A1_ORIN_NANO_YUV_JP6.2_L4TR36.4.3
+sudo ./quick_bring_up.sh
+```
 
-## systemctl 서비스 MQTT 문제 해결 (2025-12-11)
+## 하드웨어 설정
 
-**증상**: `python3`으로 직접 실행하면 MQTT 정상, `systemctl`로 실행하면 MQTT 연결 안 됨
+### GMSL 카메라
+- **해상도**: 1920x1536 @ 30fps
+- **포맷**: UYVY
+- **드라이버**: `SG4A-NONX-G2Y-A1_ORIN_NANO_YUV_JP6.2_L4TR36.4.3/`
 
-**원인**: 서비스가 네트워크 준비 전에 시작됨
+### GPIO 릴레이
+- **타입**: 24V Omron Relay (자기유지형)
+- **핀**: Pin 29 (GPIO07) + Pin 31 (GPIO416) 동시 사용
+- **제어**: Pulse 모드 (200ms HIGH → LOW)
+- **테스트**: `test_relay_pulse.py`, `test_both_pins.py`
 
-**해결 방법**:
+### 진동 센서 (2026-01-08 추가)
+- **연결**: CH340 USB-RS485 (WitMotion JY901B)
+- **포트**: `/dev/ttyUSB0`
+- **통신**: Modbus RTU
+- **라이브러리**: pymodbus 3.x (`device_id` 파라미터 사용)
+- **테스트 파일**: `test_vibration_pymodbus3_finalrev.py`
+- **설정**: `vibration_config.json`
+
+## 주요 설정 (config.json)
+
+### Jetson #1
+```json
+{
+  "yolo_model": "yolo12n.pt",
+  "yolo_confidence": 0.7,
+  "stirfry_save_dir": "AI_Data/StirFryData",
+  "mqtt_broker": "192.168.0.100",
+  "relay_mode": "pulse",
+  "vibration_test_mode": true
+}
+```
+
+### Jetson #2
+```json
+{
+  "frying_seg_model": "frying_seg.pt",
+  "frying_cls_model": "frying_cls.pt",
+  "observe_seg_model": "observe_add/bestb.pt",
+  "data_collection_interval": 1,
+  "mqtt_broker": "192.168.0.100",
+  "dynamic_camera_enabled": false
+}
+```
+
+## 최근 변경사항
+
+### 2026-01-08: 진동센서 통합
+- CH340 USB-RS485 드라이버 설치
+- WitMotion JY901B Modbus 통신 구현
+- pymodbus 3.x 호환성 확보 (`device_id` 파라미터)
+
+### 2025-12-11: MQTT 문제 해결
+- systemctl 서비스에서 MQTT 연결 안 되는 문제 수정
+- `After=network-online.target` 추가
+- `install_autostart.sh` 업데이트
+
+### 2025-12-08: 폰트 프리징 수정
+- `tkfont.families()` 호출 제거
+- 직접 폰트 객체 생성 방식으로 변경
+
+### 2025-11-24: GPIO 릴레이 업그레이드
+- 24V Omron Relay 적용
+- Dual-pin setup (Pin 29, 31)
+
+## 개발 규칙
+
+- **주석/로그**: 한국어
+- **커밋 메시지**: 영어
+- **GUI**: tkinter, 흰색 테마, 768x1024 세로 모드
+- **AI**: YOLO (ultralytics), PyTorch CUDA
+- **금지 사항**: `tkfont.families()` 사용 금지 (프리징 유발)
+
+## 문제 해결
+
+### GPU 사용 안 됨
+```bash
+python3 -c "import torch; print(torch.cuda.is_available())"
+# True가 나와야 함
+```
+
+### MQTT 연결 안 됨 (systemctl)
 ```bash
 # 서비스 파일 수정
-sudo vim /etc/systemd/system/jetson1-monitor.service  # 또는 jetson2-monitor
+sudo vim /etc/systemd/system/jetson1-monitor.service
 
-# [Unit] 섹션 수정:
-# 변경 전:
-After=multi-user.target gmsl-driver-load.service graphical.target
-# 변경 후:
-After=multi-user.target gmsl-driver-load.service graphical.target network-online.target
+# [Unit] 섹션에 추가:
+After=network-online.target
 
-# [Service] 섹션에 추가 (로그 버퍼링 방지):
-Environment="PYTHONUNBUFFERED=1"
-
-# 적용:
+# 적용
 sudo systemctl daemon-reload
-sudo systemctl restart jetson1-monitor  # 또는 jetson2-monitor
+sudo systemctl restart jetson1-monitor
 ```
 
-## pymodbus 버전 호환성 (2025-12-11)
+### 진동센서 안 보임
+```bash
+# USB-RS485 확인
+ls -l /dev/ttyUSB*
 
-**pymodbus 3.x 버전**에서는 `slave` 파라미터가 `device_id`로 변경됨:
-```python
-# 변경 전 (pymodbus 2.x):
-client.read_holding_registers(address=0x00, count=3, slave=0x50)
-
-# 변경 후 (pymodbus 3.x):
-client.read_holding_registers(address=0x00, count=3, device_id=0x50)
+# CH340 드라이버 설치
+sudo bash setup_ch340_complete.sh
 ```
+
+## 참고 문서
+
+- 상세 배포: `배포가이드.md`
+- 데이터 저장: `docs/DATA_STORAGE_MAP.md`
+- AI 학습: `docs/AI_TRAINING_STRATEGY.md`
