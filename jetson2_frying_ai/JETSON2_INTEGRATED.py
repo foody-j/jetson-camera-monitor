@@ -1808,19 +1808,22 @@ class JetsonIntegratedApp:
                         # self.frying_left_color_label.config(
                         #     text=f"갈색: {brown_pct}% | 황금: {golden_pct}%"
                         # )
-
-                        # 색상 변화 측정 (SimpleColorChecker)
-                        color_result = self.color_checker_left.measure(frame)
-                        if "error" not in color_result:
-                            cv2.putText(vis, f"Color: {color_result['color_diff']:.1f}",
-                                        (16, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-                            cv2.putText(vis, f"Progress: {color_result['progress_pct']:.0f}%",
-                                        (16, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-                        elif color_result.get("error") == "baseline_not_set":
-                            # 첫 프레임에서 자동으로 baseline 설정
-                            self.color_checker_left.set_baseline(frame)
                     except:
                         pass
+
+                # 색상 변화 측정 (SimpleColorChecker)
+                try:
+                    color_result = self.color_checker_left.measure(frame)
+                    if "error" not in color_result:
+                        cv2.putText(vis, f"Color: {color_result['color_diff']:.1f}",
+                                    (16, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+                        cv2.putText(vis, f"Progress: {color_result['progress_pct']:.0f}%",
+                                    (16, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+                    elif color_result.get("error") == "baseline_not_set":
+                        # 첫 프레임에서 자동으로 baseline 설정
+                        self.color_checker_left.set_baseline(frame)
+                except:
+                    pass
 
                 # Update temperatures
                 self.frying_left_temp_label.config(text=f"기름: {self.oil_temp_left:.1f} °C")
@@ -1936,19 +1939,22 @@ class JetsonIntegratedApp:
                         # self.frying_right_color_label.config(
                         #     text=f"갈색: {brown_pct}% | 황금: {golden_pct}%"
                         # )
-
-                        # 색상 변화 측정 (SimpleColorChecker)
-                        color_result = self.color_checker_right.measure(frame)
-                        if "error" not in color_result:
-                            cv2.putText(vis, f"Color: {color_result['color_diff']:.1f}",
-                                        (16, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-                            cv2.putText(vis, f"Progress: {color_result['progress_pct']:.0f}%",
-                                        (16, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-                        elif color_result.get("error") == "baseline_not_set":
-                            # 첫 프레임에서 자동으로 baseline 설정
-                            self.color_checker_right.set_baseline(frame)
                     except:
                         pass
+
+                # 색상 변화 측정 (SimpleColorChecker)
+                try:
+                    color_result = self.color_checker_right.measure(frame)
+                    if "error" not in color_result:
+                        cv2.putText(vis, f"Color: {color_result['color_diff']:.1f}",
+                                    (16, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+                        cv2.putText(vis, f"Progress: {color_result['progress_pct']:.0f}%",
+                                    (16, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+                    elif color_result.get("error") == "baseline_not_set":
+                        # 첫 프레임에서 자동으로 baseline 설정
+                        self.color_checker_right.set_baseline(frame)
+                except:
+                    pass
 
                 # Update temperatures
                 self.frying_right_temp_label.config(text=f"기름: {self.oil_temp_right:.1f} °C")
