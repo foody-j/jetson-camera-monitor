@@ -402,8 +402,8 @@ class JetsonIntegratedApp:
 
         # Running flags
         self.running = True
-        self.frying_running = False
-        self.observe_running = False
+        self.frying_running = True  # 자동 시작
+        self.observe_running = True  # 자동 시작
 
         # Data collection flags (LEGACY - for backward compatibility)
         self.data_collection_active = False
@@ -1309,7 +1309,7 @@ class JetsonIntegratedApp:
 
         # Status
         self.frying_left_status = tk.Label(
-            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            panel, text="튀김 AI 작동 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_SUCCESS
         )
         self.frying_left_status.pack(pady=1)
 
@@ -1360,7 +1360,7 @@ class JetsonIntegratedApp:
 
         # Status
         self.frying_right_status = tk.Label(
-            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            panel, text="튀김 AI 작동 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_SUCCESS
         )
         self.frying_right_status.pack(pady=1)
 
@@ -1389,7 +1389,7 @@ class JetsonIntegratedApp:
 
         # Status
         self.observe_left_status = tk.Label(
-            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            panel, text="바켓 감지 작동 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_SUCCESS
         )
         self.observe_left_status.pack(pady=2)
 
@@ -1418,7 +1418,7 @@ class JetsonIntegratedApp:
 
         # Status
         self.observe_right_status = tk.Label(
-            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            panel, text="바켓 감지 작동 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_SUCCESS
         )
         self.observe_right_status.pack(pady=2)
 
@@ -1427,71 +1427,9 @@ class JetsonIntegratedApp:
         control_frame = tk.Frame(self.root, bg=COLOR_BG)
         control_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=3, pady=3)
 
-        # Start/Stop buttons (세로 모드 - 버튼 크기 축소)
+        # Data collection buttons (세로 모드 - 버튼 크기 축소)
         btn_frame = tk.Frame(control_frame, bg=COLOR_BG)
         btn_frame.pack(side=tk.LEFT, padx=5)
-
-        self.btn_start_frying = tk.Button(
-            btn_frame,
-            text="튀김 시작",
-            font=(FONT_FAMILY, 11),
-            bg="#27AE60",
-            fg="white",
-            activebackground="#229954",
-            command=self.start_frying_ai,
-            width=8,
-            height=1,
-            relief=tk.FLAT
-        )
-        self.btn_start_frying.pack(side=tk.LEFT, padx=2)
-
-        self.btn_stop_frying = tk.Button(
-            btn_frame,
-            text="튀김 중지",
-            font=(FONT_FAMILY, 11),
-            bg=COLOR_ERROR,
-            fg="white",
-            activebackground="#C0392B",
-            command=self.stop_frying_ai,
-            width=8,
-            height=1,
-            state=tk.DISABLED,
-            relief=tk.FLAT
-        )
-        self.btn_stop_frying.pack(side=tk.LEFT, padx=2)
-
-        self.btn_start_observe = tk.Button(
-            btn_frame,
-            text="바켓 시작",
-            font=(FONT_FAMILY, 11),
-            bg="#3498DB",
-            fg="white",
-            activebackground="#2980B9",
-            command=self.start_observe_ai,
-            width=8,
-            height=1,
-            relief=tk.FLAT
-        )
-        self.btn_start_observe.pack(side=tk.LEFT, padx=2)
-
-        self.btn_stop_observe = tk.Button(
-            btn_frame,
-            text="바켓 중지",
-            font=(FONT_FAMILY, 11),
-            bg=COLOR_ERROR,
-            fg="white",
-            activebackground="#C0392B",
-            command=self.stop_observe_ai,
-            width=8,
-            height=1,
-            state=tk.DISABLED,
-            relief=tk.FLAT
-        )
-        self.btn_stop_observe.pack(side=tk.LEFT, padx=2)
-
-        # Data collection buttons (세로 모드 - 버튼 크기 축소)
-        separator = tk.Frame(btn_frame, width=2, bg="#BDC3C7")
-        separator.pack(side=tk.LEFT, fill=tk.Y, padx=8, pady=3)
 
         self.btn_start_collection = tk.Button(
             btn_frame,
@@ -3326,46 +3264,6 @@ class JetsonIntegratedApp:
 
         print(f"[완료마킹] 자동 마킹 ({position}): {elapsed:.1f}초")
         print(f"[완료마킹] 탐침온도: {probe_temp}°C (목표: {TARGET_PROBE_TEMP}°C)")
-
-    def start_frying_ai(self):
-        """Start Frying AI processing"""
-        self.frying_running = True
-        self.btn_start_frying.config(state=tk.DISABLED)
-        self.btn_stop_frying.config(state=tk.NORMAL)
-        self.frying_left_status.config(text="튀김 AI 작동 중")
-        self.frying_right_status.config(text="튀김 AI 작동 중")
-        print("[튀김 AI] 시작됨 (GPU 가속)")
-
-    def stop_frying_ai(self):
-        """Stop Frying AI processing"""
-        self.frying_running = False
-        self.btn_start_frying.config(state=tk.NORMAL)
-        self.btn_stop_frying.config(state=tk.DISABLED)
-        self.frying_left_status.config(text="대기 중")
-        self.frying_right_status.config(text="대기 중")
-        print("[튀김 AI] 중지됨")
-
-    def start_observe_ai(self):
-        """Start Observe_add AI processing"""
-        self.observe_running = True
-        self.btn_start_observe.config(state=tk.DISABLED)
-        self.btn_stop_observe.config(state=tk.NORMAL)
-        self.observe_left_status.config(text="바켓 감지 작동 중")
-        self.observe_right_status.config(text="바켓 감지 작동 중")
-        print("[바켓 감지] 시작됨")
-
-    def stop_observe_ai(self):
-        """Stop Observe_add AI processing"""
-        self.observe_running = False
-        self.btn_start_observe.config(state=tk.NORMAL)
-        self.btn_stop_observe.config(state=tk.DISABLED)
-        self.observe_left_status.config(text="대기 중")
-        self.observe_right_status.config(text="대기 중")
-        self.observe_left_votes.clear()
-        self.observe_right_votes.clear()
-        self.observe_left_state = None
-        self.observe_right_state = None
-        print("[바켓 감지] 중지됨")
 
     def start_data_collection(self):
         """Start manual data collection"""
