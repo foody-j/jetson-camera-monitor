@@ -402,8 +402,8 @@ class JetsonIntegratedApp:
 
         # Running flags
         self.running = True
-        self.frying_running = True  # 자동 시작
-        self.observe_running = True  # 자동 시작
+        self.frying_running = False  # 투입 신호 대기
+        self.observe_running = False  # 투입 신호 대기
 
         # Data collection flags (LEGACY - for backward compatibility)
         self.data_collection_active = False
@@ -798,6 +798,16 @@ class JetsonIntegratedApp:
             self.pot1_food_type = message.payload.decode()
             print(f"[MQTT POT1] 음식 종류 수신: {self.pot1_food_type}")
 
+            # 튀김 AI 시작 (투입 신호)
+            if not self.frying_running:
+                self.frying_running = True
+                print(f"[튀김 AI] POT1 투입 신호 → AI 시작")
+
+            # 바스켓 AI 시작 (투입 준비)
+            if not self.observe_running:
+                self.observe_running = True
+                print(f"[바스켓 AI] POT1 메뉴 입력 → 바스켓 감지 시작")
+
             # Color checker baseline 리셋 (새로운 조리 시작)
             self.color_checker_left.reset()
             print(f"[색상] POT1 baseline 리셋 완료")
@@ -853,6 +863,16 @@ class JetsonIntegratedApp:
         try:
             self.pot2_food_type = message.payload.decode()
             print(f"[MQTT POT2] 음식 종류 수신: {self.pot2_food_type}")
+
+            # 튀김 AI 시작 (투입 신호)
+            if not self.frying_running:
+                self.frying_running = True
+                print(f"[튀김 AI] POT2 투입 신호 → AI 시작")
+
+            # 바스켓 AI 시작 (투입 준비)
+            if not self.observe_running:
+                self.observe_running = True
+                print(f"[바스켓 AI] POT2 메뉴 입력 → 바스켓 감지 시작")
 
             # Color checker baseline 리셋 (새로운 조리 시작)
             self.color_checker_right.reset()
@@ -1309,7 +1329,7 @@ class JetsonIntegratedApp:
 
         # Status
         self.frying_left_status = tk.Label(
-            panel, text="튀김 AI 작동 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_SUCCESS
+            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
         )
         self.frying_left_status.pack(pady=1)
 
@@ -1360,7 +1380,7 @@ class JetsonIntegratedApp:
 
         # Status
         self.frying_right_status = tk.Label(
-            panel, text="튀김 AI 작동 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_SUCCESS
+            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
         )
         self.frying_right_status.pack(pady=1)
 
@@ -1389,7 +1409,7 @@ class JetsonIntegratedApp:
 
         # Status
         self.observe_left_status = tk.Label(
-            panel, text="바켓 감지 작동 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_SUCCESS
+            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
         )
         self.observe_left_status.pack(pady=2)
 
@@ -1418,7 +1438,7 @@ class JetsonIntegratedApp:
 
         # Status
         self.observe_right_status = tk.Label(
-            panel, text="바켓 감지 작동 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_SUCCESS
+            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
         )
         self.observe_right_status.pack(pady=2)
 
@@ -3512,6 +3532,13 @@ class JetsonIntegratedApp:
         self.pot1_session_id = None
         self.pot1_start_time = None
 
+        # 튀김 AI & 바스켓 AI 중지 (POT2도 수집 중이 아닐 때만)
+        if not self.pot2_collecting:
+            self.frying_running = False
+            self.observe_running = False
+            print(f"[튀김 AI] 모든 POT 중지 → AI 중지")
+            print(f"[바스켓 AI] 모든 POT 중지 → AI 중지")
+
     def start_pot2_collection(self):
         """Start POT2 data collection (cameras 1, 3)"""
         from datetime import datetime
@@ -3583,6 +3610,13 @@ class JetsonIntegratedApp:
         # Reset session
         self.pot2_session_id = None
         self.pot2_start_time = None
+
+        # 튀김 AI & 바스켓 AI 중지 (POT1도 수집 중이 아닐 때만)
+        if not self.pot1_collecting:
+            self.frying_running = False
+            self.observe_running = False
+            print(f"[튀김 AI] 모든 POT 중지 → AI 중지")
+            print(f"[바스켓 AI] 모든 POT 중지 → AI 중지")
 
     def _delayed_stop_pot1_collection(self):
         """배출 후 지연 종료 (타이머 콜백)"""
