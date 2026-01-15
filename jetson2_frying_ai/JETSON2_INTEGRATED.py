@@ -466,8 +466,6 @@ class JetsonIntegratedApp:
         self.frying_right_last_retry = 0.0
         self.observe_left_last_retry = 0.0
         self.observe_right_last_retry = 0.0
-        self.cameras_initializing = False
-        self.camera_restart_in_progress = set()
 
         # Initialize MQTT (모든 상태 변수 초기화 완료 후)
         if MQTT_ENABLED:
@@ -484,8 +482,8 @@ class JetsonIntegratedApp:
 
         # Initialize cameras
         print(f"[DEBUG] 카메라 초기화 시작...")
-        self.cameras_initializing = True
-        threading.Thread(target=self._init_cameras_async, daemon=True).start()
+        self.init_cameras()
+        print(f"[DEBUG] 카메라 초기화 완료")
 
         # Start update loops
         self.update_frying_left()
@@ -1735,21 +1733,10 @@ class JetsonIntegratedApp:
                     queue.task_done()
                 except Exception:
                     pass
-
-    def _init_cameras_async(self):
-        try:
-            self.init_cameras()
-        finally:
-            self.cameras_initializing = False
-            print(f"[DEBUG] 카메라 초기화 완료")
-
     def _restart_camera(self, kind, reason="unknown"):
         """Camera auto-restart helper for missing/stalled streams."""
         retry_interval = 5.0
         now = time.monotonic()
-
-        if self.cameras_initializing:
-            return
 
         if kind == "frying_left":
             enabled = FRYING_ENABLED and FRYING_LEFT_ENABLED
@@ -1794,50 +1781,34 @@ class JetsonIntegratedApp:
             return
         setattr(self, last_retry_attr, now)
 
-        if kind in self.camera_restart_in_progress:
-            return
-        self.camera_restart_in_progress.add(kind)
-        threading.Thread(
-            target=self._restart_camera_worker,
-            args=(kind, reason, cap_attr, stream_attr, index, label, last_ok_attr),
-            daemon=True
-        ).start()
-
-    def _restart_camera_worker(self, kind, reason, cap_attr, stream_attr, index, label, last_ok_attr):
-        try:
-            cap = getattr(self, cap_attr, None)
-            if cap:
-                try:
-                    cap.stop()
-                except Exception as e:
-                    print(f"[카메라] {label} 재시작 중지 오류: {e}")
-                setattr(self, cap_attr, None)
-                if stream_attr:
-                    setattr(self, stream_attr, False)
-
-            print(f"[카메라] {label} 재시작 시도 ({reason})")
-            new_cap = GstCamera(
-                device_index=index,
-                width=CAMERA_WIDTH,
-                height=CAMERA_HEIGHT,
-                fps=CAMERA_FPS
-            )
-            if new_cap.start():
-                setattr(self, cap_attr, new_cap)
-                if stream_attr:
-                    setattr(self, stream_attr, True)
-                setattr(self, last_ok_attr, time.monotonic())
-                print(f"[카메라] {label} 재시작 성공 ✓")
-            else:
-                setattr(self, cap_attr, None)
-                if stream_attr:
-                    setattr(self, stream_attr, False)
-                print(f"[카메라] {label} 재시작 실패 ✗")
-        finally:
+        cap = getattr(self, cap_attr, None)
+        if cap:
             try:
-                self.camera_restart_in_progress.discard(kind)
-            except Exception:
-                pass
+                cap.stop()
+            except Exception as e:
+                print(f"[카메라] {label} 재시작 중지 오류: {e}")
+            setattr(self, cap_attr, None)
+            if stream_attr:
+                setattr(self, stream_attr, False)
+
+        print(f"[카메라] {label} 재시작 시도 ({reason})")
+        new_cap = GstCamera(
+            device_index=index,
+            width=CAMERA_WIDTH,
+            height=CAMERA_HEIGHT,
+            fps=CAMERA_FPS
+        )
+        if new_cap.start():
+            setattr(self, cap_attr, new_cap)
+            if stream_attr:
+                setattr(self, stream_attr, True)
+            setattr(self, last_ok_attr, time.monotonic())
+            print(f"[카메라] {label} 재시작 성공 ✓")
+        else:
+            setattr(self, cap_attr, None)
+            if stream_attr:
+                setattr(self, stream_attr, False)
+            print(f"[카메라] {label} 재시작 실패 ✗")
 
     def start_frying_camera(self, pot_num):
         """튀김솥 카메라 - 항상 ON 모드에서는 사용하지 않음"""
