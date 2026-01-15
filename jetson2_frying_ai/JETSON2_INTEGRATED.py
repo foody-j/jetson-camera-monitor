@@ -25,7 +25,7 @@ import threading
 import sys
 import numpy as np
 from collections import deque
-from queue import Queue
+from queue import Queue, Empty
 import socket
 
 # Add parent directory to path for imports
@@ -354,6 +354,9 @@ class JetsonIntegratedApp:
 
         # AI worker threads
         self.ai_threads = []
+        self.frying_ai_lock = threading.Lock()
+        self.observe_ai_lock = threading.Lock()
+        self._start_ai_workers()
 
         # Subprocess tracking (진동센서 등)
         self.child_processes = []
@@ -1664,6 +1667,75 @@ class JetsonIntegratedApp:
         if self.observe_right_cap: active_cams.append("video3(바켓R)")
         print(f"[카메라] 초기화 완료! 활성: {', '.join(active_cams) if active_cams else '없음'}")
 
+    def _start_ai_workers(self):
+        """Start AI inference workers (single-threaded per model)."""
+        self.ai_threads = [
+            threading.Thread(
+                target=self._frying_worker,
+                args=(self.frying_left_queue, "frying_left_result", "왼쪽"),
+                daemon=True
+            ),
+            threading.Thread(
+                target=self._frying_worker,
+                args=(self.frying_right_queue, "frying_right_result", "오른쪽"),
+                daemon=True
+            ),
+            threading.Thread(
+                target=self._observe_worker,
+                args=(self.observe_left_queue, "observe_left_result", "왼쪽"),
+                daemon=True
+            ),
+            threading.Thread(
+                target=self._observe_worker,
+                args=(self.observe_right_queue, "observe_right_result", "오른쪽"),
+                daemon=True
+            ),
+        ]
+        for t in self.ai_threads:
+            t.start()
+
+    def _frying_worker(self, queue, result_attr, label):
+        while self.running:
+            try:
+                frame = queue.get(timeout=0.2)
+            except Empty:
+                continue
+            if not self.frying_running:
+                continue
+            try:
+                with self.frying_ai_lock:
+                    result = self.frying_segmenter.segment(frame, visualize=False)
+                setattr(self, result_attr, result)
+            except Exception as e:
+                print(f"[튀김 {label}] Segmentation 오류: {e}")
+            finally:
+                try:
+                    queue.task_done()
+                except Exception:
+                    pass
+
+    def _observe_worker(self, queue, result_attr, label):
+        while self.running:
+            try:
+                frame = queue.get(timeout=0.2)
+            except Empty:
+                continue
+            if not self.observe_running:
+                continue
+            try:
+                with self.observe_ai_lock:
+                    r = self.observe_seg_model.predict(
+                        frame, imgsz=IMG_SIZE_SEG, conf=CONF_SEG, verbose=False, device=self.device
+                    )[0]
+                setattr(self, result_attr, r)
+            except Exception as e:
+                print(f"[바켓 {label}] YOLO 오류: {e}")
+            finally:
+                try:
+                    queue.task_done()
+                except Exception:
+                    pass
+
     def _init_cameras_async(self):
         try:
             self.init_cameras()
@@ -1888,15 +1960,10 @@ class JetsonIntegratedApp:
                 if self.frying_frame_skip >= FRYING_FRAME_SKIP:
                     self.frying_frame_skip = 0
 
-                    # 백그라운드 스레드로 AI 처리 (non-blocking)
-                    def process_ai():
-                        try:
-                            result = self.frying_segmenter.segment(frame, visualize=False)
-                            self.frying_left_result = result
-                        except Exception as e:
-                            print(f"[튀김 왼쪽] Segmentation 오류: {e}")
-
-                    threading.Thread(target=process_ai, daemon=True).start()
+                    try:
+                        self.frying_left_queue.put_nowait(frame.copy())
+                    except Exception:
+                        pass
 
                 # 이전 AI 결과 사용 (매 프레임 화면 업데이트)
                 if self.frying_left_result is not None:
@@ -2024,15 +2091,10 @@ class JetsonIntegratedApp:
             if self.frying_running:
                 # Frame skip은 왼쪽과 공유 (같은 카운터)
                 if self.frying_frame_skip == 0:  # 왼쪽에서 리셋된 경우
-                    # 백그라운드 스레드로 AI 처리
-                    def process_ai():
-                        try:
-                            result = self.frying_segmenter.segment(frame, visualize=False)
-                            self.frying_right_result = result
-                        except Exception as e:
-                            print(f"[튀김 오른쪽] Segmentation 오류: {e}")
-
-                    threading.Thread(target=process_ai, daemon=True).start()
+                    try:
+                        self.frying_right_queue.put_nowait(frame.copy())
+                    except Exception:
+                        pass
 
                 # 이전 AI 결과 사용
                 if self.frying_right_result is not None:
@@ -2152,17 +2214,10 @@ class JetsonIntegratedApp:
                 if self.observe_frame_skip >= OBSERVE_FRAME_SKIP:
                     self.observe_frame_skip = 0
 
-                    # 백그라운드 스레드로 YOLO 처리
-                    def process_ai():
-                        try:
-                            r = self.observe_seg_model.predict(
-                                frame, imgsz=IMG_SIZE_SEG, conf=CONF_SEG, verbose=False, device=self.device
-                            )[0]
-                            self.observe_left_result = r
-                        except Exception as e:
-                            print(f"[바켓 왼쪽] YOLO 오류: {e}")
-
-                    threading.Thread(target=process_ai, daemon=True).start()
+                    try:
+                        self.observe_left_queue.put_nowait(frame.copy())
+                    except Exception:
+                        pass
 
                 # 이전 YOLO 결과 사용
                 if self.observe_left_result is None:
@@ -2314,17 +2369,10 @@ class JetsonIntegratedApp:
             if self.observe_running:
                 # Frame skip은 왼쪽과 공유 (같은 카운터)
                 if self.observe_frame_skip == 0:  # 왼쪽에서 리셋된 경우
-                    # 백그라운드 스레드로 YOLO 처리
-                    def process_ai():
-                        try:
-                            r = self.observe_seg_model.predict(
-                                frame, imgsz=IMG_SIZE_SEG, conf=CONF_SEG, verbose=False, device=self.device
-                            )[0]
-                            self.observe_right_result = r
-                        except Exception as e:
-                            print(f"[바켓 오른쪽] YOLO 오류: {e}")
-
-                    threading.Thread(target=process_ai, daemon=True).start()
+                    try:
+                        self.observe_right_queue.put_nowait(frame.copy())
+                    except Exception:
+                        pass
 
                 # 이전 YOLO 결과 사용
                 if self.observe_right_result is None:
