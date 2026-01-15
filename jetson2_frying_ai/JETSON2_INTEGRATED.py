@@ -808,6 +808,10 @@ class JetsonIntegratedApp:
                 self.observe_running = True
                 print(f"[바스켓 AI] POT1 메뉴 입력 → 바스켓 감지 시작")
 
+            # Pot status: IDLE → COOKING
+            self.pot1_pot_status = "COOKING"
+            print(f"[POT1] 상태 변경: COOKING")
+
             # Color checker baseline 리셋 (새로운 조리 시작)
             self.color_checker_left.reset()
             print(f"[색상] POT1 baseline 리셋 완료")
@@ -873,6 +877,10 @@ class JetsonIntegratedApp:
             if not self.observe_running:
                 self.observe_running = True
                 print(f"[바스켓 AI] POT2 메뉴 입력 → 바스켓 감지 시작")
+
+            # Pot status: IDLE → COOKING
+            self.pot2_pot_status = "COOKING"
+            print(f"[POT2] 상태 변경: COOKING")
 
             # Color checker baseline 리셋 (새로운 조리 시작)
             self.color_checker_right.reset()
@@ -1162,6 +1170,25 @@ class JetsonIntegratedApp:
         """Send MQTT message with optional device info"""
         # jetson2/status에 통합됨 - 이 함수는 더 이상 사용하지 않음
         pass
+
+    def _compare_time(self, running_time, target_time):
+        """Compare two time strings (HH:MM:SS format)
+        Returns True if running_time >= target_time
+        """
+        try:
+            # Parse time strings to seconds
+            def parse_time(time_str):
+                parts = time_str.split(':')
+                if len(parts) == 3:
+                    h, m, s = int(parts[0]), int(parts[1]), int(parts[2])
+                    return h * 3600 + m * 60 + s
+                return 0
+
+            running_sec = parse_time(running_time)
+            target_sec = parse_time(target_time)
+            return running_sec >= target_sec
+        except:
+            return False
 
     def _init_fonts(self):
         """Pre-load fonts to avoid Segfault on first Label creation"""
@@ -1839,10 +1866,22 @@ class JetsonIntegratedApp:
                 try:
                     color_result = self.color_checker_left.measure(frame)
                     if "error" not in color_result:
-                        cv2.putText(vis, f"Color: {color_result['color_diff']:.1f}",
+                        color_diff = color_result['color_diff']
+                        cv2.putText(vis, f"Color: {color_diff:.1f}",
                                     (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
                         cv2.putText(vis, f"Progress: {color_result['progress_pct']:.0f}%",
                                     (16, 85), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+
+                        # DISCHARGE 조건 체크: running_time >= target_time AND color_diff >= 25.0
+                        running_time = self.pot1_robot_status.get("running_time", "00:00:00")
+                        target_time = self.pot1_robot_status.get("target_time", "00:00:00")
+                        if self._compare_time(running_time, target_time) and color_diff >= 25.0:
+                            if self.pot1_pot_status != "DISCHARGE":
+                                self.pot1_pot_status = "DISCHARGE"
+                                print(f"[POT1] DISCHARGE 조건 만족: {running_time}/{target_time}, color_diff={color_diff:.1f}")
+                        elif self.pot1_collecting:
+                            if self.pot1_pot_status != "COOKING":
+                                self.pot1_pot_status = "COOKING"
                     elif color_result.get("error") == "baseline_not_set":
                         # 첫 프레임에서 자동으로 baseline 설정
                         self.color_checker_left.set_baseline(frame)
@@ -1965,10 +2004,22 @@ class JetsonIntegratedApp:
                 try:
                     color_result = self.color_checker_right.measure(frame)
                     if "error" not in color_result:
-                        cv2.putText(vis, f"Color: {color_result['color_diff']:.1f}",
+                        color_diff = color_result['color_diff']
+                        cv2.putText(vis, f"Color: {color_diff:.1f}",
                                     (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
                         cv2.putText(vis, f"Progress: {color_result['progress_pct']:.0f}%",
                                     (16, 85), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+
+                        # DISCHARGE 조건 체크: running_time >= target_time AND color_diff >= 25.0
+                        running_time = self.pot2_robot_status.get("running_time", "00:00:00")
+                        target_time = self.pot2_robot_status.get("target_time", "00:00:00")
+                        if self._compare_time(running_time, target_time) and color_diff >= 25.0:
+                            if self.pot2_pot_status != "DISCHARGE":
+                                self.pot2_pot_status = "DISCHARGE"
+                                print(f"[POT2] DISCHARGE 조건 만족: {running_time}/{target_time}, color_diff={color_diff:.1f}")
+                        elif self.pot2_collecting:
+                            if self.pot2_pot_status != "COOKING":
+                                self.pot2_pot_status = "COOKING"
                     elif color_result.get("error") == "baseline_not_set":
                         # 첫 프레임에서 자동으로 baseline 설정
                         self.color_checker_right.set_baseline(frame)
@@ -3536,8 +3587,10 @@ class JetsonIntegratedApp:
         if not self.pot2_collecting:
             self.frying_running = False
             self.observe_running = False
+            self.pot1_pot_status = "IDLE"
             print(f"[튀김 AI] 모든 POT 중지 → AI 중지")
             print(f"[바스켓 AI] 모든 POT 중지 → AI 중지")
+            print(f"[POT1] 상태 변경: IDLE")
 
     def start_pot2_collection(self):
         """Start POT2 data collection (cameras 1, 3)"""
@@ -3615,8 +3668,10 @@ class JetsonIntegratedApp:
         if not self.pot1_collecting:
             self.frying_running = False
             self.observe_running = False
+            self.pot2_pot_status = "IDLE"
             print(f"[튀김 AI] 모든 POT 중지 → AI 중지")
             print(f"[바스켓 AI] 모든 POT 중지 → AI 중지")
+            print(f"[POT2] 상태 변경: IDLE")
 
     def _delayed_stop_pot1_collection(self):
         """배출 후 지연 종료 (타이머 콜백)"""
