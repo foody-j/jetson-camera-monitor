@@ -458,14 +458,6 @@ class JetsonIntegratedApp:
         self.latest_frying_right_frame = None
         self.latest_observe_left_frame = None
         self.latest_observe_right_frame = None
-        self.frying_left_last_ok = 0.0
-        self.frying_right_last_ok = 0.0
-        self.observe_left_last_ok = 0.0
-        self.observe_right_last_ok = 0.0
-        self.frying_left_last_retry = 0.0
-        self.frying_right_last_retry = 0.0
-        self.observe_left_last_retry = 0.0
-        self.observe_right_last_retry = 0.0
 
         # Initialize MQTT (모든 상태 변수 초기화 완료 후)
         if MQTT_ENABLED:
@@ -1591,7 +1583,6 @@ class JetsonIntegratedApp:
                     fps=CAMERA_FPS
                 )
                 if self.observe_left_cap.start():
-                    self.observe_left_last_ok = time.monotonic()
                     print(f"[카메라] 바스켓 왼쪽 (video{OBSERVE_LEFT_CAMERA_INDEX}) 초기화 완료 ✓")
                 else:
                     print(f"[카메라] 바스켓 왼쪽 (video{OBSERVE_LEFT_CAMERA_INDEX}) 초기화 실패 ✗")
@@ -1607,7 +1598,6 @@ class JetsonIntegratedApp:
                     fps=CAMERA_FPS
                 )
                 if self.observe_right_cap.start():
-                    self.observe_right_last_ok = time.monotonic()
                     print(f"[카메라] 바스켓 오른쪽 (video{OBSERVE_RIGHT_CAMERA_INDEX}) 초기화 완료 ✓")
                 else:
                     print(f"[카메라] 바스켓 오른쪽 (video{OBSERVE_RIGHT_CAMERA_INDEX}) 초기화 실패 ✗")
@@ -1630,7 +1620,6 @@ class JetsonIntegratedApp:
                 )
                 if self.frying_left_cap.start():
                     self.frying_left_streaming = True
-                    self.frying_left_last_ok = time.monotonic()
                     print(f"[카메라] 튀김솥 왼쪽 (video{FRYING_LEFT_CAMERA_INDEX}) 초기화 완료 ✓")
                 else:
                     print(f"[카메라] 튀김솥 왼쪽 초기화 실패 ✗")
@@ -1649,7 +1638,6 @@ class JetsonIntegratedApp:
                 )
                 if self.frying_right_cap.start():
                     self.frying_right_streaming = True
-                    self.frying_right_last_ok = time.monotonic()
                     print(f"[카메라] 튀김솥 오른쪽 (video{FRYING_RIGHT_CAMERA_INDEX}) 초기화 완료 ✓")
                 else:
                     print(f"[카메라] 튀김솥 오른쪽 초기화 실패 ✗")
@@ -1733,83 +1721,6 @@ class JetsonIntegratedApp:
                     queue.task_done()
                 except Exception:
                     pass
-    def _restart_camera(self, kind, reason="unknown"):
-        """Camera auto-restart helper for missing/stalled streams."""
-        retry_interval = 5.0
-        now = time.monotonic()
-
-        if kind == "frying_left":
-            enabled = FRYING_ENABLED and FRYING_LEFT_ENABLED
-            cap_attr = "frying_left_cap"
-            stream_attr = "frying_left_streaming"
-            index = FRYING_LEFT_CAMERA_INDEX
-            label = "튀김L"
-            last_retry_attr = "frying_left_last_retry"
-            last_ok_attr = "frying_left_last_ok"
-        elif kind == "frying_right":
-            enabled = FRYING_ENABLED and FRYING_RIGHT_ENABLED
-            cap_attr = "frying_right_cap"
-            stream_attr = "frying_right_streaming"
-            index = FRYING_RIGHT_CAMERA_INDEX
-            label = "튀김R"
-            last_retry_attr = "frying_right_last_retry"
-            last_ok_attr = "frying_right_last_ok"
-        elif kind == "observe_left":
-            enabled = OBSERVE_ENABLED and OBSERVE_LEFT_ENABLED
-            cap_attr = "observe_left_cap"
-            stream_attr = None
-            index = OBSERVE_LEFT_CAMERA_INDEX
-            label = "바켓L"
-            last_retry_attr = "observe_left_last_retry"
-            last_ok_attr = "observe_left_last_ok"
-        elif kind == "observe_right":
-            enabled = OBSERVE_ENABLED and OBSERVE_RIGHT_ENABLED
-            cap_attr = "observe_right_cap"
-            stream_attr = None
-            index = OBSERVE_RIGHT_CAMERA_INDEX
-            label = "바켓R"
-            last_retry_attr = "observe_right_last_retry"
-            last_ok_attr = "observe_right_last_ok"
-        else:
-            return
-
-        if not enabled:
-            return
-
-        last_retry = getattr(self, last_retry_attr, 0.0)
-        if now - last_retry < retry_interval:
-            return
-        setattr(self, last_retry_attr, now)
-
-        cap = getattr(self, cap_attr, None)
-        if cap:
-            try:
-                cap.stop()
-            except Exception as e:
-                print(f"[카메라] {label} 재시작 중지 오류: {e}")
-            setattr(self, cap_attr, None)
-            if stream_attr:
-                setattr(self, stream_attr, False)
-
-        print(f"[카메라] {label} 재시작 시도 ({reason})")
-        new_cap = GstCamera(
-            device_index=index,
-            width=CAMERA_WIDTH,
-            height=CAMERA_HEIGHT,
-            fps=CAMERA_FPS
-        )
-        if new_cap.start():
-            setattr(self, cap_attr, new_cap)
-            if stream_attr:
-                setattr(self, stream_attr, True)
-            setattr(self, last_ok_attr, time.monotonic())
-            print(f"[카메라] {label} 재시작 성공 ✓")
-        else:
-            setattr(self, cap_attr, None)
-            if stream_attr:
-                setattr(self, stream_attr, False)
-            print(f"[카메라] {label} 재시작 실패 ✗")
-
     def start_frying_camera(self, pot_num):
         """튀김솥 카메라 - 항상 ON 모드에서는 사용하지 않음"""
         pass
@@ -1915,14 +1826,12 @@ class JetsonIntegratedApp:
             return
 
         if self.frying_left_cap is None:
-            self._restart_camera("frying_left", reason="cap_none")
             # 카메라 없어도 다음 스케줄 유지 (동적 ON/OFF 지원)
             self.root.after(GUI_UPDATE_INTERVAL, self.update_frying_left)
             return
 
         ret, frame = self.frying_left_cap.read()
         if ret:
-            self.frying_left_last_ok = time.monotonic()
             vis = frame.copy()
 
             if self.frying_running:
@@ -2037,9 +1946,6 @@ class JetsonIntegratedApp:
                         self.latest_observe_left_frame,
                         self.latest_observe_right_frame
                     )
-        else:
-            if time.monotonic() - self.frying_left_last_ok > 3.0:
-                self._restart_camera("frying_left", reason="no_frames")
 
         self.root.after(GUI_UPDATE_INTERVAL, self.update_frying_left)
 
@@ -2049,14 +1955,12 @@ class JetsonIntegratedApp:
             return
 
         if self.frying_right_cap is None:
-            self._restart_camera("frying_right", reason="cap_none")
             # 카메라 없어도 다음 스케줄 유지 (동적 ON/OFF 지원)
             self.root.after(GUI_UPDATE_INTERVAL, self.update_frying_right)
             return
 
         ret, frame = self.frying_right_cap.read()
         if ret:
-            self.frying_right_last_ok = time.monotonic()
             vis = frame.copy()
 
             if self.frying_running:
@@ -2156,9 +2060,6 @@ class JetsonIntegratedApp:
                         self.latest_observe_left_frame,
                         self.latest_observe_right_frame
                     )
-        else:
-            if time.monotonic() - self.frying_right_last_ok > 3.0:
-                self._restart_camera("frying_right", reason="no_frames")
 
         self.root.after(GUI_UPDATE_INTERVAL, self.update_frying_right)
 
@@ -2168,14 +2069,12 @@ class JetsonIntegratedApp:
             return
 
         if self.observe_left_cap is None:
-            self._restart_camera("observe_left", reason="cap_none")
             # 카메라 없어도 다음 스케줄 유지 (동적 ON/OFF 지원)
             self.root.after(GUI_UPDATE_INTERVAL, self.update_observe_left)
             return
 
         ret, frame = self.observe_left_cap.read()
         if ret:
-            self.observe_left_last_ok = time.monotonic()
             vis = frame.copy()
             H, W = frame.shape[:2]
 
@@ -2314,9 +2213,6 @@ class JetsonIntegratedApp:
                         self.latest_observe_left_frame,
                         self.latest_observe_right_frame
                     )
-        else:
-            if time.monotonic() - self.observe_left_last_ok > 3.0:
-                self._restart_camera("observe_left", reason="no_frames")
 
         self.root.after(GUI_UPDATE_INTERVAL, self.update_observe_left)
 
@@ -2326,14 +2222,12 @@ class JetsonIntegratedApp:
             return
 
         if self.observe_right_cap is None:
-            self._restart_camera("observe_right", reason="cap_none")
             # 카메라 없어도 다음 스케줄 유지 (동적 ON/OFF 지원)
             self.root.after(GUI_UPDATE_INTERVAL, self.update_observe_right)
             return
 
         ret, frame = self.observe_right_cap.read()
         if ret:
-            self.observe_right_last_ok = time.monotonic()
             vis = frame.copy()
             H, W = frame.shape[:2]
 
@@ -2460,9 +2354,6 @@ class JetsonIntegratedApp:
                         self.latest_observe_left_frame,
                         self.latest_observe_right_frame
                     )
-        else:
-            if time.monotonic() - self.observe_right_last_ok > 3.0:
-                self._restart_camera("observe_right", reason="no_frames")
 
         self.root.after(GUI_UPDATE_INTERVAL, self.update_observe_right)
 
