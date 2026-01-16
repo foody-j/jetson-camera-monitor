@@ -1069,10 +1069,10 @@ class JetsonIntegratedApp:
                 # 디버그 출력
                 print(f"[로봇상태] 튀김솥 PT{pot_num} | {process_type} | {recipe} | 온도:{temp}°C | {running_time}")
 
-                # 녹화 시작/중지 트리거: 투입 시 시작, 배출 후 N초 뒤 종료
+                # 녹화 시작/중지 트리거: 투입/조리 시 시작, 배출 후 N초 뒤 종료
                 # + 카메라 동적 ON/OFF (3-of-4 전략)
                 if pot_num == "0":  # 왼쪽 = POT1
-                    if process_type == "투입":
+                    if process_type in ["투입", "조리"]:
                         # 배출 타이머가 있으면 취소 (다시 투입된 경우)
                         if self.pot1_discharge_timer_id:
                             self.root.after_cancel(self.pot1_discharge_timer_id)
@@ -1080,12 +1080,12 @@ class JetsonIntegratedApp:
                             print(f"[로봇상태] POT1(왼쪽) 배출 타이머 취소 (재투입)")
                         if not self.pot1_collecting:
                             self.pot1_food_type = recipe if recipe else "unknown"
-                            print(f"[로봇상태] POT1(왼쪽) 데이터 수집 시작 - {self.pot1_food_type}")
+                            print(f"[로봇상태] POT1(왼쪽) 데이터 수집 시작 ({process_type}) - {self.pot1_food_type}")
                             # 카메라 동적 ON (1-of-4 전략: 항상 전환)
                             self.root.after(0, lambda: self.start_frying_camera("0"))
                             self.root.after(0, self.start_pot1_collection)
                             # 토스트 메시지 표시
-                            self.root.after(0, lambda r=recipe: self.show_toast(f"튀김 POT1: {r}" if r else "튀김 POT1: 투입"))
+                            self.root.after(0, lambda r=recipe: self.show_toast(f"튀김 POT1: {r}" if r else f"튀김 POT1: {process_type}"))
                     elif process_type == "배출":
                         if self.pot1_collecting and not self.pot1_discharge_timer_id:
                             delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
@@ -1093,7 +1093,7 @@ class JetsonIntegratedApp:
                             self.pot1_discharge_timer_id = self.root.after(delay_ms, self._delayed_stop_pot1_collection)
 
                 elif pot_num == "1":  # 오른쪽 = POT2
-                    if process_type == "투입":
+                    if process_type in ["투입", "조리"]:
                         # 배출 타이머가 있으면 취소 (다시 투입된 경우)
                         if self.pot2_discharge_timer_id:
                             self.root.after_cancel(self.pot2_discharge_timer_id)
@@ -1101,12 +1101,12 @@ class JetsonIntegratedApp:
                             print(f"[로봇상태] POT2(오른쪽) 배출 타이머 취소 (재투입)")
                         if not self.pot2_collecting:
                             self.pot2_food_type = recipe if recipe else "unknown"
-                            print(f"[로봇상태] POT2(오른쪽) 데이터 수집 시작 - {self.pot2_food_type}")
+                            print(f"[로봇상태] POT2(오른쪽) 데이터 수집 시작 ({process_type}) - {self.pot2_food_type}")
                             # 카메라 동적 ON (1-of-4 전략: 항상 전환)
                             self.root.after(0, lambda: self.start_frying_camera("1"))
                             self.root.after(0, self.start_pot2_collection)
                             # 토스트 메시지 표시
-                            self.root.after(0, lambda r=recipe: self.show_toast(f"튀김 POT2: {r}" if r else "튀김 POT2: 투입"))
+                            self.root.after(0, lambda r=recipe: self.show_toast(f"튀김 POT2: {r}" if r else f"튀김 POT2: {process_type}"))
                     elif process_type == "배출":
                         if self.pot2_collecting and not self.pot2_discharge_timer_id:
                             delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
