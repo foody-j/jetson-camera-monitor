@@ -1071,8 +1071,11 @@ class JetsonIntegratedApp:
 
                 # 녹화 시작/중지 트리거: 투입/조리 시 시작, 배출 후 N초 뒤 종료
                 # + 카메라 동적 ON/OFF (3-of-4 전략)
+                # "청소" 키워드 필터링: recipe에 "청소"가 포함되면 수집 안 함
+                is_cleaning = "청소" in recipe if recipe else False
+
                 if pot_num == "0":  # 왼쪽 = POT1
-                    if process_type in ["투입", "조리"]:
+                    if process_type in ["투입", "조리"] and not is_cleaning:
                         # 배출 타이머가 있으면 취소 (다시 투입된 경우)
                         if self.pot1_discharge_timer_id:
                             try:
@@ -1087,6 +1090,8 @@ class JetsonIntegratedApp:
                             # 직접 호출 (MQTT 스레드에서 안전)
                             self.start_frying_camera("0")
                             self.start_pot1_collection()
+                    elif is_cleaning:
+                        print(f"[로봇상태] POT1(왼쪽) 청소 모드 감지 - 데이터 수집 스킵")
                             # 토스트는 스킵 (GUI 관련)
                     elif process_type == "배출":
                         if self.pot1_collecting and not self.pot1_discharge_timer_id:
@@ -1095,7 +1100,7 @@ class JetsonIntegratedApp:
                             self.pot1_discharge_timer_id = self.root.after(delay_ms, self._delayed_stop_pot1_collection)
 
                 elif pot_num == "1":  # 오른쪽 = POT2
-                    if process_type in ["투입", "조리"]:
+                    if process_type in ["투입", "조리"] and not is_cleaning:
                         # 배출 타이머가 있으면 취소 (다시 투입된 경우)
                         if self.pot2_discharge_timer_id:
                             try:
@@ -1111,6 +1116,8 @@ class JetsonIntegratedApp:
                             self.start_frying_camera("1")
                             self.start_pot2_collection()
                             # 토스트는 스킵 (GUI 관련)
+                    elif is_cleaning:
+                        print(f"[로봇상태] POT2(오른쪽) 청소 모드 감지 - 데이터 수집 스킵")
                     elif process_type == "배출":
                         if self.pot2_collecting and not self.pot2_discharge_timer_id:
                             delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
