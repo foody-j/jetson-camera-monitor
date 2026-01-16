@@ -28,6 +28,9 @@ from collections import deque
 from queue import Queue, Empty
 import socket
 
+# Script directory (for relative path checks)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.communication.mqtt_client import MQTTClient
@@ -66,6 +69,14 @@ def load_config(config_path="config_jetson2.json"):
 
     with open(config_full_path, 'r', encoding='utf-8') as f:
         return json.load(f)
+
+def _path_exists(path):
+    """Check if path exists (absolute or relative to script dir)."""
+    if not path:
+        return False
+    if os.path.isabs(path):
+        return os.path.exists(path)
+    return os.path.exists(path) or os.path.exists(os.path.join(SCRIPT_DIR, path))
 
 def get_ip_address():
     """Get local IP address"""
@@ -132,6 +143,23 @@ OBSERVE_LEFT_CAMERA_INDEX = config.get('observe_left_camera_index', 2)
 OBSERVE_RIGHT_CAMERA_INDEX = config.get('observe_right_camera_index', 3)
 OBSERVE_SEG_MODEL = config.get('observe_seg_model', '../observe_add/besta.pt')
 OBSERVE_CLS_MODEL = config.get('observe_cls_model', '../observe_add/bestb.pt')
+OBSERVE_LEFT_SEG_MODEL = config.get('observe_left_seg_model', OBSERVE_SEG_MODEL)
+OBSERVE_RIGHT_SEG_MODEL = config.get('observe_right_seg_model', OBSERVE_SEG_MODEL)
+OBSERVE_LEFT_CLS_MODEL = config.get('observe_left_cls_model', OBSERVE_CLS_MODEL)
+OBSERVE_RIGHT_CLS_MODEL = config.get('observe_right_cls_model', OBSERVE_CLS_MODEL)
+
+if not _path_exists(OBSERVE_LEFT_SEG_MODEL):
+    print(f"[모델] Observe 좌측 세그 모델 경로 확인 필요: {OBSERVE_LEFT_SEG_MODEL}")
+if not _path_exists(OBSERVE_LEFT_CLS_MODEL):
+    print(f"[모델] Observe 좌측 분류 모델 경로 확인 필요: {OBSERVE_LEFT_CLS_MODEL}")
+if not _path_exists(OBSERVE_RIGHT_SEG_MODEL):
+    if OBSERVE_RIGHT_SEG_MODEL:
+        print(f"[모델] Observe 우측 세그 모델 없음: {OBSERVE_RIGHT_SEG_MODEL} -> 좌측 모델 사용")
+    OBSERVE_RIGHT_SEG_MODEL = OBSERVE_LEFT_SEG_MODEL
+if not _path_exists(OBSERVE_RIGHT_CLS_MODEL):
+    if OBSERVE_RIGHT_CLS_MODEL:
+        print(f"[모델] Observe 우측 분류 모델 없음: {OBSERVE_RIGHT_CLS_MODEL} -> 좌측 모델 사용")
+    OBSERVE_RIGHT_CLS_MODEL = OBSERVE_LEFT_CLS_MODEL
 
 # Common AI settings
 IMG_SIZE_SEG = config.get('img_size_seg', 640)
@@ -320,15 +348,35 @@ class JetsonIntegratedApp:
         self.color_checker_right = SimpleColorChecker(color_threshold=25.0)
         print(f"[모델] Color checker 초기화 완료")
 
-        # Observe_add models
-        self.observe_seg_model = YOLO(OBSERVE_SEG_MODEL)
-        self.observe_cls_model = YOLO(OBSERVE_CLS_MODEL)
+        # Observe_add models (left/right separated)
+        self.observe_left_seg_model = YOLO(OBSERVE_LEFT_SEG_MODEL)
+        if OBSERVE_RIGHT_SEG_MODEL == OBSERVE_LEFT_SEG_MODEL:
+            self.observe_right_seg_model = self.observe_left_seg_model
+            print("[모델] Observe 우측 세그 모델이 좌측과 동일 - 모델 공유")
+        else:
+            self.observe_right_seg_model = YOLO(OBSERVE_RIGHT_SEG_MODEL)
+
+        self.observe_left_cls_model = YOLO(OBSERVE_LEFT_CLS_MODEL)
+        if OBSERVE_RIGHT_CLS_MODEL == OBSERVE_LEFT_CLS_MODEL:
+            self.observe_right_cls_model = self.observe_left_cls_model
+            print("[모델] Observe 우측 분류 모델이 좌측과 동일 - 모델 공유")
+        else:
+            self.observe_right_cls_model = YOLO(OBSERVE_RIGHT_CLS_MODEL)
 
         # Move to GPU if available
         if self.use_cuda:
             try:
-                self.observe_seg_model.to('cuda')
-                self.observe_cls_model.to('cuda')
+                observe_models = []
+                for model in [
+                    self.observe_left_seg_model,
+                    self.observe_right_seg_model,
+                    self.observe_left_cls_model,
+                    self.observe_right_cls_model
+                ]:
+                    if model not in observe_models:
+                        observe_models.append(model)
+                for model in observe_models:
+                    model.to('cuda')
                 print(f"[모델] Observe_add 모델 로드 완료 (GPU)")
             except Exception as e:
                 print(f"[GPU] GPU 전환 실패, CPU 사용: {e}")
@@ -337,9 +385,12 @@ class JetsonIntegratedApp:
             print(f"[모델] Observe_add 모델 로드 완료 (CPU)")
 
         # Get classification names
-        self.observe_cls_names = getattr(self.observe_cls_model.model, "names", None) or \
-                                 getattr(self.observe_cls_model, "names", None)
-        print(f"[모델] Observe 분류 클래스: {self.observe_cls_names}")
+        self.observe_left_cls_names = getattr(self.observe_left_cls_model.model, "names", None) or \
+                                      getattr(self.observe_left_cls_model, "names", None)
+        self.observe_right_cls_names = getattr(self.observe_right_cls_model.model, "names", None) or \
+                                       getattr(self.observe_right_cls_model, "names", None)
+        print(f"[모델] Observe 분류 클래스 (좌): {self.observe_left_cls_names}")
+        print(f"[모델] Observe 분류 클래스 (우): {self.observe_right_cls_names}")
         print(f"[DEBUG] 모델 로딩 완료, Queue 초기화 시작...")
 
         # AI processing queues (백그라운드 스레드)
@@ -1659,12 +1710,12 @@ class JetsonIntegratedApp:
             ),
             threading.Thread(
                 target=self._observe_worker,
-                args=(self.observe_left_queue, "observe_left_result", "왼쪽"),
+                args=(self.observe_left_queue, "observe_left_result", "왼쪽", self.observe_left_seg_model),
                 daemon=True
             ),
             threading.Thread(
                 target=self._observe_worker,
-                args=(self.observe_right_queue, "observe_right_result", "오른쪽"),
+                args=(self.observe_right_queue, "observe_right_result", "오른쪽", self.observe_right_seg_model),
                 daemon=True
             ),
         ]
@@ -1691,7 +1742,7 @@ class JetsonIntegratedApp:
                 except Exception:
                     pass
 
-    def _observe_worker(self, queue, result_attr, label):
+    def _observe_worker(self, queue, result_attr, label, seg_model):
         while self.running:
             try:
                 frame = queue.get(timeout=0.2)
@@ -1701,7 +1752,7 @@ class JetsonIntegratedApp:
                 continue
             try:
                 with self.observe_ai_lock:
-                    r = self.observe_seg_model.predict(
+                    r = seg_model.predict(
                         frame, imgsz=IMG_SIZE_SEG, conf=CONF_SEG, verbose=False, device=self.device
                     )[0]
                 setattr(self, result_attr, r)
@@ -2137,7 +2188,7 @@ class JetsonIntegratedApp:
                         roi = frame[y:y2, x:x2]
 
                         # Classification
-                        cls_res = self.observe_cls_model.predict(
+                        cls_res = self.observe_left_cls_model.predict(
                             roi, imgsz=IMG_SIZE_CLS, conf=0.0, verbose=False, device=self.device
                         )[0]
                         top1_idx = int(cls_res.probs.top1)
@@ -2288,7 +2339,7 @@ class JetsonIntegratedApp:
                         roi = frame[y:y2, x:x2]
 
                         # Classification
-                        cls_res = self.observe_cls_model.predict(
+                        cls_res = self.observe_right_cls_model.predict(
                             roi, imgsz=IMG_SIZE_CLS, conf=0.0, verbose=False, device=self.device
                         )[0]
                         top1_idx = int(cls_res.probs.top1)
