@@ -1001,16 +1001,18 @@ class JetsonIntegratedApp:
             rb_motion = data.get("RBMotion", None)
 
             # RBMotion 기반 데이터 수집 속도 조정
-            if rb_motion == 1:
-                # 로봇 움직임 감지 → 빠른 수집
+            # RBMotion: 1=POT1(왼쪽), 2=POT2(오른쪽), 0/null=정지
+            if rb_motion in [1, 2]:
+                # 로봇 움직임 감지 (POT1 or POT2) → 빠른 수집
                 if self.collection_interval != DATA_COLLECTION_INTERVAL_FAST:
                     self.collection_interval = DATA_COLLECTION_INTERVAL_FAST
-                    print(f"[데이터수집] RBMotion 감지 → 빠른 수집 ({DATA_COLLECTION_INTERVAL_FAST}초)")
+                    pot_name = "POT1(왼쪽)" if rb_motion == 1 else "POT2(오른쪽)"
+                    print(f"[데이터수집] RBMotion={rb_motion} ({pot_name}) → 빠른 수집 ({DATA_COLLECTION_INTERVAL_FAST}초)")
             else:
                 # 로봇 정지 → 일반 수집
                 if self.collection_interval != DATA_COLLECTION_INTERVAL_NORMAL:
                     self.collection_interval = DATA_COLLECTION_INTERVAL_NORMAL
-                    print(f"[데이터수집] RBMotion 없음 → 일반 수집 ({DATA_COLLECTION_INTERVAL_NORMAL}초)")
+                    print(f"[데이터수집] RBMotion={rb_motion} (정지) → 일반 수집 ({DATA_COLLECTION_INTERVAL_NORMAL}초)")
 
             # 각 솥 정보 처리 - Jetson2는 튀김솥(DeviceNum=0)만 처리
             for pot_data in status_list:
