@@ -23,7 +23,6 @@ class GstCamera:
         self.height = height
         self.fps = fps
         self.device_path = f"/dev/video{device_index}"
-        self.preview_sink = os.getenv("GMSL_PREVIEW_SINK", "autovideosink")
 
         self.process = None
         self.latest_frame = None
@@ -42,22 +41,12 @@ class GstCamera:
             print(f"[GstCamera] Camera {self.device_index} already running")
             return True
 
-        # GStreamer pipeline - tee preview sink to keep stream alive
+        # GStreamer pipeline - output raw BGR to stdout
         gst_cmd = [
             "gst-launch-1.0", "-q",
             "v4l2src", f"device={self.device_path}", "io-mode=2", "!",
             f"video/x-raw,format=UYVY,width={self.width},height={self.height},framerate={self.fps}/1", "!",
-            "tee", "name=t",
-        ]
-
-        if self.preview_sink.lower() != "none":
-            gst_cmd += [
-                "t.", "!", "queue", "!", "videoconvert", "!",
-                self.preview_sink, "sync=false"
-            ]
-
-        gst_cmd += [
-            "t.", "!", "queue", "!", "videoconvert", "!",
+            "videoconvert", "!",
             "video/x-raw,format=BGR", "!",
             "fdsink", "fd=1", "sync=false"
         ]

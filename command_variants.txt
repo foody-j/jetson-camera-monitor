@@ -1,0 +1,17 @@
+# Preset A: 1600x1280 @ 15fps (5:4) with nv3dsink sync=false
+gst-launch-1.0 -e v4l2src device=/dev/video0 io-mode=2 ! video/x-raw,format=UYVY,width=1920,height=1536,framerate=30/1 ! videorate ! video/x-raw,framerate=15/1 ! videoscale ! video/x-raw,width=1600,height=1280 ! videoconvert ! nv3dsink sync=false
+gst-launch-1.0 -e v4l2src device=/dev/video1 io-mode=2 ! video/x-raw,format=UYVY,width=1920,height=1536,framerate=30/1 ! videorate ! video/x-raw,framerate=15/1 ! videoscale ! video/x-raw,width=1600,height=1280 ! videoconvert ! nv3dsink sync=false
+gst-launch-1.0 -e v4l2src device=/dev/video2 io-mode=2 ! video/x-raw,format=UYVY,width=1920,height=1536,framerate=30/1 ! videorate ! video/x-raw,framerate=15/1 ! videoscale ! video/x-raw,width=1600,height=1280 ! videoconvert ! nv3dsink sync=false
+gst-launch-1.0 -e v4l2src device=/dev/video3 io-mode=2 ! video/x-raw,format=UYVY,width=1920,height=1536,framerate=30/1 ! videorate ! video/x-raw,framerate=15/1 ! videoscale ! video/x-raw,width=1600,height=1280 ! videoconvert ! nv3dsink sync=false
+
+# Preset B: 1280x1024 @ 10fps (5:4) with nv3dsink sync=false
+gst-launch-1.0 -e v4l2src device=/dev/video0 io-mode=2 ! video/x-raw,format=UYVY,width=1920,height=1536,framerate=30/1 ! videorate ! video/x-raw,framerate=10/1 ! videoscale ! video/x-raw,width=1280,height=1024 ! videoconvert ! nv3dsink sync=false
+gst-launch-1.0 -e v4l2src device=/dev/video1 io-mode=2 ! video/x-raw,format=UYVY,width=1920,height=1536,framerate=30/1 ! videorate ! video/x-raw,framerate=10/1 ! videoscale ! video/x-raw,width=1280,height=1024 ! videoconvert ! nv3dsink sync=false
+gst-launch-1.0 -e v4l2src device=/dev/video2 io-mode=2 ! video/x-raw,format=UYVY,width=1920,height=1536,framerate=30/1 ! videorate ! video/x-raw,framerate=10/1 ! videoscale ! video/x-raw,width=1280,height=1024 ! videoconvert ! nv3dsink sync=false
+gst-launch-1.0 -e v4l2src device=/dev/video3 io-mode=2 ! video/x-raw,format=UYVY,width=1920,height=1536,framerate=30/1 ! videorate ! video/x-raw,framerate=10/1 ! videoscale ! video/x-raw,width=1280,height=1024 ! videoconvert ! nv3dsink sync=false
+
+# Preset C: 960x768 @ 10fps (5:4) with nv3dsink sync=false
+gst-launch-1.0 -e v4l2src device=/dev/video0 io-mode=2 ! video/x-raw,format=UYVY,width=1920,height=1536,framerate=30/1 ! videorate ! video/x-raw,framerate=10/1 ! videoscale ! video/x-raw,width=960,height=768 ! videoconvert ! nv3dsink sync=false
+gst-launch-1.0 -e v4l2src device=/dev/video1 io-mode=2 ! video/x-raw,format=UYVY,width=1920,height=1536,framerate=30/1 ! videorate ! video/x-raw,framerate=10/1 ! videoscale ! video/x-raw,width=960,height=768 ! videoconvert ! nv3dsink sync=false
+gst-launch-1.0 -e v4l2src device=/dev/video2 io-mode=2 ! video/x-raw,format=UYVY,width=1920,height=1536,framerate=30/1 ! videorate ! video/x-raw,framerate=10/1 ! videoscale ! video/x-raw,width=960,height=768 ! videoconvert ! nv3dsink sync=false
+gst-launch-1.0 -e v4l2src device=/dev/video3 io-mode=2 ! video/x-raw,format=UYVY,width=1920,height=1536,framerate=30/1 ! videorate ! video/x-raw,framerate=10/1 ! videoscale ! video/x-raw,width=960,height=768 ! videoconvert ! nv3dsink sync=false

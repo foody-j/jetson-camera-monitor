@@ -55,7 +55,10 @@
       "Bash(git remote set-url:*)",
       "Bash(du:*)",
       "Bash(pip3 install:*)",
-      "Bash(sudo dmesg:*)"
+      "Bash(sudo dmesg:*)",
+      "Bash(git pull:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "Bash(wc:*)"
     ],
     "deny": [],
     "ask": []

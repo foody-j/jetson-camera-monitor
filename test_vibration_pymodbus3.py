@@ -30,7 +30,7 @@ except Exception:
 # ---------- 사용자 설정 ----------
 PORT = "/dev/ttyUSB0"  # Ubuntu/Jetson
 BAUD = 115200
-UNIT_IDS = [0x53, 0x54, 0x55]     # 테스트: 53, 54, 55
+UNIT_IDS = [0x01, 0x02, 0x03]     # 테스트: 53, 54, 55
 PARITY = 'N'; STOPBITS = 1; BYTESIZE = 8
 TIMEOUT_S = 0.15
 

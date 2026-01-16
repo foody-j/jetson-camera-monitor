@@ -18,39 +18,21 @@ Gst.init(None)
 class GstCamera:
     """GStreamer-based camera capture for UYVY format"""
 
-    def __init__(self, device_index, width=1920, height=1536, fps=30,
-                 output_width=None, output_height=None, output_fps=None):
+    def __init__(self, device_index, width=1920, height=1536, fps=30):
         self.device_index = device_index
         self.width = width
         self.height = height
         self.fps = fps
         self.device_path = f"/dev/video{device_index}"
 
-        # 출력 해상도/FPS (기본값: 입력의 절반 해상도, 1/3 FPS)
-        self.output_width = output_width if output_width else width // 2
-        self.output_height = output_height if output_height else height // 2
-        self.output_fps = output_fps if output_fps else max(10, fps // 3)
-
         self.pipeline = None
         self.mainloop = None
-
-        # 더블버퍼: 고정 크기 배열 2개를 번갈아 쓰면서 할당 제거
-        self.buffer_pool = [
-            np.empty((self.output_height, self.output_width, 3), dtype=np.uint8),
-            np.empty((self.output_height, self.output_width, 3), dtype=np.uint8)
-        ]
-        self.write_index = 0
-        self.read_index = 0
-
+        self.latest_frame = None
         self.frame_lock = threading.Lock()
         self.is_running = False
         self.thread = None
 
-        print(f"[GstCamera] Creating camera for {self.device_path}")
-        print(f"  Input: {width}x{height}@{fps}fps → Output: {self.output_width}x{self.output_height}@{self.output_fps}fps")
-        frame_size_before = width * height * 3 / 1024 / 1024
-        frame_size_after = self.output_width * self.output_height * 3 / 1024 / 1024
-        print(f"  Frame size: {frame_size_after:.2f} MB (was {frame_size_before:.2f} MB)")
+        print(f"[GstCamera] Creating camera for {self.device_path} @ {width}x{height}")
 
     def start(self):
         """Start the GStreamer pipeline in a background thread"""
@@ -58,12 +40,10 @@ class GstCamera:
             print(f"[GstCamera] Camera {self.device_index} already running")
             return True
 
-        # Build GStreamer pipeline (개선: videorate + videoscale 추가)
+        # Build GStreamer pipeline
         pipeline_str = (
             f"v4l2src device={self.device_path} ! "
             f"video/x-raw, format=UYVY, width={self.width}, height={self.height}, framerate={self.fps}/1 ! "
-            f"videorate ! video/x-raw, framerate={self.output_fps}/1 ! "
-            f"videoscale ! video/x-raw, width={self.output_width}, height={self.output_height} ! "
             f"videoconvert ! "
             f"video/x-raw, format=BGR ! "
             f"appsink name=sink emit-signals=true max-buffers=1 drop=true"
@@ -165,20 +145,16 @@ class GstCamera:
             if not success:
                 return Gst.FlowReturn.ERROR
 
-            # Convert to numpy array (BGR format, 읽기 전용 뷰)
-            frame_view = np.ndarray(
+            # Convert to numpy array (BGR format)
+            frame = np.ndarray(
                 shape=(height, width, 3),
                 dtype=np.uint8,
                 buffer=map_info.data
             )
 
-            # 다음 쓰기 버퍼에 복사 (덮어쓰기, 할당 없음)
-            next_write_idx = (self.write_index + 1) % 2
-            np.copyto(self.buffer_pool[next_write_idx], frame_view)
-
+            # Copy frame to avoid data corruption
             with self.frame_lock:
-                self.read_index = self.write_index
-                self.write_index = next_write_idx
+                self.latest_frame = frame.copy()
 
             buf.unmap(map_info)
 
@@ -190,16 +166,16 @@ class GstCamera:
 
     def read(self):
         """
-        Read the latest frame (제로카피: 참조만 반환, 소비자는 읽기 전용으로만 사용!)
+        Read the latest frame
         Returns: (success, frame) tuple
         """
         if not self.is_running:
             return False, None
 
         with self.frame_lock:
-            # 더블버퍼에서 읽기용 프레임 참조 반환 (복사 없음!)
-            # 주의: 소비자가 이 프레임을 수정하면 안 됨 (읽기 전용)
-            return True, self.buffer_pool[self.read_index]
+            if self.latest_frame is None:
+                return False, None
+            return True, self.latest_frame.copy()
 
     def isOpened(self):
         """Check if camera is running"""

@@ -1,0 +1,11 @@
+[Unit]
+Description=Collect camera-related logs after boot
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/yjk/jetson-food-ai/camera_logs_collect.sh
+Environment=HOME=/home/yjk
+
+[Install]
+WantedBy=multi-user.target

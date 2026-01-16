@@ -23,7 +23,6 @@ class GstCamera:
         self.height = height
         self.fps = fps
         self.device_path = f"/dev/video{device_index}"
-        self.preview_sink = os.getenv("GMSL_PREVIEW_SINK", "autovideosink")
 
         self.process = None
         self.latest_frame = None
@@ -42,22 +41,12 @@ class GstCamera:
             print(f"[GstCamera] Camera {self.device_index} already running")
             return True
 
-        # GStreamer pipeline - tee preview sink to keep stream alive
+        # GStreamer pipeline - output raw BGR to stdout
         gst_cmd = [
-            "gst-launch-1.0", "-q",
+            "gst-launch-1.0", "-q", "-e",
             "v4l2src", f"device={self.device_path}", "io-mode=2", "!",
             f"video/x-raw,format=UYVY,width={self.width},height={self.height},framerate={self.fps}/1", "!",
-            "tee", "name=t",
-        ]
-
-        if self.preview_sink.lower() != "none":
-            gst_cmd += [
-                "t.", "!", "queue", "!", "videoconvert", "!",
-                self.preview_sink, "sync=false"
-            ]
-
-        gst_cmd += [
-            "t.", "!", "queue", "!", "videoconvert", "!",
+            "videoconvert", "!",
             "video/x-raw,format=BGR", "!",
             "fdsink", "fd=1", "sync=false"
         ]
@@ -162,7 +151,27 @@ class GstCamera:
         print(f"[GstCamera] Stopping camera {self.device_index}...")
         self.is_running = False
 
-        # Close stdout first to unblock read thread
+        # Graceful shutdown first (SIGINT), then SIGTERM/SIGKILL as fallback
+        if self.process:
+            try:
+                pgid = os.getpgid(self.process.pid)
+                # SIGINT to let gst-launch send EOS and stop cleanly
+                os.killpg(pgid, signal.SIGINT)
+                try:
+                    self.process.wait(timeout=1.0)
+                except subprocess.TimeoutExpired:
+                    # SIGTERM fallback for device release
+                    os.killpg(pgid, signal.SIGTERM)
+                    try:
+                        self.process.wait(timeout=0.5)
+                    except subprocess.TimeoutExpired:
+                        # SIGKILL as last resort
+                        os.killpg(pgid, signal.SIGKILL)
+                        self.process.wait(timeout=0.3)
+            except:
+                pass
+
+        # Close stdout to unblock read thread
         if self.process and self.process.stdout:
             try:
                 self.process.stdout.close()
@@ -173,20 +182,7 @@ class GstCamera:
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=0.3)
 
-        # Kill subprocess group - 먼저 SIGTERM으로 시도 (깔끔한 종료)
         if self.process:
-            try:
-                pgid = os.getpgid(self.process.pid)
-                # 먼저 SIGTERM으로 종료 시도 (v4l2 장치 해제를 위해)
-                os.killpg(pgid, signal.SIGTERM)
-                try:
-                    self.process.wait(timeout=0.5)
-                except subprocess.TimeoutExpired:
-                    # SIGTERM 실패시 SIGKILL
-                    os.killpg(pgid, signal.SIGKILL)
-                    self.process.wait(timeout=0.3)
-            except:
-                pass
             self.process = None
             self.thread = None
             self.latest_frame = None

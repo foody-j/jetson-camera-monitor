@@ -1,7 +1,26 @@
 gst-launch-1.0 v4l2src device=/dev/video0 ! video/x-raw, format=UYVY, width=1920, height=1536, framerate=30/1 ! autovideosink
 
-gst-launch-1.0 v4l2src device=/dev/video1 ! video/x-raw, format=UYVY, width=1920, height=1536, framerate=30/1 ! autovideosink
 
+gst-launch-1.0 v4l2src device=/dev/video1 ! video/x-raw, format=UYVY, width=1920, height=1536, framerate=30/1 ! autovideosink
 gst-launch-1.0 v4l2src device=/dev/video2 ! video/x-raw, format=UYVY, width=1920, height=1536, framerate=30/1 ! autovideosink
 
 gst-launch-1.0 v4l2src device=/dev/video3 ! video/x-raw, format=UYVY, width=1920, height=1536, framerate=30/1 ! autovideosink
+[  288.113935] tegra-camrtc-capture-vi tegra-capture-vi: uncorr_err: request timed out after 2500 ms
+[  288.113940] tegra-camrtc-capture-vi tegra-capture-vi: uncorr_err: request timed out after 2500 ms
+[  288.113952] tegra-camrtc-capture-vi tegra-capture-vi: err_rec: attempting to reset the capture channel
+[  288.113953] tegra-camrtc-capture-vi tegra-capture-vi: err_rec: attempting to reset the capture channel
+[  288.113954] tegra-camrtc-capture-vi tegra-capture-vi: err_rec: attempting to reset the capture channel
+[  288.113976] tegra-camrtc-capture-vi tegra-capture-vi: err_rec: attempting to reset the capture channel
+[  288.114043] tegra194-vi5 13e00000.host1x:vi1@14c00000: vi_capture_release: control failed, errno 1
+[  288.114070] tegra194-vi5 13e00000.host1x:vi1@14c00000: vi_capture_release: control failed, errno 1
+[  288.114099] video4linux video0: vi capture release failed
+[  288.114103] tegra-camrtc-capture-vi tegra-capture-vi: fatal: error recovery failed
+[  288.114106] video4linux video3: vi capture release failed
+[  288.114109] tegra-camrtc-capture-vi tegra-capture-vi: fatal: error recovery failed
+[  288.114106] tegra194-vi5 13e00000.host1x:vi1@14c00000: vi_capture_release: control failed, errno 1
+[  288.114161] video4linux video1: vi capture release failed
+[  288.114169] tegra-camrtc-capture-vi tegra-capture-vi: fatal: error recovery failed
+[  288.114173] tegra194-vi5 13e00000.host1x:vi1@14c00000: vi_capture_release: control failed, errno 1
+[  288.114202] video4linux video2: vi capture release failed
+[  288.114205] tegra-camrtc-capture-vi tegra-capture-vi: fatal: error recovery failed
+

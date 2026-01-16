@@ -25,7 +25,7 @@ import threading
 import sys
 import numpy as np
 from collections import deque
-from queue import Queue, Empty
+from queue import Queue
 import socket
 
 # Add parent directory to path for imports
@@ -41,9 +41,6 @@ from image_saver_mp import get_image_saver, stop_image_saver
 
 # Import Frying AI segmenter
 from frying_segmenter import FoodSegmenter
-
-# Import Simple Color Checker
-from simple_checker.color_checker import SimpleColorChecker
 
 # Import GPIO for Relay control
 import Jetson.GPIO as GPIO
@@ -198,8 +195,6 @@ TARGET_PROBE_TEMP = config.get('target_probe_temp', 75.0)
 JPEG_QUALITY = config.get('jpeg_quality', 85)
 FOOD_TYPES = config.get('food_types', ["chicken", "shrimp", "potato", "dumpling", "pork_cutlet", "fish"])
 RECORDING_DELAY_AFTER_DISCHARGE = config.get('recording_delay_after_discharge', 50)  # 배출 후 추가 녹화 시간 (초)
-DATA_COLLECTION_INTERVAL_NORMAL = config.get('data_collection_interval_normal', 1)  # 일반 모드 수집 간격 (초)
-DATA_COLLECTION_INTERVAL_FAST = config.get('data_collection_interval_fast', 0.5)  # RBMotion 감지 시 수집 간격 (초)
 
 # GUI Configuration - WHITE MODE (768x1024 세로 모드)
 WINDOW_WIDTH = config.get('window_width', 768)
@@ -279,68 +274,22 @@ class JetsonIntegratedApp:
         # 로봇 상태 업데이트 (MQTT 콜백 → 메인 스레드 전달용)
         self._robot_status_update = None
 
-        # GPIO relay control
+        # GPIO relay control (변수만 초기화, init_gpio()는 GUI 후)
         self.relay_enabled = False
         self.relay_mode = config.get('relay_mode', 'pulse')
-        self.init_gpio()
 
-        # MQTT client (init_mqtt()는 모든 상태 변수 초기화 후 호출)
+        # MQTT client (변수만 초기화, init_mqtt()는 GUI 후)
         self.mqtt_client = None
         self.mqtt_message_log = []  # 최근 MQTT 메시지 저장 (원본 보기용)
         self.mqtt_message_log_max = 50  # 최대 저장 개수
 
-        # Load AI models with GPU (if available)
-        print("[모델] AI 모델 로딩 중...")
-
-        # Check CUDA availability
-        import gc
-        import torch
-
-        # GPU 메모리 정리 (이전 실행 잔여물 제거)
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-            print("[GPU] 이전 GPU 메모리 정리 완료")
-
-        self.use_cuda = torch.cuda.is_available()
-        if self.use_cuda:
-            print(f"[GPU] CUDA 사용 가능! GPU 가속 활성화")
-            self.device = 'cuda'
-        else:
-            print(f"[GPU] CUDA 미사용 - CPU 모드로 실행")
-            self.device = 'cpu'
-
-        # Frying AI segmenter
-        self.frying_segmenter = FoodSegmenter(mode="auto")
-        print(f"[모델] Frying segmenter 로드 완료")
-
-        # Simple Color Checker (튀김 색상 변화 측정)
-        self.color_checker_left = SimpleColorChecker(color_threshold=25.0)
-        self.color_checker_right = SimpleColorChecker(color_threshold=25.0)
-        print(f"[모델] Color checker 초기화 완료")
-
-        # Observe_add models
-        self.observe_seg_model = YOLO(OBSERVE_SEG_MODEL)
-        self.observe_cls_model = YOLO(OBSERVE_CLS_MODEL)
-
-        # Move to GPU if available
-        if self.use_cuda:
-            try:
-                self.observe_seg_model.to('cuda')
-                self.observe_cls_model.to('cuda')
-                print(f"[모델] Observe_add 모델 로드 완료 (GPU)")
-            except Exception as e:
-                print(f"[GPU] GPU 전환 실패, CPU 사용: {e}")
-                self.device = 'cpu'
-        else:
-            print(f"[모델] Observe_add 모델 로드 완료 (CPU)")
-
-        # Get classification names
-        self.observe_cls_names = getattr(self.observe_cls_model.model, "names", None) or \
-                                 getattr(self.observe_cls_model, "names", None)
-        print(f"[모델] Observe 분류 클래스: {self.observe_cls_names}")
-        print(f"[DEBUG] 모델 로딩 완료, Queue 초기화 시작...")
+        # AI model placeholders (GUI 후에 로드)
+        self.use_cuda = False
+        self.device = 'cpu'
+        self.frying_segmenter = None
+        self.observe_seg_model = None
+        self.observe_cls_model = None
+        self.observe_cls_names = None
 
         # AI processing queues (백그라운드 스레드)
         self.frying_left_queue = Queue(maxsize=1)
@@ -356,9 +305,6 @@ class JetsonIntegratedApp:
 
         # AI worker threads
         self.ai_threads = []
-        self.frying_ai_lock = threading.Lock()
-        self.observe_ai_lock = threading.Lock()
-        self._start_ai_workers()
 
         # Subprocess tracking (진동센서 등)
         self.child_processes = []
@@ -404,15 +350,15 @@ class JetsonIntegratedApp:
 
         # Running flags
         self.running = True
-        self.frying_running = False  # 투입 신호 대기
-        self.observe_running = False  # 투입 신호 대기
+        self.frying_running = False
+        self.observe_running = False
 
         # Data collection flags (LEGACY - for backward compatibility)
         self.data_collection_active = False
         self.collection_session_id = None
         self.collection_start_time = None
         self.collection_frame_counter = 0
-        self.collection_interval = DATA_COLLECTION_INTERVAL_NORMAL  # 기본값: 일반 모드
+        self.collection_interval = config.get('data_collection_interval', 5)  # 5초마다 저장 (기본값)
         self.collection_timer = 0
         self.collection_metadata = []  # Store MQTT metadata during collection
         self.collection_completion_marked = False  # 완료 시점 마킹 여부
@@ -461,23 +407,36 @@ class JetsonIntegratedApp:
         self.latest_observe_left_frame = None
         self.latest_observe_right_frame = None
 
+        print("[초기화] 변수 초기화 완료!")
+
+        # Pre-load fonts to avoid Segfault
+        print("[초기화] 폰트 사전 로딩...")
+        self._init_fonts()
+
+        # Build GUI first (사용자에게 시작됨을 알림)
+        print("[초기화] GUI 빌드 시작...")
+        self.build_gui()
+        print("[초기화] GUI 빌드 완료")
+
+        # Initialize GPIO for Relay control
+        print("[초기화] GPIO 릴레이 제어 초기화 중...")
+        self.init_gpio()
+
         # Initialize MQTT (모든 상태 변수 초기화 완료 후)
+        print("[초기화] MQTT 연결 중...")
         if MQTT_ENABLED:
             self.init_mqtt()
 
-        # Pre-load fonts to avoid Segfault
-        print(f"[DEBUG] 폰트 사전 로딩...")
-        self._init_fonts()
-
-        # Build GUI
-        print(f"[DEBUG] GUI 빌드 시작...")
-        self.build_gui()
-        print(f"[DEBUG] GUI 빌드 완료")
+        # Load AI models with GPU (if available)
+        print("[초기화] AI 모델 로딩 중...")
+        self.init_ai_models()
 
         # Initialize cameras
-        print(f"[DEBUG] 카메라 초기화 시작...")
+        print("[초기화] 카메라 초기화 시작...")
         self.init_cameras()
-        print(f"[DEBUG] 카메라 초기화 완료")
+        print("[초기화] 카메라 초기화 완료")
+
+        print("[초기화] 모든 시스템 초기화 완료!")
 
         # Start update loops
         self.update_frying_left()
@@ -497,6 +456,52 @@ class JetsonIntegratedApp:
 
         # Cleanup on close
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def init_ai_models(self):
+        """Load AI models with GPU (if available)"""
+        import gc
+        import torch
+
+        # GPU 메모리 정리 (이전 실행 잔여물 제거)
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            print("[GPU] 이전 GPU 메모리 정리 완료")
+
+        self.use_cuda = torch.cuda.is_available()
+        if self.use_cuda:
+            print(f"[GPU] CUDA 사용 가능! GPU 가속 활성화")
+            self.device = 'cuda'
+        else:
+            print(f"[GPU] CUDA 미사용 - CPU 모드로 실행")
+            self.device = 'cpu'
+
+        # Frying AI segmenter
+        self.frying_segmenter = FoodSegmenter(mode="auto")
+        print(f"[모델] Frying segmenter 로드 완료")
+
+        # Observe_add models
+        self.observe_seg_model = YOLO(OBSERVE_SEG_MODEL)
+        self.observe_cls_model = YOLO(OBSERVE_CLS_MODEL)
+
+        # Move to GPU if available
+        if self.use_cuda:
+            try:
+                self.observe_seg_model.to('cuda')
+                self.observe_cls_model.to('cuda')
+                print(f"[모델] Observe_add 모델 로드 완료 (GPU)")
+            except Exception as e:
+                print(f"[GPU] GPU 전환 실패, CPU 사용: {e}")
+                self.device = 'cpu'
+        else:
+            print(f"[모델] Observe_add 모델 로드 완료 (CPU)")
+
+        # Get classification names
+        self.observe_cls_names = getattr(self.observe_cls_model.model, "names", None) or \
+                                 getattr(self.observe_cls_model, "names", None)
+        print(f"[모델] Observe 분류 클래스: {self.observe_cls_names}")
+        print(f"[모델] AI 모델 로딩 완료!")
 
     def init_gpio(self):
         """Initialize GPIO for 24V Omron Relay control (via ULN2803)"""
@@ -800,24 +805,6 @@ class JetsonIntegratedApp:
             self.pot1_food_type = message.payload.decode()
             print(f"[MQTT POT1] 음식 종류 수신: {self.pot1_food_type}")
 
-            # 튀김 AI 시작 (투입 신호)
-            if not self.frying_running:
-                self.frying_running = True
-                print(f"[튀김 AI] POT1 투입 신호 → AI 시작")
-
-            # 바스켓 AI 시작 (투입 준비)
-            if not self.observe_running:
-                self.observe_running = True
-                print(f"[바스켓 AI] POT1 메뉴 입력 → 바스켓 감지 시작")
-
-            # Pot status: IDLE → COOKING
-            self.pot1_pot_status = "COOKING"
-            print(f"[POT1] 상태 변경: COOKING")
-
-            # Color checker baseline 리셋 (새로운 조리 시작)
-            self.color_checker_left.reset()
-            print(f"[색상] POT1 baseline 리셋 완료")
-
             # Cancel previous timeout timer
             if self.pot1_timeout_id is not None:
                 self.root.after_cancel(self.pot1_timeout_id)
@@ -869,24 +856,6 @@ class JetsonIntegratedApp:
         try:
             self.pot2_food_type = message.payload.decode()
             print(f"[MQTT POT2] 음식 종류 수신: {self.pot2_food_type}")
-
-            # 튀김 AI 시작 (투입 신호)
-            if not self.frying_running:
-                self.frying_running = True
-                print(f"[튀김 AI] POT2 투입 신호 → AI 시작")
-
-            # 바스켓 AI 시작 (투입 준비)
-            if not self.observe_running:
-                self.observe_running = True
-                print(f"[바스켓 AI] POT2 메뉴 입력 → 바스켓 감지 시작")
-
-            # Pot status: IDLE → COOKING
-            self.pot2_pot_status = "COOKING"
-            print(f"[POT2] 상태 변경: COOKING")
-
-            # Color checker baseline 리셋 (새로운 조리 시작)
-            self.color_checker_right.reset()
-            print(f"[색상] POT2 baseline 리셋 완료")
 
             # Cancel previous timeout timer
             if self.pot2_timeout_id is not None:
@@ -1000,23 +969,6 @@ class JetsonIntegratedApp:
                 return
             rb_motion = data.get("RBMotion", None)
 
-            # DEBUG: RBMotion 값 확인
-            print(f"[DEBUG] RBMotion={rb_motion}, pot1_collecting={self.pot1_collecting}, pot2_collecting={self.pot2_collecting}, collection_interval={self.collection_interval}")
-
-            # RBMotion 기반 데이터 수집 속도 조정
-            # RBMotion: 1=POT1(왼쪽), 2=POT2(오른쪽), 0/null=정지
-            if rb_motion in [1, 2]:
-                # 로봇 움직임 감지 (POT1 or POT2) → 빠른 수집
-                if self.collection_interval != DATA_COLLECTION_INTERVAL_FAST:
-                    self.collection_interval = DATA_COLLECTION_INTERVAL_FAST
-                    pot_name = "POT1(왼쪽)" if rb_motion == 1 else "POT2(오른쪽)"
-                    print(f"[데이터수집] RBMotion={rb_motion} ({pot_name}) → 빠른 수집 ({DATA_COLLECTION_INTERVAL_FAST}초)")
-            else:
-                # 로봇 정지 → 일반 수집
-                if self.collection_interval != DATA_COLLECTION_INTERVAL_NORMAL:
-                    self.collection_interval = DATA_COLLECTION_INTERVAL_NORMAL
-                    print(f"[데이터수집] RBMotion={rb_motion} (정지) → 일반 수집 ({DATA_COLLECTION_INTERVAL_NORMAL}초)")
-
             # 각 솥 정보 처리 - Jetson2는 튀김솥(DeviceNum=0)만 처리
             for pot_data in status_list:
                 device_num = pot_data.get("DeviceNum", "")
@@ -1069,25 +1021,23 @@ class JetsonIntegratedApp:
                 # 디버그 출력
                 print(f"[로봇상태] 튀김솥 PT{pot_num} | {process_type} | {recipe} | 온도:{temp}°C | {running_time}")
 
-                # 녹화 시작/중지 트리거: 투입/조리 시 시작, 배출 후 N초 뒤 종료
+                # 녹화 시작/중지 트리거: 투입 시 시작, 배출 후 N초 뒤 종료
                 # + 카메라 동적 ON/OFF (3-of-4 전략)
                 if pot_num == "0":  # 왼쪽 = POT1
-                    if process_type in ["투입", "조리"]:
+                    if process_type == "투입":
                         # 배출 타이머가 있으면 취소 (다시 투입된 경우)
                         if self.pot1_discharge_timer_id:
-                            try:
-                                self.root.after_cancel(self.pot1_discharge_timer_id)
-                            except:
-                                pass
+                            self.root.after_cancel(self.pot1_discharge_timer_id)
                             self.pot1_discharge_timer_id = None
                             print(f"[로봇상태] POT1(왼쪽) 배출 타이머 취소 (재투입)")
                         if not self.pot1_collecting:
                             self.pot1_food_type = recipe if recipe else "unknown"
-                            print(f"[로봇상태] POT1(왼쪽) 데이터 수집 시작 ({process_type}) - {self.pot1_food_type}")
-                            # 직접 호출 (MQTT 스레드에서 안전)
-                            self.start_frying_camera("0")
-                            self.start_pot1_collection()
-                            # 토스트는 스킵 (GUI 관련)
+                            print(f"[로봇상태] POT1(왼쪽) 데이터 수집 시작 - {self.pot1_food_type}")
+                            # 카메라 동적 ON (1-of-4 전략: 항상 전환)
+                            self.root.after(0, lambda: self.start_frying_camera("0"))
+                            self.root.after(0, self.start_pot1_collection)
+                            # 토스트 메시지 표시
+                            self.root.after(0, lambda r=recipe: self.show_toast(f"튀김 POT1: {r}" if r else "튀김 POT1: 투입"))
                     elif process_type == "배출":
                         if self.pot1_collecting and not self.pot1_discharge_timer_id:
                             delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
@@ -1095,22 +1045,20 @@ class JetsonIntegratedApp:
                             self.pot1_discharge_timer_id = self.root.after(delay_ms, self._delayed_stop_pot1_collection)
 
                 elif pot_num == "1":  # 오른쪽 = POT2
-                    if process_type in ["투입", "조리"]:
+                    if process_type == "투입":
                         # 배출 타이머가 있으면 취소 (다시 투입된 경우)
                         if self.pot2_discharge_timer_id:
-                            try:
-                                self.root.after_cancel(self.pot2_discharge_timer_id)
-                            except:
-                                pass
+                            self.root.after_cancel(self.pot2_discharge_timer_id)
                             self.pot2_discharge_timer_id = None
                             print(f"[로봇상태] POT2(오른쪽) 배출 타이머 취소 (재투입)")
                         if not self.pot2_collecting:
                             self.pot2_food_type = recipe if recipe else "unknown"
-                            print(f"[로봇상태] POT2(오른쪽) 데이터 수집 시작 ({process_type}) - {self.pot2_food_type}")
-                            # 직접 호출 (MQTT 스레드에서 안전)
-                            self.start_frying_camera("1")
-                            self.start_pot2_collection()
-                            # 토스트는 스킵 (GUI 관련)
+                            print(f"[로봇상태] POT2(오른쪽) 데이터 수집 시작 - {self.pot2_food_type}")
+                            # 카메라 동적 ON (1-of-4 전략: 항상 전환)
+                            self.root.after(0, lambda: self.start_frying_camera("1"))
+                            self.root.after(0, self.start_pot2_collection)
+                            # 토스트 메시지 표시
+                            self.root.after(0, lambda r=recipe: self.show_toast(f"튀김 POT2: {r}" if r else "튀김 POT2: 투입"))
                     elif process_type == "배출":
                         if self.pot2_collecting and not self.pot2_discharge_timer_id:
                             delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
@@ -1193,25 +1141,6 @@ class JetsonIntegratedApp:
         """Send MQTT message with optional device info"""
         # jetson2/status에 통합됨 - 이 함수는 더 이상 사용하지 않음
         pass
-
-    def _compare_time(self, running_time, target_time):
-        """Compare two time strings (HH:MM:SS format)
-        Returns True if running_time >= target_time
-        """
-        try:
-            # Parse time strings to seconds
-            def parse_time(time_str):
-                parts = time_str.split(':')
-                if len(parts) == 3:
-                    h, m, s = int(parts[0]), int(parts[1]), int(parts[2])
-                    return h * 3600 + m * 60 + s
-                return 0
-
-            running_sec = parse_time(running_time)
-            target_sec = parse_time(target_time)
-            return running_sec >= target_sec
-        except:
-            return False
 
     def _init_fonts(self):
         """Pre-load fonts to avoid Segfault on first Label creation"""
@@ -1355,15 +1284,27 @@ class JetsonIntegratedApp:
                                                      bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.frying_left_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
-        # Info frame (color diff only)
+        # Info frame (temperature + color features) - 축소
         info_frame = tk.Frame(panel, bg=COLOR_PANEL)
         info_frame.pack(pady=1)
 
-        # Color Diff
-        self.frying_left_color_diff_label = tk.Label(
-            info_frame, text="색상변화: --", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_WARNING
+        # Oil Temperature
+        self.frying_left_temp_label = tk.Label(
+            info_frame, text="기름: -- °C", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_ERROR
         )
-        self.frying_left_color_diff_label.pack()
+        self.frying_left_temp_label.pack()
+
+        # Probe Temperature
+        self.frying_left_probe_label = tk.Label(
+            info_frame, text="탐침: -- °C", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_INFO
+        )
+        self.frying_left_probe_label.pack()
+
+        # Color features - DISABLED per user request
+        # self.frying_left_color_label = tk.Label(
+        #     info_frame, text="갈색: --% | 황금: --%", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_WARNING
+        # )
+        # self.frying_left_color_label.pack()
 
         # Status
         self.frying_left_status = tk.Label(
@@ -1394,15 +1335,27 @@ class JetsonIntegratedApp:
                                                       bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.frying_right_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
-        # Info frame (color diff only)
+        # Info frame (temperature + color features) - 축소
         info_frame = tk.Frame(panel, bg=COLOR_PANEL)
         info_frame.pack(pady=1)
 
-        # Color Diff
-        self.frying_right_color_diff_label = tk.Label(
-            info_frame, text="색상변화: --", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_WARNING
+        # Oil Temperature
+        self.frying_right_temp_label = tk.Label(
+            info_frame, text="기름: -- °C", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_ERROR
         )
-        self.frying_right_color_diff_label.pack()
+        self.frying_right_temp_label.pack()
+
+        # Probe Temperature
+        self.frying_right_probe_label = tk.Label(
+            info_frame, text="탐침: -- °C", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_INFO
+        )
+        self.frying_right_probe_label.pack()
+
+        # Color features - DISABLED per user request
+        # self.frying_right_color_label = tk.Label(
+        #     info_frame, text="갈색: --% | 황금: --%", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_WARNING
+        # )
+        # self.frying_right_color_label.pack()
 
         # Status
         self.frying_right_status = tk.Label(
@@ -1473,9 +1426,71 @@ class JetsonIntegratedApp:
         control_frame = tk.Frame(self.root, bg=COLOR_BG)
         control_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=3, pady=3)
 
-        # Data collection buttons (세로 모드 - 버튼 크기 축소)
+        # Start/Stop buttons (세로 모드 - 버튼 크기 축소)
         btn_frame = tk.Frame(control_frame, bg=COLOR_BG)
         btn_frame.pack(side=tk.LEFT, padx=5)
+
+        self.btn_start_frying = tk.Button(
+            btn_frame,
+            text="튀김 시작",
+            font=(FONT_FAMILY, 11),
+            bg="#27AE60",
+            fg="white",
+            activebackground="#229954",
+            command=self.start_frying_ai,
+            width=8,
+            height=1,
+            relief=tk.FLAT
+        )
+        self.btn_start_frying.pack(side=tk.LEFT, padx=2)
+
+        self.btn_stop_frying = tk.Button(
+            btn_frame,
+            text="튀김 중지",
+            font=(FONT_FAMILY, 11),
+            bg=COLOR_ERROR,
+            fg="white",
+            activebackground="#C0392B",
+            command=self.stop_frying_ai,
+            width=8,
+            height=1,
+            state=tk.DISABLED,
+            relief=tk.FLAT
+        )
+        self.btn_stop_frying.pack(side=tk.LEFT, padx=2)
+
+        self.btn_start_observe = tk.Button(
+            btn_frame,
+            text="바켓 시작",
+            font=(FONT_FAMILY, 11),
+            bg="#3498DB",
+            fg="white",
+            activebackground="#2980B9",
+            command=self.start_observe_ai,
+            width=8,
+            height=1,
+            relief=tk.FLAT
+        )
+        self.btn_start_observe.pack(side=tk.LEFT, padx=2)
+
+        self.btn_stop_observe = tk.Button(
+            btn_frame,
+            text="바켓 중지",
+            font=(FONT_FAMILY, 11),
+            bg=COLOR_ERROR,
+            fg="white",
+            activebackground="#C0392B",
+            command=self.stop_observe_ai,
+            width=8,
+            height=1,
+            state=tk.DISABLED,
+            relief=tk.FLAT
+        )
+        self.btn_stop_observe.pack(side=tk.LEFT, padx=2)
+
+        # Data collection buttons (세로 모드 - 버튼 크기 축소)
+        separator = tk.Frame(btn_frame, width=2, bg="#BDC3C7")
+        separator.pack(side=tk.LEFT, fill=tk.Y, padx=8, pady=3)
 
         self.btn_start_collection = tk.Button(
             btn_frame,
@@ -1637,74 +1652,6 @@ class JetsonIntegratedApp:
         if self.observe_right_cap: active_cams.append("video3(바켓R)")
         print(f"[카메라] 초기화 완료! 활성: {', '.join(active_cams) if active_cams else '없음'}")
 
-    def _start_ai_workers(self):
-        """Start AI inference workers (single-threaded per model)."""
-        self.ai_threads = [
-            threading.Thread(
-                target=self._frying_worker,
-                args=(self.frying_left_queue, "frying_left_result", "왼쪽"),
-                daemon=True
-            ),
-            threading.Thread(
-                target=self._frying_worker,
-                args=(self.frying_right_queue, "frying_right_result", "오른쪽"),
-                daemon=True
-            ),
-            threading.Thread(
-                target=self._observe_worker,
-                args=(self.observe_left_queue, "observe_left_result", "왼쪽"),
-                daemon=True
-            ),
-            threading.Thread(
-                target=self._observe_worker,
-                args=(self.observe_right_queue, "observe_right_result", "오른쪽"),
-                daemon=True
-            ),
-        ]
-        for t in self.ai_threads:
-            t.start()
-
-    def _frying_worker(self, queue, result_attr, label):
-        while self.running:
-            try:
-                frame = queue.get(timeout=0.2)
-            except Empty:
-                continue
-            if not self.frying_running:
-                continue
-            try:
-                with self.frying_ai_lock:
-                    result = self.frying_segmenter.segment(frame, visualize=False)
-                setattr(self, result_attr, result)
-            except Exception as e:
-                print(f"[튀김 {label}] Segmentation 오류: {e}")
-            finally:
-                try:
-                    queue.task_done()
-                except Exception:
-                    pass
-
-    def _observe_worker(self, queue, result_attr, label):
-        while self.running:
-            try:
-                frame = queue.get(timeout=0.2)
-            except Empty:
-                continue
-            if not self.observe_running:
-                continue
-            try:
-                with self.observe_ai_lock:
-                    r = self.observe_seg_model.predict(
-                        frame, imgsz=IMG_SIZE_SEG, conf=CONF_SEG, verbose=False, device=self.device
-                    )[0]
-                setattr(self, result_attr, r)
-            except Exception as e:
-                print(f"[바켓 {label}] YOLO 오류: {e}")
-            finally:
-                try:
-                    queue.task_done()
-                except Exception:
-                    pass
     def start_frying_camera(self, pot_num):
         """튀김솥 카메라 - 항상 ON 모드에서는 사용하지 않음"""
         pass
@@ -1824,10 +1771,15 @@ class JetsonIntegratedApp:
                 if self.frying_frame_skip >= FRYING_FRAME_SKIP:
                     self.frying_frame_skip = 0
 
-                    try:
-                        self.frying_left_queue.put_nowait(frame.copy())
-                    except Exception:
-                        pass
+                    # 백그라운드 스레드로 AI 처리 (non-blocking)
+                    def process_ai():
+                        try:
+                            result = self.frying_segmenter.segment(frame, visualize=False)
+                            self.frying_left_result = result
+                        except Exception as e:
+                            print(f"[튀김 왼쪽] Segmentation 오류: {e}")
+
+                    threading.Thread(target=process_ai, daemon=True).start()
 
                 # 이전 AI 결과 사용 (매 프레임 화면 업데이트)
                 if self.frying_left_result is not None:
@@ -1861,39 +1813,19 @@ class JetsonIntegratedApp:
                     except:
                         pass
 
-                # 색상 변화 측정 (SimpleColorChecker)
-                try:
-                    color_result = self.color_checker_left.measure(frame)
-                    if "error" not in color_result:
-                        color_diff = color_result['color_diff']
-                        cv2.putText(vis, f"Color: {color_diff:.1f}",
-                                    (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
-                        cv2.putText(vis, f"Progress: {color_result['progress_pct']:.0f}%",
-                                    (16, 85), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+                # Update temperatures
+                self.frying_left_temp_label.config(text=f"기름: {self.oil_temp_left:.1f} °C")
 
-                        # Update GUI color_diff label
-                        self.frying_left_color_diff_label.config(text=f"색상변화: {color_diff:.1f}")
-
-                        # DISCHARGE 조건 체크: running_time >= target_time AND color_diff >= 25.0
-                        running_time = self.pot1_robot_status.get("running_time", "00:00:00")
-                        target_time = self.pot1_robot_status.get("target_time", "00:00:00")
-                        if self._compare_time(running_time, target_time) and color_diff >= 25.0:
-                            if self.pot1_pot_status != "DISCHARGE":
-                                self.pot1_pot_status = "DISCHARGE"
-                                print(f"[POT1] DISCHARGE 조건 만족: {running_time}/{target_time}, color_diff={color_diff:.1f}")
-                        elif self.pot1_collecting:
-                            if self.pot1_pot_status != "COOKING":
-                                self.pot1_pot_status = "COOKING"
-                    elif color_result.get("error") == "baseline_not_set":
-                        # 첫 프레임에서 자동으로 baseline 설정
-                        self.color_checker_left.set_baseline(frame)
-                        # GUI 초기화
-                        self.frying_left_color_diff_label.config(text="색상변화: 0.0")
-                    else:
-                        # Error case
-                        self.frying_left_color_diff_label.config(text="색상변화: --")
-                except:
-                    pass
+                # Probe temperature with color coding
+                probe_color = COLOR_INFO
+                if self.probe_temp_left >= TARGET_PROBE_TEMP:
+                    probe_color = COLOR_OK
+                elif self.probe_temp_left > 0:
+                    probe_color = COLOR_WARNING
+                self.frying_left_probe_label.config(
+                    text=f"탐침: {self.probe_temp_left:.1f} °C",
+                    fg=probe_color
+                )
 
             # Store latest frame for data collection (매 프레임 저장)
             self.latest_frying_left_frame = frame.copy()
@@ -1918,7 +1850,6 @@ class JetsonIntegratedApp:
                 if self.pot1_timer >= self.collection_interval:
                     self.pot1_timer = 0
                     # Trigger POT1 data collection (cameras 0, 2)
-                    print(f"[DEBUG] POT1 데이터 저장: timer={self.pot1_timer:.2f}, interval={self.collection_interval}")
                     self.save_pot1_data(
                         self.latest_frying_left_frame,
                         self.latest_observe_left_frame,
@@ -1957,10 +1888,15 @@ class JetsonIntegratedApp:
             if self.frying_running:
                 # Frame skip은 왼쪽과 공유 (같은 카운터)
                 if self.frying_frame_skip == 0:  # 왼쪽에서 리셋된 경우
-                    try:
-                        self.frying_right_queue.put_nowait(frame.copy())
-                    except Exception:
-                        pass
+                    # 백그라운드 스레드로 AI 처리
+                    def process_ai():
+                        try:
+                            result = self.frying_segmenter.segment(frame, visualize=False)
+                            self.frying_right_result = result
+                        except Exception as e:
+                            print(f"[튀김 오른쪽] Segmentation 오류: {e}")
+
+                    threading.Thread(target=process_ai, daemon=True).start()
 
                 # 이전 AI 결과 사용
                 if self.frying_right_result is not None:
@@ -1994,39 +1930,19 @@ class JetsonIntegratedApp:
                     except:
                         pass
 
-                # 색상 변화 측정 (SimpleColorChecker)
-                try:
-                    color_result = self.color_checker_right.measure(frame)
-                    if "error" not in color_result:
-                        color_diff = color_result['color_diff']
-                        cv2.putText(vis, f"Color: {color_diff:.1f}",
-                                    (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
-                        cv2.putText(vis, f"Progress: {color_result['progress_pct']:.0f}%",
-                                    (16, 85), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+                # Update temperatures
+                self.frying_right_temp_label.config(text=f"기름: {self.oil_temp_right:.1f} °C")
 
-                        # Update GUI color_diff label
-                        self.frying_right_color_diff_label.config(text=f"색상변화: {color_diff:.1f}")
-
-                        # DISCHARGE 조건 체크: running_time >= target_time AND color_diff >= 25.0
-                        running_time = self.pot2_robot_status.get("running_time", "00:00:00")
-                        target_time = self.pot2_robot_status.get("target_time", "00:00:00")
-                        if self._compare_time(running_time, target_time) and color_diff >= 25.0:
-                            if self.pot2_pot_status != "DISCHARGE":
-                                self.pot2_pot_status = "DISCHARGE"
-                                print(f"[POT2] DISCHARGE 조건 만족: {running_time}/{target_time}, color_diff={color_diff:.1f}")
-                        elif self.pot2_collecting:
-                            if self.pot2_pot_status != "COOKING":
-                                self.pot2_pot_status = "COOKING"
-                    elif color_result.get("error") == "baseline_not_set":
-                        # 첫 프레임에서 자동으로 baseline 설정
-                        self.color_checker_right.set_baseline(frame)
-                        # GUI 초기화
-                        self.frying_right_color_diff_label.config(text="색상변화: 0.0")
-                    else:
-                        # Error case
-                        self.frying_right_color_diff_label.config(text="색상변화: --")
-                except:
-                    pass
+                # Probe temperature with color coding
+                probe_color = COLOR_INFO
+                if self.probe_temp_right >= TARGET_PROBE_TEMP:
+                    probe_color = COLOR_OK
+                elif self.probe_temp_right > 0:
+                    probe_color = COLOR_WARNING
+                self.frying_right_probe_label.config(
+                    text=f"탐침: {self.probe_temp_right:.1f} °C",
+                    fg=probe_color
+                )
 
             # Store latest frame for data collection (매 프레임 저장)
             self.latest_frying_right_frame = frame.copy()
@@ -2081,10 +1997,17 @@ class JetsonIntegratedApp:
                 if self.observe_frame_skip >= OBSERVE_FRAME_SKIP:
                     self.observe_frame_skip = 0
 
-                    try:
-                        self.observe_left_queue.put_nowait(frame.copy())
-                    except Exception:
-                        pass
+                    # 백그라운드 스레드로 YOLO 처리
+                    def process_ai():
+                        try:
+                            r = self.observe_seg_model.predict(
+                                frame, imgsz=IMG_SIZE_SEG, conf=CONF_SEG, verbose=False, device=self.device
+                            )[0]
+                            self.observe_left_result = r
+                        except Exception as e:
+                            print(f"[바켓 왼쪽] YOLO 오류: {e}")
+
+                    threading.Thread(target=process_ai, daemon=True).start()
 
                 # 이전 YOLO 결과 사용
                 if self.observe_left_result is None:
@@ -2192,7 +2115,6 @@ class JetsonIntegratedApp:
                 if self.pot2_timer >= self.collection_interval:
                     self.pot2_timer = 0
                     # Trigger POT2 data collection (cameras 1, 3)
-                    print(f"[DEBUG] POT2 데이터 저장: timer={self.pot2_timer:.2f}, interval={self.collection_interval}")
                     self.save_pot2_data(
                         self.latest_frying_right_frame,
                         self.latest_observe_left_frame,
@@ -2232,10 +2154,17 @@ class JetsonIntegratedApp:
             if self.observe_running:
                 # Frame skip은 왼쪽과 공유 (같은 카운터)
                 if self.observe_frame_skip == 0:  # 왼쪽에서 리셋된 경우
-                    try:
-                        self.observe_right_queue.put_nowait(frame.copy())
-                    except Exception:
-                        pass
+                    # 백그라운드 스레드로 YOLO 처리
+                    def process_ai():
+                        try:
+                            r = self.observe_seg_model.predict(
+                                frame, imgsz=IMG_SIZE_SEG, conf=CONF_SEG, verbose=False, device=self.device
+                            )[0]
+                            self.observe_right_result = r
+                        except Exception as e:
+                            print(f"[바켓 오른쪽] YOLO 오류: {e}")
+
+                    threading.Thread(target=process_ai, daemon=True).start()
 
                 # 이전 YOLO 결과 사용
                 if self.observe_right_result is None:
@@ -3325,6 +3254,46 @@ class JetsonIntegratedApp:
         print(f"[완료마킹] 자동 마킹 ({position}): {elapsed:.1f}초")
         print(f"[완료마킹] 탐침온도: {probe_temp}°C (목표: {TARGET_PROBE_TEMP}°C)")
 
+    def start_frying_ai(self):
+        """Start Frying AI processing"""
+        self.frying_running = True
+        self.btn_start_frying.config(state=tk.DISABLED)
+        self.btn_stop_frying.config(state=tk.NORMAL)
+        self.frying_left_status.config(text="튀김 AI 작동 중")
+        self.frying_right_status.config(text="튀김 AI 작동 중")
+        print("[튀김 AI] 시작됨 (GPU 가속)")
+
+    def stop_frying_ai(self):
+        """Stop Frying AI processing"""
+        self.frying_running = False
+        self.btn_start_frying.config(state=tk.NORMAL)
+        self.btn_stop_frying.config(state=tk.DISABLED)
+        self.frying_left_status.config(text="대기 중")
+        self.frying_right_status.config(text="대기 중")
+        print("[튀김 AI] 중지됨")
+
+    def start_observe_ai(self):
+        """Start Observe_add AI processing"""
+        self.observe_running = True
+        self.btn_start_observe.config(state=tk.DISABLED)
+        self.btn_stop_observe.config(state=tk.NORMAL)
+        self.observe_left_status.config(text="바켓 감지 작동 중")
+        self.observe_right_status.config(text="바켓 감지 작동 중")
+        print("[바켓 감지] 시작됨")
+
+    def stop_observe_ai(self):
+        """Stop Observe_add AI processing"""
+        self.observe_running = False
+        self.btn_start_observe.config(state=tk.NORMAL)
+        self.btn_stop_observe.config(state=tk.DISABLED)
+        self.observe_left_status.config(text="대기 중")
+        self.observe_right_status.config(text="대기 중")
+        self.observe_left_votes.clear()
+        self.observe_right_votes.clear()
+        self.observe_left_state = None
+        self.observe_right_state = None
+        print("[바켓 감지] 중지됨")
+
     def start_data_collection(self):
         """Start manual data collection"""
         from datetime import datetime
@@ -3572,15 +3541,6 @@ class JetsonIntegratedApp:
         self.pot1_session_id = None
         self.pot1_start_time = None
 
-        # 튀김 AI & 바스켓 AI 중지 (POT2도 수집 중이 아닐 때만)
-        if not self.pot2_collecting:
-            self.frying_running = False
-            self.observe_running = False
-            self.pot1_pot_status = "IDLE"
-            print(f"[튀김 AI] 모든 POT 중지 → AI 중지")
-            print(f"[바스켓 AI] 모든 POT 중지 → AI 중지")
-            print(f"[POT1] 상태 변경: IDLE")
-
     def start_pot2_collection(self):
         """Start POT2 data collection (cameras 1, 3)"""
         from datetime import datetime
@@ -3653,15 +3613,6 @@ class JetsonIntegratedApp:
         self.pot2_session_id = None
         self.pot2_start_time = None
 
-        # 튀김 AI & 바스켓 AI 중지 (POT1도 수집 중이 아닐 때만)
-        if not self.pot1_collecting:
-            self.frying_running = False
-            self.observe_running = False
-            self.pot2_pot_status = "IDLE"
-            print(f"[튀김 AI] 모든 POT 중지 → AI 중지")
-            print(f"[바스켓 AI] 모든 POT 중지 → AI 중지")
-            print(f"[POT2] 상태 변경: IDLE")
-
     def _delayed_stop_pot1_collection(self):
         """배출 후 지연 종료 (타이머 콜백)"""
         self.pot1_discharge_timer_id = None
@@ -3700,27 +3651,14 @@ class JetsonIntegratedApp:
                 saver.save(save_path, frame)
                 self.pot1_frame_counter += 1
 
-        # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프 + 색상 변화)
+        # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프)
         meta_path = os.path.join(self.pot1_session_dir, "meta", f"meta_{timestamp}.json")
         os.makedirs(os.path.dirname(meta_path), exist_ok=True)
-
-        # Color diff 측정 (POT1 = 좌측 튀김)
-        color_data = {}
-        if frying_left is not None:
-            try:
-                color_result = self.color_checker_left.measure(frying_left)
-                if "error" not in color_result:
-                    color_data["color_diff"] = color_result["color_diff"]
-                    color_data["progress_pct"] = color_result["progress_pct"]
-            except Exception as e:
-                print(f"[POT1 색상] 측정 실패: {e}")
-
         meta_data = {
             "timestamp": full_timestamp,
             "frame_id": timestamp,
             "pot": "pot1",
-            **self.pot1_robot_status,
-            **color_data
+            **self.pot1_robot_status
         }
         try:
             with open(meta_path, 'w', encoding='utf-8') as f:
@@ -3749,27 +3687,14 @@ class JetsonIntegratedApp:
                 saver.save(save_path, frame)
                 self.pot2_frame_counter += 1
 
-        # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프 + 색상 변화)
+        # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프)
         meta_path = os.path.join(self.pot2_session_dir, "meta", f"meta_{timestamp}.json")
         os.makedirs(os.path.dirname(meta_path), exist_ok=True)
-
-        # Color diff 측정 (POT2 = 우측 튀김)
-        color_data = {}
-        if frying_right is not None:
-            try:
-                color_result = self.color_checker_right.measure(frying_right)
-                if "error" not in color_result:
-                    color_data["color_diff"] = color_result["color_diff"]
-                    color_data["progress_pct"] = color_result["progress_pct"]
-            except Exception as e:
-                print(f"[POT2 색상] 측정 실패: {e}")
-
         meta_data = {
             "timestamp": full_timestamp,
             "frame_id": timestamp,
             "pot": "pot2",
-            **self.pot2_robot_status,
-            **color_data
+            **self.pot2_robot_status
         }
         try:
             with open(meta_path, 'w', encoding='utf-8') as f:
