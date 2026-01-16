@@ -198,6 +198,8 @@ TARGET_PROBE_TEMP = config.get('target_probe_temp', 75.0)
 JPEG_QUALITY = config.get('jpeg_quality', 85)
 FOOD_TYPES = config.get('food_types', ["chicken", "shrimp", "potato", "dumpling", "pork_cutlet", "fish"])
 RECORDING_DELAY_AFTER_DISCHARGE = config.get('recording_delay_after_discharge', 50)  # 배출 후 추가 녹화 시간 (초)
+DATA_COLLECTION_INTERVAL_NORMAL = config.get('data_collection_interval_normal', 1)  # 일반 모드 수집 간격 (초)
+DATA_COLLECTION_INTERVAL_FAST = config.get('data_collection_interval_fast', 0.5)  # RBMotion 감지 시 수집 간격 (초)
 
 # GUI Configuration - WHITE MODE (768x1024 세로 모드)
 WINDOW_WIDTH = config.get('window_width', 768)
@@ -410,7 +412,7 @@ class JetsonIntegratedApp:
         self.collection_session_id = None
         self.collection_start_time = None
         self.collection_frame_counter = 0
-        self.collection_interval = config.get('data_collection_interval', 5)  # 5초마다 저장 (기본값)
+        self.collection_interval = DATA_COLLECTION_INTERVAL_NORMAL  # 기본값: 일반 모드
         self.collection_timer = 0
         self.collection_metadata = []  # Store MQTT metadata during collection
         self.collection_completion_marked = False  # 완료 시점 마킹 여부
@@ -997,6 +999,18 @@ class JetsonIntegratedApp:
                 print(f"[로봇상태] Status 배열 없음")
                 return
             rb_motion = data.get("RBMotion", None)
+
+            # RBMotion 기반 데이터 수집 속도 조정
+            if rb_motion == 1:
+                # 로봇 움직임 감지 → 빠른 수집
+                if self.collection_interval != DATA_COLLECTION_INTERVAL_FAST:
+                    self.collection_interval = DATA_COLLECTION_INTERVAL_FAST
+                    print(f"[데이터수집] RBMotion 감지 → 빠른 수집 ({DATA_COLLECTION_INTERVAL_FAST}초)")
+            else:
+                # 로봇 정지 → 일반 수집
+                if self.collection_interval != DATA_COLLECTION_INTERVAL_NORMAL:
+                    self.collection_interval = DATA_COLLECTION_INTERVAL_NORMAL
+                    print(f"[데이터수집] RBMotion 없음 → 일반 수집 ({DATA_COLLECTION_INTERVAL_NORMAL}초)")
 
             # 각 솥 정보 처리 - Jetson2는 튀김솥(DeviceNum=0)만 처리
             for pot_data in status_list:
