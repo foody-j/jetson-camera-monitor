@@ -1000,6 +1000,9 @@ class JetsonIntegratedApp:
                 return
             rb_motion = data.get("RBMotion", None)
 
+            # DEBUG: RBMotion 값 확인
+            print(f"[DEBUG] RBMotion={rb_motion}, pot1_collecting={self.pot1_collecting}, pot2_collecting={self.pot2_collecting}, collection_interval={self.collection_interval}")
+
             # RBMotion 기반 데이터 수집 속도 조정
             # RBMotion: 1=POT1(왼쪽), 2=POT2(오른쪽), 0/null=정지
             if rb_motion in [1, 2]:
@@ -1941,6 +1944,7 @@ class JetsonIntegratedApp:
                 if self.pot1_timer >= self.collection_interval:
                     self.pot1_timer = 0
                     # Trigger POT1 data collection (cameras 0, 2)
+                    print(f"[DEBUG] POT1 데이터 저장: timer={self.pot1_timer:.2f}, interval={self.collection_interval}")
                     self.save_pot1_data(
                         self.latest_frying_left_frame,
                         self.latest_observe_left_frame,
@@ -2220,6 +2224,7 @@ class JetsonIntegratedApp:
                 if self.pot2_timer >= self.collection_interval:
                     self.pot2_timer = 0
                     # Trigger POT2 data collection (cameras 1, 3)
+                    print(f"[DEBUG] POT2 데이터 저장: timer={self.pot2_timer:.2f}, interval={self.collection_interval}")
                     self.save_pot2_data(
                         self.latest_frying_right_frame,
                         self.latest_observe_left_frame,
