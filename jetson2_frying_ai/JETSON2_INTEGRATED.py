@@ -636,6 +636,9 @@ class JetsonIntegratedApp:
                 self.mqtt_client.subscribe("calibration/vibration/control", self.on_vibration_control)
                 jetson1_relay_topic = config.get('mqtt_topic_jetson1_relay', 'jetson1/relay/status')
                 self.mqtt_client.subscribe(jetson1_relay_topic, self.on_jetson1_relay_status)
+                # Subscribe to robot/control topic (from Jetson #1)
+                robot_control_topic = config.get('mqtt_topic_robot_control', 'robot/control')
+                self.mqtt_client.subscribe(robot_control_topic, self.on_robot_control)
                 self.mqtt_client.subscribe(MQTT_TOPIC_ROBOT_STATUS, self.on_robot_status)
 
                 print(f"[MQTT] 구독 토픽 (로봇→Jetson):")
@@ -649,6 +652,7 @@ class JetsonIntegratedApp:
                 print(f"  - {MQTT_TOPIC_FRYING_POT2_CONTROL}")
                 print(f"  - calibration/vibration/control")
                 print(f"  - {jetson1_relay_topic} (Jetson #1 릴레이 동기화)")
+                print(f"  - {robot_control_topic} (Jetson #1 로봇 제어)")
                 print(f"  - {MQTT_TOPIC_ROBOT_STATUS} (로봇 PC 상태)")
                 print(f"[MQTT] 발행 토픽 (Jetson→로봇):")
                 print(f"  - {MQTT_TOPIC_STATUS}")
@@ -2949,6 +2953,46 @@ class JetsonIntegratedApp:
                 else:
                     print(f"[시뮬레이션] POT2 이미 배출 대기 중")
 
+    def on_robot_control(self, client, userdata, message):
+        """MQTT callback for robot/control topic (from Jetson #1)"""
+        try:
+            raw_message = message.payload.decode('utf-8')
+            print("=" * 60)
+            print(f"[로봇 제어] Jetson #1 제어 메시지 수신:")
+            print(f"  Raw: {raw_message}")
+
+            # Parse JSON
+            try:
+                data = json.loads(raw_message)
+                command = data.get('command', '').upper()
+                device_id = data.get('device_id', '')
+                timestamp = data.get('timestamp', '')
+
+                print(f"  명령: {command}")
+                print(f"  장치: {device_id}")
+                print(f"  시각: {timestamp}")
+
+                # Control Jetson #2 relay based on command
+                if command == 'ON':
+                    print("[로봇 제어] ON 명령 수신 → Jetson #2 릴레이 ON")
+                    self.relay_turn_on()
+                elif command == 'OFF':
+                    print("[로봇 제어] OFF 명령 수신 → Jetson #2 릴레이 OFF")
+                    self.relay_turn_off()
+                else:
+                    print(f"[로봇 제어] 알 수 없는 명령: {command}")
+
+                print("=" * 60)
+
+            except json.JSONDecodeError:
+                print(f"[로봇 제어] JSON 파싱 실패: {raw_message}")
+                print("=" * 60)
+
+        except Exception as e:
+            print(f"[로봇 제어] 오류: {e}")
+            import traceback
+            traceback.print_exc()
+
     def on_jetson1_relay_status(self, client, userdata, message):
         """MQTT callback for Jetson #1 relay status synchronization"""
         try:
@@ -3128,6 +3172,7 @@ class JetsonIntegratedApp:
         topics = []
         if MQTT_ENABLED and self.mqtt_client:
             jetson1_relay_topic = config.get('mqtt_topic_jetson1_relay', 'jetson1/relay/status')
+            robot_control_topic = config.get('mqtt_topic_robot_control', 'robot/control')
             topics = [
                 MQTT_TOPIC_POT1_OIL_TEMP,
                 MQTT_TOPIC_POT1_PROBE_TEMP,
@@ -3139,6 +3184,7 @@ class JetsonIntegratedApp:
                 MQTT_TOPIC_FRYING_POT2_CONTROL,
                 "calibration/vibration/control",
                 jetson1_relay_topic,
+                robot_control_topic,
                 MQTT_TOPIC_ROBOT_STATUS,
             ]
         return topics

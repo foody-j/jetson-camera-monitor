@@ -2225,9 +2225,24 @@ class IntegratedMonitorApp:
         print(f"[MQTT] 릴레이 상태: {status} (jetson1/status에 포함)")
 
     def publish_mqtt(self, message):
-        """Publish message to MQTT broker with enhanced data"""
-        # jetson1/status에 통합됨
-        print(f"[MQTT] 메시지 전송 완료: {message}")
+        """Publish message to MQTT broker - send ON/OFF to robot PC"""
+        if self.mqtt_client is None or not self.mqtt_client.is_connected():
+            print(f"[MQTT] 연결 안됨 - {message} 전송 실패")
+            return
+
+        try:
+            # robot/control 토픽으로 ON/OFF 메시지 발행
+            robot_topic = config.get('mqtt_topic', 'robot/control')
+            payload = json.dumps({
+                "command": message,
+                "device_id": DEVICE_ID,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }, ensure_ascii=False)
+
+            self.mqtt_client.client.publish(robot_topic, payload, qos=MQTT_QOS)
+            print(f"[MQTT] {robot_topic} 토픽에 {message} 전송 완료")
+        except Exception as e:
+            print(f"[MQTT] 메시지 발행 오류: {e}")
 
     def publish_status(self):
         """Publish unified status to single topic: jetson1/status"""
