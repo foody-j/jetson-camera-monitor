@@ -24,9 +24,11 @@ import sys
 import numpy as np
 import socket
 import re
+import subprocess
 
 # Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO_ROOT)
 from src.communication.mqtt_client import MQTTClient
 from src.core.system_info import SystemInfo
 
@@ -243,6 +245,42 @@ print(f"[설정] 카메라 0 (사람 감시): {CAMERA_TYPE.upper()} #{CAMERA_IND
 print(f"[설정] 카메라 1 (볶음 왼쪽): {STIRFRY_LEFT_CAMERA_TYPE.upper()} #{STIRFRY_LEFT_CAMERA_INDEX} @ 1920x1536")
 print(f"[설정] 카메라 2 (볶음 오른쪽): {STIRFRY_RIGHT_CAMERA_TYPE.upper()} #{STIRFRY_RIGHT_CAMERA_INDEX} @ 1920x1536")
 print(f"[설정] MQTT: {MQTT_ENABLED} | 브로커: {MQTT_BROKER}:{MQTT_PORT}")
+
+def ensure_gmsl_initialized():
+    """Initialize GMSL drivers/sensor modes if any configured camera is GMSL."""
+    gmsl_enabled = (
+        (CAMERA_PERSON_ENABLED and CAMERA_TYPE.lower() == "gmsl") or
+        (STIRFRY_LEFT_ENABLED and STIRFRY_LEFT_CAMERA_TYPE.lower() == "gmsl") or
+        (STIRFRY_RIGHT_ENABLED and STIRFRY_RIGHT_CAMERA_TYPE.lower() == "gmsl")
+    )
+    if not gmsl_enabled:
+        return True
+
+    init_script = os.path.join(REPO_ROOT, "init_gmsl_cameras.sh")
+    if not os.path.exists(init_script):
+        print(f"[GMSL] 초기화 스크립트 없음: {init_script}")
+        return False
+
+    print("[GMSL] 초기화 스크립트 실행 중...")
+    try:
+        result = subprocess.run(
+            ["bash", init_script],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        if result.stdout:
+            print(result.stdout.strip())
+        if result.stderr:
+            print(result.stderr.strip())
+        if result.returncode != 0:
+            print(f"[GMSL] 초기화 실패 (exit={result.returncode})")
+            return False
+        print("[GMSL] 초기화 완료")
+        return True
+    except Exception as e:
+        print(f"[GMSL] 초기화 오류: {e}")
+        return False
 
 
 # =========================
@@ -1460,6 +1498,9 @@ class IntegratedMonitorApp:
     def init_cameras(self):
         """Initialize cameras based on enabled settings"""
         print("[카메라] 카메라 초기화 시작...")
+
+        if not ensure_gmsl_initialized():
+            print("[카메라] GMSL 초기화 실패 - 카메라 초기화를 계속 시도합니다.")
 
         # Initialize cameras to None first
         self.auto_cap = None
