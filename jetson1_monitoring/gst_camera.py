@@ -32,7 +32,6 @@ class GstCamera:
         self.output_fps = output_fps if output_fps else max(10, fps // 3)
 
         self.pipeline = None
-        self.mainloop = None
 
         # 더블버퍼: 고정 크기 배열 2개를 번갈아 쓰면서 할당 제거
         self.buffer_pool = [
@@ -125,10 +124,18 @@ class GstCamera:
             bus.add_signal_watch()
             bus.connect('message', self._on_bus_message)
 
-            # GLib MainLoop 사용 (CPU 효율적, busy-wait 제거)
-            self.mainloop = GLib.MainLoop()
-            print(f"[GstCamera] Starting GLib MainLoop for camera {self.device_index}")
-            self.mainloop.run()  # 블로킹 방식이지만 이벤트 기반 (CPU 효율적)
+            # Context iteration 방식 (MainLoop 충돌 방지, CPU 효율적)
+            context = GLib.MainContext.default()
+            print(f"[GstCamera] Starting event loop for camera {self.device_index}")
+
+            # Poll GLib events with 10ms sleep (기존 1ms에서 증가)
+            while self.is_running:
+                # Process pending events
+                while context.pending():
+                    context.iteration(False)
+
+                # Sleep to reduce CPU usage (1ms → 10ms)
+                time.sleep(0.01)
 
         except Exception as e:
             print(f"[ERROR] Pipeline thread error for camera {self.device_index}: {e}")
@@ -142,15 +149,11 @@ class GstCamera:
         if t == Gst.MessageType.ERROR:
             err, debug = message.parse_error()
             print(f"[ERROR] GStreamer error on camera {self.device_index}: {err}, {debug}")
-            # 데드락 방지: stop() 대신 플래그 설정 후 mainloop 종료
+            # 이벤트 루프 종료
             self.is_running = False
-            if self.mainloop and self.mainloop.is_running():
-                self.mainloop.quit()
         elif t == Gst.MessageType.EOS:
             print(f"[INFO] End-of-stream on camera {self.device_index}")
             self.is_running = False
-            if self.mainloop and self.mainloop.is_running():
-                self.mainloop.quit()
 
     def _on_new_sample(self, sink):
         """Callback for new frame from appsink"""
@@ -221,11 +224,6 @@ class GstCamera:
 
         print(f"[GstCamera] Stopping camera {self.device_index}...")
         self.is_running = False
-
-        # Quit GLib MainLoop (이벤트 루프 종료)
-        if self.mainloop and self.mainloop.is_running():
-            print(f"[GstCamera] Quitting MainLoop for camera {self.device_index}")
-            self.mainloop.quit()
 
         # Stop pipeline
         if self.pipeline:
