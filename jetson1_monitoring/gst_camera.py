@@ -26,10 +26,10 @@ class GstCamera:
         self.fps = fps
         self.device_path = f"/dev/video{device_index}"
 
-        # 출력 해상도/FPS (기본값: 원본 그대로)
-        self.output_width = output_width if output_width else width
-        self.output_height = output_height if output_height else height
-        self.output_fps = output_fps if output_fps else fps
+        # 출력 해상도/FPS (기본값: 입력의 절반 해상도, 1/3 FPS)
+        self.output_width = output_width if output_width else width // 2
+        self.output_height = output_height if output_height else height // 2
+        self.output_fps = output_fps if output_fps else max(10, fps // 3)
 
         self.pipeline = None
         self.mainloop = None
