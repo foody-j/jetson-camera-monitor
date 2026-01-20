@@ -108,29 +108,33 @@ class GstCamera:
                 self.is_running = False
                 return
 
+            # GMSL 초기화 타임아웃 체크 (5초)
+            print(f"[GstCamera] Waiting for camera {self.device_index} to initialize...")
+            ret = self.pipeline.get_state(timeout=5 * Gst.SECOND)
+            if ret[0] == Gst.StateChangeReturn.FAILURE:
+                print(f"[ERROR] Camera {self.device_index} initialization timeout (5s)")
+                self.is_running = False
+                return
+            elif ret[0] == Gst.StateChangeReturn.ASYNC:
+                print(f"[WARNING] Camera {self.device_index} still initializing...")
+
             print(f"[GstCamera] Pipeline for camera {self.device_index} is PLAYING")
 
-            # Add bus watch for errors (NO mainloop - we'll iterate manually)
+            # Add bus watch for errors
             bus = self.pipeline.get_bus()
             bus.add_signal_watch()
             bus.connect('message', self._on_bus_message)
 
-            # Instead of blocking mainloop, use GLib context iteration
-            context = GLib.MainContext.default()
-
-            # Poll GLib events periodically
-            while self.is_running:
-                # Process pending events
-                while context.pending():
-                    context.iteration(False)
-
-                # Small sleep to avoid busy-waiting
-                time.sleep(0.001)
+            # GLib MainLoop 사용 (CPU 효율적, busy-wait 제거)
+            self.mainloop = GLib.MainLoop()
+            print(f"[GstCamera] Starting GLib MainLoop for camera {self.device_index}")
+            self.mainloop.run()  # 블로킹 방식이지만 이벤트 기반 (CPU 효율적)
 
         except Exception as e:
             print(f"[ERROR] Pipeline thread error for camera {self.device_index}: {e}")
         finally:
             self.is_running = False
+            print(f"[GstCamera] Pipeline thread for camera {self.device_index} finished")
 
     def _on_bus_message(self, bus, message):
         """Handle GStreamer bus messages"""
@@ -138,10 +142,15 @@ class GstCamera:
         if t == Gst.MessageType.ERROR:
             err, debug = message.parse_error()
             print(f"[ERROR] GStreamer error on camera {self.device_index}: {err}, {debug}")
-            self.stop()
+            # 데드락 방지: stop() 대신 플래그 설정 후 mainloop 종료
+            self.is_running = False
+            if self.mainloop and self.mainloop.is_running():
+                self.mainloop.quit()
         elif t == Gst.MessageType.EOS:
             print(f"[INFO] End-of-stream on camera {self.device_index}")
-            self.stop()
+            self.is_running = False
+            if self.mainloop and self.mainloop.is_running():
+                self.mainloop.quit()
 
     def _on_new_sample(self, sink):
         """Callback for new frame from appsink"""
@@ -212,6 +221,11 @@ class GstCamera:
 
         print(f"[GstCamera] Stopping camera {self.device_index}...")
         self.is_running = False
+
+        # Quit GLib MainLoop (이벤트 루프 종료)
+        if self.mainloop and self.mainloop.is_running():
+            print(f"[GstCamera] Quitting MainLoop for camera {self.device_index}")
+            self.mainloop.quit()
 
         # Stop pipeline
         if self.pipeline:
