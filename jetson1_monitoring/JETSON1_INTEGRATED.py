@@ -1534,9 +1534,7 @@ class IntegratedMonitorApp:
                     device_index=CAMERA_INDEX,
                     width=CAMERA_RESOLUTION['width'],
                     height=CAMERA_RESOLUTION['height'],
-                    fps=CAMERA_FPS,
-                    output_width=CAMERA_RESOLUTION['width'],
-                    output_height=CAMERA_RESOLUTION['height']
+                    fps=CAMERA_FPS
                 )
                 if self.auto_cap.start():
                     print(f"[카메라] 사람 감지 카메라 초기화 완료 ✓")
@@ -1557,9 +1555,7 @@ class IntegratedMonitorApp:
                     device_index=STIRFRY_LEFT_CAMERA_INDEX,
                     width=1920,
                     height=1536,
-                    fps=CAMERA_FPS,
-                    output_width=1920,
-                    output_height=1536
+                    fps=CAMERA_FPS
                 )
                 if self.stirfry_left_cap.start():
                     print(f"[카메라] 볶음 왼쪽 카메라 초기화 완료 ✓")
@@ -1580,9 +1576,7 @@ class IntegratedMonitorApp:
                     device_index=STIRFRY_RIGHT_CAMERA_INDEX,
                     width=1920,
                     height=1536,
-                    fps=CAMERA_FPS,
-                    output_width=1920,
-                    output_height=1536
+                    fps=CAMERA_FPS
                 )
                 if self.stirfry_right_cap.start():
                     print(f"[카메라] 볶음 오른쪽 카메라 초기화 완료 ✓")

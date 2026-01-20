@@ -26,10 +26,10 @@ class GstCamera:
         self.fps = fps
         self.device_path = f"/dev/video{device_index}"
 
-        # 출력 해상도/FPS (기본값: 입력의 절반 해상도, 1/3 FPS)
-        self.output_width = output_width if output_width else width // 2
-        self.output_height = output_height if output_height else height // 2
-        self.output_fps = output_fps if output_fps else max(10, fps // 3)
+        # 출력 해상도/FPS (저지연을 위해 항상 원본 해상도 사용)
+        self.output_width = width
+        self.output_height = height
+        self.output_fps = fps
 
         self.pipeline = None
 
@@ -57,15 +57,13 @@ class GstCamera:
             print(f"[GstCamera] Camera {self.device_index} already running")
             return True
 
-        # Build GStreamer pipeline (개선: videorate + videoscale 추가)
+        # Build GStreamer pipeline (저지연: videorate/videoscale 제거)
         pipeline_str = (
-            f"v4l2src device={self.device_path} ! "
+            f"v4l2src device={self.device_path} io-mode=2 ! "
             f"video/x-raw, format=UYVY, width={self.width}, height={self.height}, framerate={self.fps}/1 ! "
-            f"videorate ! video/x-raw, framerate={self.output_fps}/1 ! "
-            f"videoscale ! video/x-raw, width={self.output_width}, height={self.output_height} ! "
             f"videoconvert ! "
             f"video/x-raw, format=BGR ! "
-            f"appsink name=sink emit-signals=true max-buffers=1 drop=true"
+            f"appsink name=sink emit-signals=true max-buffers=1 drop=true sync=false"
         )
 
         print(f"[GstCamera] Pipeline: {pipeline_str}")
