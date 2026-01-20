@@ -441,18 +441,20 @@ class IntegratedMonitorApp:
         print("[초기화] GPIO 릴레이 제어 초기화 중...")
         self.init_gpio()
 
-        # Initialize cameras and YOLO
-        print("[초기화] 카메라 및 YOLO 초기화 중...")
+        # Initialize MQTT first (non-blocking)
+        print("[초기화] MQTT 초기화 중...")
         self.init_mqtt()
-        self.init_cameras()
-        self.init_yolo()
 
-        # 테스트 모드: 시작 시 ON 펄스 전송
-        if STARTUP_ON_PULSE_ENABLED and AUTO_RELAY_ENABLED:
-            print("[ON 펄스] 테스트 모드 - 시작 시 ON 펄스 전송")
-            self.relay_turn_on(publish_to_jetson2=True)
-            self.publish_mqtt("ON")
-            print("[ON 펄스] 전송 완료")
+        # Initialize cameras to None (will be initialized after GUI starts)
+        self.auto_cap = None
+        self.stirfry_left_cap = None
+        self.stirfry_right_cap = None
+        self.yolo_model = None
+        self.device = 'cpu'
+
+        # Defer camera and YOLO initialization to avoid blocking GUI startup
+        print("[초기화] 카메라 및 YOLO 초기화는 GUI 시작 후 진행됩니다...")
+        self.root.after(100, self._deferred_init)
 
         # Start update loops
         self.update_clock()
@@ -1494,6 +1496,23 @@ class IntegratedMonitorApp:
             print(f"[로봇상태] JSON 파싱 오류: {e}")
         except Exception as e:
             print(f"[로봇상태] 처리 오류: {e}")
+
+    def _deferred_init(self):
+        """Deferred initialization after GUI starts (non-blocking)"""
+        print("[지연초기화] 카메라 및 YOLO 초기화 시작...")
+
+        # Initialize cameras and YOLO
+        self.init_cameras()
+        self.init_yolo()
+
+        # 테스트 모드: 시작 시 ON 펄스 전송
+        if STARTUP_ON_PULSE_ENABLED and AUTO_RELAY_ENABLED:
+            print("[ON 펄스] 테스트 모드 - 시작 시 ON 펄스 전송")
+            self.relay_turn_on(publish_to_jetson2=True)
+            self.publish_mqtt("ON")
+            print("[ON 펄스] 전송 완료")
+
+        print("[지연초기화] 완료!")
 
     def init_cameras(self):
         """Initialize cameras based on enabled settings"""

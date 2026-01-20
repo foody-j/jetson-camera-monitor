@@ -108,11 +108,11 @@ class GstCamera:
                 self.is_running = False
                 return
 
-            # GMSL 초기화 타임아웃 체크 (5초)
+            # GMSL 초기화 타임아웃 체크 (2초)
             print(f"[GstCamera] Waiting for camera {self.device_index} to initialize...")
-            ret = self.pipeline.get_state(timeout=5 * Gst.SECOND)
+            ret = self.pipeline.get_state(timeout=2 * Gst.SECOND)
             if ret[0] == Gst.StateChangeReturn.FAILURE:
-                print(f"[ERROR] Camera {self.device_index} initialization timeout (5s)")
+                print(f"[ERROR] Camera {self.device_index} initialization timeout (2s)")
                 self.is_running = False
                 return
             elif ret[0] == Gst.StateChangeReturn.ASYNC:
