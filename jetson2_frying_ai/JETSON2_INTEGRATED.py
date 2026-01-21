@@ -1954,8 +1954,10 @@ class JetsonIntegratedApp:
                     else:
                         # Error case
                         self.frying_left_color_diff_label.config(text="색상변화: --")
-                except:
-                    pass
+                        print(f"[POT1 색상] 에러: {color_result.get('error', 'unknown')}")
+                except Exception as e:
+                    print(f"[POT1 색상] 예외 발생: {type(e).__name__}: {e}")
+                    self.frying_left_color_diff_label.config(text="색상변화: ERR")
 
             # Store latest frame for data collection (매 프레임 저장)
             self.latest_frying_left_frame = frame.copy()
@@ -2087,8 +2089,10 @@ class JetsonIntegratedApp:
                     else:
                         # Error case
                         self.frying_right_color_diff_label.config(text="색상변화: --")
-                except:
-                    pass
+                        print(f"[POT2 색상] 에러: {color_result.get('error', 'unknown')}")
+                except Exception as e:
+                    print(f"[POT2 색상] 예외 발생: {type(e).__name__}: {e}")
+                    self.frying_right_color_diff_label.config(text="색상변화: ERR")
 
             # Store latest frame for data collection (매 프레임 저장)
             self.latest_frying_right_frame = frame.copy()
