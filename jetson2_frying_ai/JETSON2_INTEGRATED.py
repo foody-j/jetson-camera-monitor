@@ -1926,6 +1926,7 @@ class JetsonIntegratedApp:
                 # 색상 변화 측정 (SimpleColorChecker)
                 try:
                     color_result = self.color_checker_left.measure(frame)
+                    print(f"[POT1 색상 DEBUG] color_result = {color_result}")  # DEBUG
                     if "error" not in color_result:
                         color_diff = color_result['color_diff']
                         cv2.putText(vis, f"Color: {color_diff:.1f}",
@@ -2061,6 +2062,7 @@ class JetsonIntegratedApp:
                 # 색상 변화 측정 (SimpleColorChecker)
                 try:
                     color_result = self.color_checker_right.measure(frame)
+                    print(f"[POT2 색상 DEBUG] color_result = {color_result}")  # DEBUG
                     if "error" not in color_result:
                         color_diff = color_result['color_diff']
                         cv2.putText(vis, f"Color: {color_diff:.1f}",
