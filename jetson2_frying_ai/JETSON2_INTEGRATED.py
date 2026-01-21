@@ -2016,6 +2016,7 @@ class JetsonIntegratedApp:
             return
 
         ret, frame = self.frying_right_cap.read()
+        print(f"[POT2 카메라 DEBUG] ret={ret}, frying_running={self.frying_running}, pot2_collecting={self.pot2_collecting}")  # DEBUG
         if ret:
             vis = frame.copy()
 
