@@ -1880,7 +1880,7 @@ class JetsonIntegratedApp:
         if ret:
             vis = frame.copy()
 
-            if self.frying_running:
+            if self.frying_running or self.pot1_collecting:
                 # Frame skip: AI 처리는 N프레임마다 (CPU 절약)
                 self.frying_frame_skip += 1
                 if self.frying_frame_skip >= FRYING_FRAME_SKIP:
@@ -2020,7 +2020,7 @@ class JetsonIntegratedApp:
         if ret:
             vis = frame.copy()
 
-            if self.frying_running:
+            if self.frying_running or self.pot2_collecting:
                 # Frame skip은 왼쪽과 공유 (같은 카운터)
                 if self.frying_frame_skip == 0:  # 왼쪽에서 리셋된 경우
                     try:
