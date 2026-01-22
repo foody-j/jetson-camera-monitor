@@ -47,6 +47,7 @@ from frying_segmenter import FoodSegmenter
 
 # Import Simple Color Checker
 from simple_checker.color_checker import SimpleColorChecker
+from simple_checker.robot_detector import RobotDetector, PotType
 
 # Import GPIO for Relay control
 import Jetson.GPIO as GPIO
@@ -349,6 +350,16 @@ class JetsonIntegratedApp:
         self.color_checker_left = SimpleColorChecker(color_threshold=25.0)
         self.color_checker_right = SimpleColorChecker(color_threshold=25.0)
         print(f"[모델] Color checker 초기화 완료")
+
+        # Robot detector (로봇 암 진입 감지)
+        self.robot_detector_pot1 = RobotDetector(pot_type=PotType.POT1)  # 우측 상단 감지
+        self.robot_detector_pot2 = RobotDetector(pot_type=PotType.POT2)  # 좌측 상단 감지
+
+        # 탈탈 캡처 상태
+        self.pot1_taltal_pending = False  # 탈탈 캡처 대기 중
+        self.pot2_taltal_pending = False
+        self.pot1_taltal_timer = None
+        self.pot2_taltal_timer = None
 
         # Observe_add models (left/right separated)
         self.observe_left_seg_model = YOLO(OBSERVE_LEFT_SEG_MODEL)
@@ -875,6 +886,9 @@ class JetsonIntegratedApp:
             self.color_checker_left.reset()
             print(f"[색상] POT1 baseline 리셋 완료")
 
+            # 로봇 감지기 리셋
+            self.robot_detector_pot1.reset()
+
             # Cancel previous timeout timer
             if self.pot1_timeout_id is not None:
                 self.root.after_cancel(self.pot1_timeout_id)
@@ -944,6 +958,9 @@ class JetsonIntegratedApp:
             # Color checker baseline 리셋 (새로운 조리 시작)
             self.color_checker_right.reset()
             print(f"[색상] POT2 baseline 리셋 완료")
+
+            # 로봇 감지기 리셋
+            self.robot_detector_pot2.reset()
 
             # Cancel previous timeout timer
             if self.pot2_timeout_id is not None:
@@ -1882,6 +1899,16 @@ class JetsonIntegratedApp:
             vis = frame.copy()
 
             if self.frying_running or self.pot1_collecting:
+                # 로봇 감지 (색상 체크 전에 실행)
+                robot_result = self.robot_detector_pot1.detect(frame)
+
+                if robot_result["state_changed"] and robot_result["robot_detected"]:
+                    print(f"[POT1] 로봇 진입 감지! metal_ratio={robot_result['metal_ratio']:.4f}")
+                    self.schedule_taltal_capture(pot=1, delay_sec=2.0)
+
+                if robot_result["state_changed"] and not robot_result["robot_detected"]:
+                    print(f"[POT1] 로봇 퇴장")
+
                 # Frame skip: AI 처리는 N프레임마다 (CPU 절약)
                 self.frying_frame_skip += 1
                 if self.frying_frame_skip >= FRYING_FRAME_SKIP:
@@ -2021,6 +2048,16 @@ class JetsonIntegratedApp:
             vis = frame.copy()
 
             if self.frying_running or self.pot2_collecting:
+                # 로봇 감지 (색상 체크 전에 실행)
+                robot_result = self.robot_detector_pot2.detect(frame)
+
+                if robot_result["state_changed"] and robot_result["robot_detected"]:
+                    print(f"[POT2] 로봇 진입 감지! metal_ratio={robot_result['metal_ratio']:.4f}")
+                    self.schedule_taltal_capture(pot=2, delay_sec=2.0)
+
+                if robot_result["state_changed"] and not robot_result["robot_detected"]:
+                    print(f"[POT2] 로봇 퇴장")
+
                 # Frame skip은 왼쪽과 공유 (같은 카운터)
                 if self.frying_frame_skip == 0:  # 왼쪽에서 리셋된 경우
                     try:
@@ -2128,6 +2165,48 @@ class JetsonIntegratedApp:
                     )
 
         self.root.after(GUI_UPDATE_INTERVAL, self.update_frying_right)
+
+    def schedule_taltal_capture(self, pot: int, delay_sec: float = 2.0):
+        """로봇 감지 후 딜레이를 두고 탈탈 캡처 실행."""
+        def do_capture():
+            if pot == 1:
+                self.pot1_taltal_pending = False
+                self.capture_taltal_frame(pot=1)
+            else:
+                self.pot2_taltal_pending = False
+                self.capture_taltal_frame(pot=2)
+
+        if pot == 1:
+            if self.pot1_taltal_timer:
+                self.pot1_taltal_timer.cancel()
+            self.pot1_taltal_pending = True
+            self.pot1_taltal_timer = threading.Timer(delay_sec, do_capture)
+            self.pot1_taltal_timer.start()
+            print(f"[POT1] 탈탈 캡처 예약 ({delay_sec}초 후)")
+        else:
+            if self.pot2_taltal_timer:
+                self.pot2_taltal_timer.cancel()
+            self.pot2_taltal_pending = True
+            self.pot2_taltal_timer = threading.Timer(delay_sec, do_capture)
+            self.pot2_taltal_timer.start()
+            print(f"[POT2] 탈탈 캡처 예약 ({delay_sec}초 후)")
+
+    def capture_taltal_frame(self, pot: int):
+        """탈탈 프레임 캡처 및 색상 측정."""
+        try:
+            if pot == 1:
+                ret, frame = self.frying_left_cap.read()
+                if ret and frame is not None:
+                    color_result = self.color_checker_left.measure(frame)
+                    print(f"[POT1 탈탈] 색상 측정: {color_result}")
+            else:
+                ret, frame = self.frying_right_cap.read()
+                if ret and frame is not None:
+                    color_result = self.color_checker_right.measure(frame)
+                    print(f"[POT2 탈탈] 색상 측정: {color_result}")
+
+        except Exception as e:
+            print(f"[POT{pot} 탈탈] 캡처 실패: {e}")
 
     def update_observe_left(self):
         """Update Observe_add left camera - OPTIMIZED with GPU + frame skip"""
@@ -3737,6 +3816,13 @@ class JetsonIntegratedApp:
             print(f"[바스켓 AI] 모든 POT 중지 → AI 중지")
             print(f"[POT1] 상태 변경: IDLE")
 
+        # 타이머 정리 및 로봇 감지기 리셋
+        if self.pot1_taltal_timer:
+            self.pot1_taltal_timer.cancel()
+            self.pot1_taltal_timer = None
+        self.pot1_taltal_pending = False
+        self.robot_detector_pot1.reset()
+
     def start_pot2_collection(self):
         """Start POT2 data collection (cameras 1, 3)"""
         from datetime import datetime
@@ -3817,6 +3903,13 @@ class JetsonIntegratedApp:
             print(f"[튀김 AI] 모든 POT 중지 → AI 중지")
             print(f"[바스켓 AI] 모든 POT 중지 → AI 중지")
             print(f"[POT2] 상태 변경: IDLE")
+
+        # 타이머 정리 및 로봇 감지기 리셋
+        if self.pot2_taltal_timer:
+            self.pot2_taltal_timer.cancel()
+            self.pot2_taltal_timer = None
+        self.pot2_taltal_pending = False
+        self.robot_detector_pot2.reset()
 
     def _delayed_stop_pot1_collection(self):
         """배출 후 지연 종료 (타이머 콜백)"""
