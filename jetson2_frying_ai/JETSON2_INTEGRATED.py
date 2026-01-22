@@ -316,6 +316,8 @@ class JetsonIntegratedApp:
         self.mqtt_client = None
         self.mqtt_message_log = []  # 최근 MQTT 메시지 저장 (원본 보기용)
         self.mqtt_message_log_max = 50  # 최대 저장 개수
+        self.mqtt_publish_log = []  # 수동 발행 로그
+        self.mqtt_publish_log_max = 10  # 최대 저장 개수
 
         # Load AI models with GPU (if available)
         print("[모델] AI 모델 로딩 중...")
@@ -405,6 +407,11 @@ class JetsonIntegratedApp:
         self.observe_left_result = None
         self.observe_right_result = None
 
+        # Running flags (MUST be set before starting worker threads!)
+        self.running = True
+        self.frying_running = False  # 투입 신호 대기
+        self.observe_running = False  # 투입 신호 대기
+
         # AI worker threads
         self.ai_threads = []
         self.frying_ai_lock = threading.Lock()
@@ -452,11 +459,6 @@ class JetsonIntegratedApp:
 
         # Food type (from MQTT or manual selection)
         self.current_food_type = "unknown"
-
-        # Running flags
-        self.running = True
-        self.frying_running = False  # 투입 신호 대기
-        self.observe_running = False  # 투입 신호 대기
 
         # Data collection flags (LEGACY - for backward compatibility)
         self.data_collection_active = False
@@ -1208,37 +1210,43 @@ class JetsonIntegratedApp:
         except Exception as e:
             print(f"[로봇상태] GUI 업데이트 오류: {e}")
 
+    def _build_status_payload(self):
+        """Build unified status payload for MQTT publishing"""
+        status_data = {
+            "device_id": DEVICE_ID,
+            "device_name": DEVICE_NAME,
+            "ip_address": get_ip_address(),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "ai_mode": AI_MODE_ENABLED,
+            "frying": {
+                "left": self.pot1_pot_status,
+                "right": self.pot2_pot_status
+            },
+            "observe": {
+                "left": self.observe_left_state if self.observe_left_state is not None else "UNKNOWN",
+                "right": self.observe_right_state if self.observe_right_state is not None else "UNKNOWN"
+            },
+            "vibration": {
+                "status": self.vibration_status
+            },
+            "system": self.system_info.get_dynamic_info() if hasattr(self, 'system_info') else {}
+        }
+        return status_data
+
     def publish_status(self):
         """Publish unified status to single topic: jetson2/status"""
         if not self.mqtt_client or not MQTT_ENABLED:
-            return
+            return False
 
         try:
-            status_data = {
-                "device_id": DEVICE_ID,
-                "device_name": DEVICE_NAME,
-                "ip_address": get_ip_address(),
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "ai_mode": AI_MODE_ENABLED,
-                "frying": {
-                    "left": self.pot1_pot_status,
-                    "right": self.pot2_pot_status
-                },
-                "observe": {
-                    "left": self.observe_left_state if self.observe_left_state is not None else "UNKNOWN",
-                    "right": self.observe_right_state if self.observe_right_state is not None else "UNKNOWN"
-                },
-                "vibration": {
-                    "status": self.vibration_status
-                },
-                "system": self.system_info.get_dynamic_info() if hasattr(self, 'system_info') else {}
-            }
-
+            status_data = self._build_status_payload()
             payload = json.dumps(status_data, ensure_ascii=False)
             self.mqtt_client.client.publish(MQTT_TOPIC_STATUS, payload, qos=MQTT_QOS)
+            return True
 
         except Exception as e:
             print(f"[MQTT] 상태 발행 오류: {e}")
+            return False
 
     def publish_mqtt_periodic(self):
         """Periodically publish unified status to MQTT"""
@@ -1353,12 +1361,6 @@ class JetsonIntegratedApp:
         self.disk_label.pack(side=tk.LEFT, padx=3)
 
         # RIGHT: 버튼들 (오른쪽 정렬)
-        # Settings button
-        tk.Button(header_frame, text="설정",
-                 font=(FONT_FAMILY, 10, "bold"),
-                 command=self.open_settings, bg=COLOR_BUTTON, fg="white",
-                 relief=tk.FLAT, bd=0, activebackground=COLOR_BUTTON_HOVER,
-                 padx=6, pady=4).pack(side=tk.RIGHT, padx=2)
 
         # Vibration check toggle button
         self.vibration_check_btn = tk.Button(header_frame, text="진동",
@@ -1582,7 +1584,6 @@ class JetsonIntegratedApp:
         self.collection_status_label.pack()
 
         # Exit button (세로 모드 - 버튼 크기 축소)
-        # 투입/배출 시뮬레이션은 PC상태 창에서 가능
         self.btn_exit = tk.Button(
             control_frame,
             text="종료",
@@ -2016,7 +2017,6 @@ class JetsonIntegratedApp:
             return
 
         ret, frame = self.frying_right_cap.read()
-        print(f"[POT2 카메라 DEBUG] ret={ret}, frying_running={self.frying_running}, pot2_collecting={self.pot2_collecting}")  # DEBUG
         if ret:
             vis = frame.copy()
 
@@ -2685,280 +2685,12 @@ class JetsonIntegratedApp:
         tk.Label(control_frame, text="※ 수동으로 제어하면 자동 모드가 재개됩니다",
                 font=NORMAL_FONT, bg=COLOR_PANEL, fg=COLOR_WARNING).pack(pady=5)
 
-        # ========== 카메라 테스트 섹션 ==========
-        camera_frame = tk.Frame(scrollable_frame, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
-        camera_frame.pack(fill=tk.X, padx=20, pady=10)
-
-        tk.Label(camera_frame, text="[ 카메라 테스트 ]", font=MEDIUM_FONT,
-                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(pady=10)
-
-        # Video 0, 1 (튀김솥)
-        row1 = tk.Frame(camera_frame, bg=COLOR_PANEL)
-        row1.pack(pady=5)
-        tk.Button(row1, text="Video0 ON", font=NORMAL_FONT, width=10, bg="#27AE60", fg="white",
-                 command=lambda: self._test_camera_on(0)).pack(side=tk.LEFT, padx=3)
-        tk.Button(row1, text="Video0 OFF", font=NORMAL_FONT, width=10, bg="#E74C3C", fg="white",
-                 command=lambda: self._test_camera_off(0)).pack(side=tk.LEFT, padx=3)
-        tk.Button(row1, text="Video1 ON", font=NORMAL_FONT, width=10, bg="#27AE60", fg="white",
-                 command=lambda: self._test_camera_on(1)).pack(side=tk.LEFT, padx=3)
-        tk.Button(row1, text="Video1 OFF", font=NORMAL_FONT, width=10, bg="#E74C3C", fg="white",
-                 command=lambda: self._test_camera_off(1)).pack(side=tk.LEFT, padx=3)
-
-        # Video 2, 3 (바켓)
-        row2 = tk.Frame(camera_frame, bg=COLOR_PANEL)
-        row2.pack(pady=5)
-        tk.Button(row2, text="Video2 ON", font=NORMAL_FONT, width=10, bg="#27AE60", fg="white",
-                 command=lambda: self._test_camera_on(2)).pack(side=tk.LEFT, padx=3)
-        tk.Button(row2, text="Video2 OFF", font=NORMAL_FONT, width=10, bg="#E74C3C", fg="white",
-                 command=lambda: self._test_camera_off(2)).pack(side=tk.LEFT, padx=3)
-        tk.Button(row2, text="Video3 ON", font=NORMAL_FONT, width=10, bg="#27AE60", fg="white",
-                 command=lambda: self._test_camera_on(3)).pack(side=tk.LEFT, padx=3)
-        tk.Button(row2, text="Video3 OFF", font=NORMAL_FONT, width=10, bg="#E74C3C", fg="white",
-                 command=lambda: self._test_camera_off(3)).pack(side=tk.LEFT, padx=3)
-
-        # ========== 투입/배출 시뮬레이션 섹션 ==========
-        sim_frame = tk.Frame(scrollable_frame, bg=COLOR_PANEL, bd=3, relief=tk.RAISED)
-        sim_frame.pack(fill=tk.X, padx=20, pady=10)
-
-        tk.Label(sim_frame, text="[ 투입/배출 시뮬레이션 ]", font=MEDIUM_FONT,
-                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(pady=10)
-
-        sim_row = tk.Frame(sim_frame, bg=COLOR_PANEL)
-        sim_row.pack(pady=5)
-        tk.Button(sim_row, text="POT1 투입", font=NORMAL_FONT, width=10, bg="#3498DB", fg="white",
-                 command=lambda: self._simulate_input("0")).pack(side=tk.LEFT, padx=3)
-        tk.Button(sim_row, text="POT1 배출", font=NORMAL_FONT, width=10, bg="#9B59B6", fg="white",
-                 command=lambda: self._simulate_discharge("0")).pack(side=tk.LEFT, padx=3)
-        tk.Button(sim_row, text="POT2 투입", font=NORMAL_FONT, width=10, bg="#3498DB", fg="white",
-                 command=lambda: self._simulate_input("1")).pack(side=tk.LEFT, padx=3)
-        tk.Button(sim_row, text="POT2 배출", font=NORMAL_FONT, width=10, bg="#9B59B6", fg="white",
-                 command=lambda: self._simulate_discharge("1")).pack(side=tk.LEFT, padx=3)
-
         # Close button
         tk.Button(scrollable_frame, text="[ 닫기 ]", font=MEDIUM_FONT,
                  command=status_window.destroy, width=15,
                  bg=COLOR_INFO, fg="white", relief=tk.FLAT).pack(pady=20)
 
         print("[PC상태] PC 상태 창 열림")
-
-    def _test_camera_on(self, video_index):
-        """카메라 테스트: 특정 video 인덱스 카메라 켜기
-
-        Args:
-            video_index: 0=튀김 왼쪽, 1=튀김 오른쪽, 2=바켓 왼쪽, 3=바켓 오른쪽
-        """
-        print(f"[카메라 테스트] video{video_index} ON 요청")
-
-        if video_index == 0:
-            # 튀김 왼쪽 (POT1)
-            if self.frying_left_streaming:
-                print(f"[카메라 테스트] video{video_index} 이미 스트리밍 중")
-                return
-            self.frying_left_cap = GstCamera(
-                device_index=FRYING_LEFT_CAMERA_INDEX,
-                width=CAMERA_WIDTH,
-                height=CAMERA_HEIGHT,
-                fps=CAMERA_FPS
-            )
-            if self.frying_left_cap.start():
-                self.frying_left_streaming = True
-                print(f"[카메라 테스트] video{video_index} (튀김 왼쪽) ON 성공 ✓")
-            else:
-                print(f"[카메라 테스트] video{video_index} ON 실패 ✗")
-                self.frying_left_cap = None
-
-        elif video_index == 1:
-            # 튀김 오른쪽 (POT2)
-            if self.frying_right_streaming:
-                print(f"[카메라 테스트] video{video_index} 이미 스트리밍 중")
-                return
-            self.frying_right_cap = GstCamera(
-                device_index=FRYING_RIGHT_CAMERA_INDEX,
-                width=CAMERA_WIDTH,
-                height=CAMERA_HEIGHT,
-                fps=CAMERA_FPS
-            )
-            if self.frying_right_cap.start():
-                self.frying_right_streaming = True
-                print(f"[카메라 테스트] video{video_index} (튀김 오른쪽) ON 성공 ✓")
-            else:
-                print(f"[카메라 테스트] video{video_index} ON 실패 ✗")
-                self.frying_right_cap = None
-
-        elif video_index == 2:
-            # 바켓 왼쪽
-            if self.observe_left_cap:
-                print(f"[카메라 테스트] video{video_index} 이미 스트리밍 중")
-                return
-            self.observe_left_cap = GstCamera(
-                device_index=OBSERVE_LEFT_CAMERA_INDEX,
-                width=CAMERA_WIDTH,
-                height=CAMERA_HEIGHT,
-                fps=CAMERA_FPS
-            )
-            if self.observe_left_cap.start():
-                print(f"[카메라 테스트] video{video_index} (바켓 왼쪽) ON 성공 ✓")
-            else:
-                print(f"[카메라 테스트] video{video_index} ON 실패 ✗")
-                self.observe_left_cap = None
-
-        elif video_index == 3:
-            # 바켓 오른쪽
-            if self.observe_right_cap:
-                print(f"[카메라 테스트] video{video_index} 이미 스트리밍 중")
-                return
-            self.observe_right_cap = GstCamera(
-                device_index=OBSERVE_RIGHT_CAMERA_INDEX,
-                width=CAMERA_WIDTH,
-                height=CAMERA_HEIGHT,
-                fps=CAMERA_FPS
-            )
-            if self.observe_right_cap.start():
-                print(f"[카메라 테스트] video{video_index} (바켓 오른쪽) ON 성공 ✓")
-            else:
-                print(f"[카메라 테스트] video{video_index} ON 실패 ✗")
-                self.observe_right_cap = None
-
-    def _test_camera_off(self, video_index):
-        """카메라 테스트: 특정 video 인덱스 카메라 끄기
-
-        Args:
-            video_index: 0=튀김 왼쪽, 1=튀김 오른쪽, 2=바켓 왼쪽, 3=바켓 오른쪽
-        """
-        print(f"[카메라 테스트] video{video_index} OFF 요청")
-
-        if video_index == 0:
-            # 튀김 왼쪽 (POT1)
-            if not self.frying_left_streaming and not self.frying_left_cap:
-                print(f"[카메라 테스트] video{video_index} 이미 꺼져있음")
-                return
-            if self.frying_left_cap:
-                try:
-                    self.frying_left_cap.stop()
-                except Exception as e:
-                    print(f"[카메라 테스트] video{video_index} 중지 오류: {e}")
-                self.frying_left_cap = None
-            self.frying_left_streaming = False
-            print(f"[카메라 테스트] video{video_index} (튀김 왼쪽) OFF 완료 ✓")
-
-        elif video_index == 1:
-            # 튀김 오른쪽 (POT2)
-            if not self.frying_right_streaming and not self.frying_right_cap:
-                print(f"[카메라 테스트] video{video_index} 이미 꺼져있음")
-                return
-            if self.frying_right_cap:
-                try:
-                    self.frying_right_cap.stop()
-                except Exception as e:
-                    print(f"[카메라 테스트] video{video_index} 중지 오류: {e}")
-                self.frying_right_cap = None
-            self.frying_right_streaming = False
-            print(f"[카메라 테스트] video{video_index} (튀김 오른쪽) OFF 완료 ✓")
-
-        elif video_index == 2:
-            # 바켓 왼쪽
-            if not self.observe_left_cap:
-                print(f"[카메라 테스트] video{video_index} 이미 꺼져있음")
-                return
-            try:
-                self.observe_left_cap.stop()
-            except Exception as e:
-                print(f"[카메라 테스트] video{video_index} 중지 오류: {e}")
-            self.observe_left_cap = None
-            print(f"[카메라 테스트] video{video_index} (바켓 왼쪽) OFF 완료 ✓")
-
-        elif video_index == 3:
-            # 바켓 오른쪽
-            if not self.observe_right_cap:
-                print(f"[카메라 테스트] video{video_index} 이미 꺼져있음")
-                return
-            try:
-                self.observe_right_cap.stop()
-            except Exception as e:
-                print(f"[카메라 테스트] video{video_index} 중지 오류: {e}")
-            self.observe_right_cap = None
-            print(f"[카메라 테스트] video{video_index} (바켓 오른쪽) OFF 완료 ✓")
-
-    def _simulate_input(self, pot_num):
-        """투입 시뮬레이션: MQTT 메시지 없이 직접 투입 처리
-
-        Args:
-            pot_num: "0" = POT1 (왼쪽), "1" = POT2 (오른쪽)
-        """
-        recipe = "테스트_레시피"
-        print(f"[시뮬레이션] POT{int(pot_num)+1} 투입 시뮬레이션 시작 - {recipe}")
-
-        if pot_num == "0":
-            # POT1 (왼쪽) 투입 처리
-            # 배출 타이머가 있으면 취소
-            if self.pot1_discharge_timer_id:
-                self.root.after_cancel(self.pot1_discharge_timer_id)
-                self.pot1_discharge_timer_id = None
-                print(f"[시뮬레이션] POT1 배출 타이머 취소")
-
-            if not self.pot1_collecting:
-                self.pot1_food_type = recipe
-                print(f"[시뮬레이션] POT1 데이터 수집 시작")
-                # 카메라 동적 ON (1-of-4 전략: 항상 전환)
-                self.root.after(0, lambda: self.start_frying_camera("0"))
-                self.root.after(0, self.start_pot1_collection)
-                # 토스트 메시지 표시
-                self.show_toast(f"[시뮬] POT1 투입: {recipe}")
-            else:
-                print(f"[시뮬레이션] POT1 이미 수집 중")
-
-        elif pot_num == "1":
-            # POT2 (오른쪽) 투입 처리
-            # 배출 타이머가 있으면 취소
-            if self.pot2_discharge_timer_id:
-                self.root.after_cancel(self.pot2_discharge_timer_id)
-                self.pot2_discharge_timer_id = None
-                print(f"[시뮬레이션] POT2 배출 타이머 취소")
-
-            if not self.pot2_collecting:
-                self.pot2_food_type = recipe
-                print(f"[시뮬레이션] POT2 데이터 수집 시작")
-                # 카메라 동적 ON (1-of-4 전략: 항상 전환)
-                self.root.after(0, lambda: self.start_frying_camera("1"))
-                self.root.after(0, self.start_pot2_collection)
-                # 토스트 메시지 표시
-                self.show_toast(f"[시뮬] POT2 투입: {recipe}")
-            else:
-                print(f"[시뮬레이션] POT2 이미 수집 중")
-
-    def _simulate_discharge(self, pot_num):
-        """배출 시뮬레이션: MQTT 메시지 없이 직접 배출 처리
-
-        Args:
-            pot_num: "0" = POT1 (왼쪽), "1" = POT2 (오른쪽)
-        """
-        print(f"[시뮬레이션] POT{int(pot_num)+1} 배출 시뮬레이션")
-
-        if pot_num == "0":
-            # POT1 (왼쪽) 배출 처리
-            if self.pot1_collecting and not self.pot1_discharge_timer_id:
-                delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
-                print(f"[시뮬레이션] POT1 배출 - {RECORDING_DELAY_AFTER_DISCHARGE}초 후 수집 종료")
-                self.pot1_discharge_timer_id = self.root.after(delay_ms, self._delayed_stop_pot1_collection)
-                self.show_toast(f"[시뮬] POT1 배출 ({RECORDING_DELAY_AFTER_DISCHARGE}초 후 종료)")
-            else:
-                if not self.pot1_collecting:
-                    print(f"[시뮬레이션] POT1 수집 중이 아님")
-                else:
-                    print(f"[시뮬레이션] POT1 이미 배출 대기 중")
-
-        elif pot_num == "1":
-            # POT2 (오른쪽) 배출 처리
-            if self.pot2_collecting and not self.pot2_discharge_timer_id:
-                delay_ms = RECORDING_DELAY_AFTER_DISCHARGE * 1000
-                print(f"[시뮬레이션] POT2 배출 - {RECORDING_DELAY_AFTER_DISCHARGE}초 후 수집 종료")
-                self.pot2_discharge_timer_id = self.root.after(delay_ms, self._delayed_stop_pot2_collection)
-                self.show_toast(f"[시뮬] POT2 배출 ({RECORDING_DELAY_AFTER_DISCHARGE}초 후 종료)")
-            else:
-                if not self.pot2_collecting:
-                    print(f"[시뮬레이션] POT2 수집 중이 아님")
-                else:
-                    print(f"[시뮬레이션] POT2 이미 배출 대기 중")
 
     def on_robot_control(self, client, userdata, message):
         """MQTT callback for robot/control topic (from Jetson #1)"""
@@ -3390,12 +3122,256 @@ class JetsonIntegratedApp:
         # 초기 메시지 로드
         refresh_messages()
 
+        # === 탭 3: 수동 발행 ===
+        tab_manual = tk.Frame(notebook, bg=COLOR_PANEL)
+        notebook.add(tab_manual, text="수동 발행")
+        self._create_manual_publish_tab(tab_manual)
+
         # 닫기 버튼
         tk.Button(popup, text="닫기",
                  font=(FONT_FAMILY, 11, "bold"),
                  command=popup.destroy,
                  bg=COLOR_BUTTON, fg="white",
                  relief=tk.FLAT, padx=20, pady=5).pack(pady=10)
+
+    def _create_manual_publish_tab(self, parent_frame):
+        """Create manual MQTT publish tab"""
+        parent_frame.configure(bg=COLOR_PANEL)
+
+        quick_frame = tk.Frame(parent_frame, bg=COLOR_PANEL, bd=2, relief=tk.RAISED)
+        quick_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        tk.Label(quick_frame, text="빠른 테스트 (프리셋)",
+                font=MEDIUM_FONT, bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=8, pady=6)
+
+        def _preset_button(parent, text, command, bg):
+            tk.Button(parent, text=text, font=NORMAL_FONT, width=10,
+                     command=command, bg=bg, fg="white",
+                     relief=tk.FLAT, padx=6, pady=4).pack(side=tk.LEFT, padx=3, pady=2)
+
+        pot1_row = tk.Frame(quick_frame, bg=COLOR_PANEL)
+        pot1_row.pack(anchor="w", padx=8)
+        tk.Label(pot1_row, text="POT1:", font=NORMAL_FONT,
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(side=tk.LEFT, padx=3)
+        _preset_button(pot1_row, "IDLE", lambda: self._publish_preset_frying(1, "IDLE"), "#27AE60")
+        _preset_button(pot1_row, "COOKING", lambda: self._publish_preset_frying(1, "COOKING"), "#3498DB")
+        _preset_button(pot1_row, "DISCHARGE", lambda: self._publish_preset_frying(1, "DISCHARGE"), "#9B59B6")
+
+        pot2_row = tk.Frame(quick_frame, bg=COLOR_PANEL)
+        pot2_row.pack(anchor="w", padx=8)
+        tk.Label(pot2_row, text="POT2:", font=NORMAL_FONT,
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(side=tk.LEFT, padx=3)
+        _preset_button(pot2_row, "IDLE", lambda: self._publish_preset_frying(2, "IDLE"), "#27AE60")
+        _preset_button(pot2_row, "COOKING", lambda: self._publish_preset_frying(2, "COOKING"), "#3498DB")
+        _preset_button(pot2_row, "DISCHARGE", lambda: self._publish_preset_frying(2, "DISCHARGE"), "#9B59B6")
+
+        obs_left_row = tk.Frame(quick_frame, bg=COLOR_PANEL)
+        obs_left_row.pack(anchor="w", padx=8, pady=(6, 0))
+        tk.Label(obs_left_row, text="왼쪽 바켓:", font=NORMAL_FONT,
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(side=tk.LEFT, padx=3)
+        _preset_button(obs_left_row, "EMPTY", lambda: self._publish_preset_observe("left", "EMPTY"), "#95A5A6")
+        _preset_button(obs_left_row, "FILLED", lambda: self._publish_preset_observe("left", "FILLED"), "#27AE60")
+        _preset_button(obs_left_row, "NO_BASKET", lambda: self._publish_preset_observe("left", "NO_BASKET"), "#E67E22")
+
+        obs_right_row = tk.Frame(quick_frame, bg=COLOR_PANEL)
+        obs_right_row.pack(anchor="w", padx=8)
+        tk.Label(obs_right_row, text="오른쪽 바켓:", font=NORMAL_FONT,
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(side=tk.LEFT, padx=3)
+        _preset_button(obs_right_row, "EMPTY", lambda: self._publish_preset_observe("right", "EMPTY"), "#95A5A6")
+        _preset_button(obs_right_row, "FILLED", lambda: self._publish_preset_observe("right", "FILLED"), "#27AE60")
+        _preset_button(obs_right_row, "NO_BASKET", lambda: self._publish_preset_observe("right", "NO_BASKET"), "#E67E22")
+
+        tk.Button(quick_frame, text="지금 상태 즉시 발행",
+                 font=MEDIUM_FONT,
+                 command=self._publish_current_status,
+                 bg=COLOR_INFO, fg="white",
+                 relief=tk.FLAT, padx=10, pady=6).pack(pady=8)
+
+        custom_frame = tk.Frame(parent_frame, bg=COLOR_PANEL, bd=2, relief=tk.RAISED)
+        custom_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        tk.Label(custom_frame, text="커스텀 메시지",
+                font=MEDIUM_FONT, bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=8, pady=6)
+
+        topic_frame = tk.Frame(custom_frame, bg=COLOR_PANEL)
+        topic_frame.pack(fill=tk.X, padx=8, pady=4)
+        tk.Label(topic_frame, text="토픽:", font=NORMAL_FONT,
+                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(side=tk.LEFT, padx=3)
+
+        topic_presets = [
+            MQTT_TOPIC_STATUS,
+            "test/frying",
+            "test/observe",
+            "custom..."
+        ]
+        topic_var = tk.StringVar(value=MQTT_TOPIC_STATUS)
+        topic_combo = ttk.Combobox(topic_frame, textvariable=topic_var,
+                                   values=topic_presets, width=25)
+        topic_combo.pack(side=tk.LEFT, padx=5)
+
+        def _on_topic_selected(event):
+            if topic_var.get().strip() == "custom...":
+                topic_var.set("")
+                topic_combo.focus_set()
+
+        topic_combo.bind("<<ComboboxSelected>>", _on_topic_selected)
+
+        tk.Label(custom_frame, text="메시지 (JSON):",
+                font=NORMAL_FONT, bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=8)
+
+        msg_text = tk.Text(custom_frame, height=6, font=(FONT_FAMILY, 9),
+                          bg=COLOR_BG, fg=COLOR_TEXT, wrap=tk.WORD)
+        msg_text.pack(fill=tk.X, padx=8, pady=4)
+        msg_text.insert(tk.END, '{\n  "test": "message"\n}')
+
+        btn_row = tk.Frame(custom_frame, bg=COLOR_PANEL)
+        btn_row.pack(pady=6)
+
+        def _publish_custom_message():
+            topic = topic_var.get().strip()
+            if not topic:
+                showwarning_topmost("MQTT", "토픽을 입력하세요.")
+                return
+            raw_message = msg_text.get("1.0", tk.END).strip()
+            if not raw_message:
+                showwarning_topmost("MQTT", "메시지를 입력하세요.")
+                return
+            try:
+                message_dict = json.loads(raw_message)
+            except json.JSONDecodeError as e:
+                showerror_topmost("JSON 오류", f"JSON 형식 오류:\n{e}")
+                return
+            self._publish_test_message(topic, message_dict)
+
+        tk.Button(btn_row, text="JSON 검증",
+                 font=NORMAL_FONT,
+                 command=lambda: self._validate_json_text(msg_text),
+                 bg=COLOR_BUTTON, fg="white",
+                 relief=tk.FLAT, padx=10).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_row, text="발행하기",
+                 font=NORMAL_FONT,
+                 command=_publish_custom_message,
+                 bg=COLOR_OK, fg="white",
+                 relief=tk.FLAT, padx=10).pack(side=tk.LEFT, padx=5)
+
+        log_frame = tk.Frame(parent_frame, bg=COLOR_PANEL, bd=2, relief=tk.RAISED)
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        tk.Label(log_frame, text="발행 로그 (최근 10개)",
+                font=MEDIUM_FONT, bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=8, pady=6)
+
+        log_text = tk.Text(log_frame, height=7, font=(FONT_FAMILY, 9),
+                          bg=COLOR_BG, fg=COLOR_TEXT, wrap=tk.WORD, state=tk.DISABLED)
+        log_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
+
+        self._mqtt_publish_log_widget = log_text
+        self._refresh_publish_log_widget(log_text)
+
+    def _validate_json_text(self, text_widget):
+        """Validate JSON in a Text widget"""
+        raw_message = text_widget.get("1.0", tk.END).strip()
+        if not raw_message:
+            showwarning_topmost("JSON", "메시지를 입력하세요.")
+            return False
+        try:
+            json.loads(raw_message)
+            showinfo_topmost("JSON", "JSON 형식이 올바릅니다.")
+            return True
+        except json.JSONDecodeError as e:
+            showerror_topmost("JSON 오류", f"JSON 형식 오류:\n{e}")
+            return False
+
+    def _refresh_publish_log_widget(self, log_widget):
+        """Refresh publish log text widget"""
+        if log_widget is None:
+            return
+        log_widget.config(state=tk.NORMAL)
+        log_widget.delete(1.0, tk.END)
+        if not self.mqtt_publish_log:
+            log_widget.insert(tk.END, "(발행 내역 없음)")
+        else:
+            for entry in reversed(self.mqtt_publish_log):
+                status = "OK" if entry["success"] else "FAIL"
+                log_widget.insert(tk.END, f"[{entry['time']}] {entry['topic']} {status}\n")
+                log_widget.insert(tk.END, f"-> {entry['payload']}\n\n")
+        log_widget.config(state=tk.DISABLED)
+
+    def _append_publish_log(self, topic, payload, success, log_widget=None):
+        """Append entry to publish log and refresh widget"""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        log_entry = {
+            "time": timestamp,
+            "topic": topic,
+            "payload": payload,
+            "success": success
+        }
+        self.mqtt_publish_log.append(log_entry)
+        if len(self.mqtt_publish_log) > self.mqtt_publish_log_max:
+            self.mqtt_publish_log.pop(0)
+
+        widget = log_widget
+        if widget is None and hasattr(self, "_mqtt_publish_log_widget"):
+            widget = self._mqtt_publish_log_widget
+
+        try:
+            if widget and widget.winfo_exists():
+                self._refresh_publish_log_widget(widget)
+        except Exception:
+            pass
+
+    def _publish_current_status(self, log_widget=None):
+        """Publish current unified status and log it"""
+        if not MQTT_ENABLED or not self.mqtt_client:
+            showwarning_topmost("MQTT", "MQTT 비활성화 상태입니다.")
+            self._append_publish_log(MQTT_TOPIC_STATUS, "(MQTT disabled)", False, log_widget)
+            return False
+
+        status_data = self._build_status_payload()
+        payload = json.dumps(status_data, ensure_ascii=False)
+        success = self.publish_status()
+        self._append_publish_log(MQTT_TOPIC_STATUS, payload, success, log_widget)
+        return success
+
+    def _publish_test_message(self, topic, message_dict, log_widget=None):
+        """테스트용 MQTT 메시지 발행"""
+        if not MQTT_ENABLED or not self.mqtt_client:
+            showwarning_topmost("MQTT", "MQTT 비활성화 상태입니다.")
+            self._append_publish_log(topic, "(MQTT disabled)", False, log_widget)
+            return False
+
+        try:
+            payload = json.dumps(message_dict, ensure_ascii=False)
+        except (TypeError, ValueError) as e:
+            showerror_topmost("JSON 오류", f"JSON 직렬화 실패: {e}")
+            self._append_publish_log(topic, str(message_dict), False, log_widget)
+            return False
+
+        try:
+            self.mqtt_client.client.publish(topic, payload, qos=MQTT_QOS)
+            success = True
+        except Exception as e:
+            showerror_topmost("MQTT 오류", f"발행 실패: {e}")
+            success = False
+
+        self._append_publish_log(topic, payload, success, log_widget)
+        return success
+
+    def _publish_preset_frying(self, pot_num, status):
+        """프리셋: 튀김 상태 발행"""
+        if pot_num == 1:
+            self.pot1_pot_status = status
+        elif pot_num == 2:
+            self.pot2_pot_status = status
+        return self._publish_current_status()
+
+    def _publish_preset_observe(self, side, status):
+        """프리셋: 관찰 상태 발행"""
+        if side == "left":
+            self.observe_left_state = status
+        elif side == "right":
+            self.observe_right_state = status
+        return self._publish_current_status()
 
     def open_settings(self):
         """Open settings dialog (placeholder)"""
