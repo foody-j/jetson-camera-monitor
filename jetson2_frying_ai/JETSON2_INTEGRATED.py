@@ -3138,6 +3138,22 @@ class JetsonIntegratedApp:
         """MQTT 수동 발행 탭 생성"""
         parent_frame.configure(bg=COLOR_PANEL)
 
+        self._manual_vibration_enabled = tk.BooleanVar(value=False)
+        self._manual_pot1_enabled = tk.BooleanVar(value=False)
+        self._manual_pot2_enabled = tk.BooleanVar(value=False)
+        self._manual_observe_left_enabled = tk.BooleanVar(value=False)
+        self._manual_observe_right_enabled = tk.BooleanVar(value=False)
+
+        self._manual_vibration_var = tk.StringVar(value=self.vibration_status or "IDLE")
+        self._manual_pot1_var = tk.StringVar(value=self.pot1_pot_status or "IDLE")
+        self._manual_pot2_var = tk.StringVar(value=self.pot2_pot_status or "IDLE")
+        self._manual_observe_left_var = tk.StringVar(
+            value=self.observe_left_state if self.observe_left_state is not None else "UNKNOWN"
+        )
+        self._manual_observe_right_var = tk.StringVar(
+            value=self.observe_right_state if self.observe_right_state is not None else "UNKNOWN"
+        )
+
         vibration_frame = tk.LabelFrame(
             parent_frame,
             text="🔧 진동센서 상태",
@@ -3151,6 +3167,15 @@ class JetsonIntegratedApp:
 
         vibration_btn_frame = tk.Frame(vibration_frame, bg=COLOR_PANEL)
         vibration_btn_frame.pack()
+
+        tk.Checkbutton(
+            vibration_frame,
+            text="포함",
+            variable=self._manual_vibration_enabled,
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+            selectcolor=COLOR_BG,
+        ).pack(anchor="w")
 
         vibration_states = [
             ("IDLE", "대기 중", "#95A5A6"),
@@ -3192,6 +3217,14 @@ class JetsonIntegratedApp:
             bg=COLOR_PANEL,
             fg=COLOR_TEXT,
         ).pack(side=tk.LEFT, padx=(0, 10))
+        tk.Checkbutton(
+            pot1_frame,
+            text="포함",
+            variable=self._manual_pot1_enabled,
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+            selectcolor=COLOR_BG,
+        ).pack(side=tk.LEFT, padx=(0, 10))
         for status, color in [
             ("IDLE", "#95A5A6"),
             ("COOKING", "#F39C12"),
@@ -3216,6 +3249,14 @@ class JetsonIntegratedApp:
             font=(FONT_FAMILY, 10, "bold"),
             bg=COLOR_PANEL,
             fg=COLOR_TEXT,
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        tk.Checkbutton(
+            pot2_frame,
+            text="포함",
+            variable=self._manual_pot2_enabled,
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+            selectcolor=COLOR_BG,
         ).pack(side=tk.LEFT, padx=(0, 10))
         for status, color in [
             ("IDLE", "#95A5A6"),
@@ -3253,6 +3294,14 @@ class JetsonIntegratedApp:
             bg=COLOR_PANEL,
             fg=COLOR_TEXT,
         ).pack(side=tk.LEFT, padx=(0, 10))
+        tk.Checkbutton(
+            left_frame,
+            text="포함",
+            variable=self._manual_observe_left_enabled,
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+            selectcolor=COLOR_BG,
+        ).pack(side=tk.LEFT, padx=(0, 10))
         for status, color in [
             ("EMPTY", "#95A5A6"),
             ("FILLED", "#27AE60"),
@@ -3278,6 +3327,14 @@ class JetsonIntegratedApp:
             bg=COLOR_PANEL,
             fg=COLOR_TEXT,
         ).pack(side=tk.LEFT, padx=(0, 10))
+        tk.Checkbutton(
+            right_frame,
+            text="포함",
+            variable=self._manual_observe_right_enabled,
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+            selectcolor=COLOR_BG,
+        ).pack(side=tk.LEFT, padx=(0, 10))
         for status, color in [
             ("EMPTY", "#95A5A6"),
             ("FILLED", "#27AE60"),
@@ -3298,79 +3355,92 @@ class JetsonIntegratedApp:
         publish_frame.pack(fill=tk.X, padx=10, pady=20)
         tk.Button(
             publish_frame,
-            text="지금 상태 즉시 발행",
+            text="선택 상태 발행",
             font=(FONT_FAMILY, 12, "bold"),
             bg="#2980B9",
             fg="white",
             relief=tk.FLAT,
             padx=30,
             pady=10,
-            command=self._manual_publish_now,
+            command=self._manual_publish_selected,
         ).pack()
+        tk.Button(
+            publish_frame,
+            text="지금 상태 즉시 발행",
+            font=(FONT_FAMILY, 10, "bold"),
+            bg=COLOR_INFO,
+            fg="white",
+            relief=tk.FLAT,
+            padx=20,
+            pady=6,
+            command=self._manual_publish_now,
+        ).pack(pady=(6, 0))
+
+    def _set_manual_status(self, var, status, label):
+        """Set manual selection status"""
+        if var is None:
+            return
+        var.set(status)
+        self.show_toast(f"선택: {label} {status}")
 
     def _publish_vibration_status(self, status):
-        """진동센서 상태 발행"""
-        self.vibration_status = status
-        success = self.publish_status()
-
-        if success:
-            showinfo_topmost(
-                "발행 완료",
-                f"진동센서 상태: {status}\n\n"
-                f"{MQTT_TOPIC_STATUS} 토픽으로 발행됨",
-            )
-        else:
-            showerror_topmost("발행 실패", "MQTT 연결 확인 필요")
+        """진동센서 상태 선택"""
+        self._set_manual_status(self._manual_vibration_var, status, "진동")
 
     def _publish_frying_status(self, pot_num, status):
-        """튀김 상태 발행"""
+        """튀김 상태 선택"""
         if pot_num == 1:
-            self.pot1_pot_status = status
+            self._set_manual_status(self._manual_pot1_var, status, "POT1")
         else:
-            self.pot2_pot_status = status
-
-        success = self.publish_status()
-        if success:
-            showinfo_topmost(
-                "발행 완료",
-                f"POT{pot_num} 상태: {status}\n\n"
-                f"{MQTT_TOPIC_STATUS} 토픽으로 발행됨",
-            )
-        else:
-            showerror_topmost("발행 실패", "MQTT 연결 확인 필요")
+            self._set_manual_status(self._manual_pot2_var, status, "POT2")
 
     def _publish_observe_status(self, side, status):
-        """바켓 상태 발행"""
+        """바켓 상태 선택"""
         if side == "left":
-            self.observe_left_state = status
+            self._set_manual_status(self._manual_observe_left_var, status, "왼쪽 바켓")
         else:
-            self.observe_right_state = status
+            self._set_manual_status(self._manual_observe_right_var, status, "오른쪽 바켓")
+
+    def _manual_publish_selected(self):
+        """선택된 항목만 업데이트 후 발행"""
+        if not any(
+            [
+                self._manual_vibration_enabled.get(),
+                self._manual_pot1_enabled.get(),
+                self._manual_pot2_enabled.get(),
+                self._manual_observe_left_enabled.get(),
+                self._manual_observe_right_enabled.get(),
+            ]
+        ):
+            self.show_toast("선택된 항목이 없습니다")
+            return
+
+        if self._manual_vibration_enabled.get():
+            self.vibration_status = self._manual_vibration_var.get()
+        if self._manual_pot1_enabled.get():
+            self.pot1_pot_status = self._manual_pot1_var.get()
+        if self._manual_pot2_enabled.get():
+            self.pot2_pot_status = self._manual_pot2_var.get()
+        if self._manual_observe_left_enabled.get():
+            self.observe_left_state = self._manual_observe_left_var.get()
+        if self._manual_observe_right_enabled.get():
+            self.observe_right_state = self._manual_observe_right_var.get()
 
         success = self.publish_status()
         if success:
-            showinfo_topmost(
-                "발행 완료",
-                f"{side} 바켓 상태: {status}\n\n"
-                f"{MQTT_TOPIC_STATUS} 토픽으로 발행됨",
-            )
+            self.show_toast("선택 상태 발행 완료")
         else:
-            showerror_topmost("발행 실패", "MQTT 연결 확인 필요")
+            print("[MQTT] 발행 실패: 선택 상태")
+            self.show_toast("발행 실패: MQTT 연결 확인")
 
     def _manual_publish_now(self):
         """현재 상태 즉시 발행"""
         success = self.publish_status()
         if success:
-            status_summary = (
-                "현재 상태 발행 완료\n\n"
-                f"진동: {self.vibration_status}\n"
-                f"POT1: {self.pot1_pot_status}\n"
-                f"POT2: {self.pot2_pot_status}\n"
-                f"왼쪽 바켓: {self.observe_left_state}\n"
-                f"오른쪽 바켓: {self.observe_right_state}"
-            )
-            showinfo_topmost("발행 완료", status_summary)
+            self.show_toast("현재 상태 발행 완료")
         else:
-            showerror_topmost("발행 실패", "MQTT 연결 확인 필요")
+            print("[MQTT] 발행 실패: 현재 상태")
+            self.show_toast("발행 실패: MQTT 연결 확인")
 
     def open_settings(self):
         """Open settings dialog (placeholder)"""

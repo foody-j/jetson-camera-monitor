@@ -3383,6 +3383,9 @@ class IntegratedMonitorApp:
         """MQTT 수동 발행 탭 생성"""
         parent_frame.configure(bg=COLOR_PANEL)
 
+        self._manual_vibration_enabled = tk.BooleanVar(value=False)
+        self._manual_vibration_var = tk.StringVar(value=self.vibration_status or "IDLE")
+
         vibration_frame = tk.LabelFrame(
             parent_frame,
             text="🔧 진동센서 상태",
@@ -3396,6 +3399,15 @@ class IntegratedMonitorApp:
 
         vibration_btn_frame = tk.Frame(vibration_frame, bg=COLOR_PANEL)
         vibration_btn_frame.pack()
+
+        tk.Checkbutton(
+            vibration_frame,
+            text="포함",
+            variable=self._manual_vibration_enabled,
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+            selectcolor=COLOR_BG,
+        ).pack(anchor="w")
 
         vibration_states = [
             ("IDLE", "대기 중", "#95A5A6"),
@@ -3453,51 +3465,53 @@ class IntegratedMonitorApp:
 
         tk.Button(
             publish_frame,
-            text="지금 상태 즉시 발행",
+            text="선택 상태 발행",
             font=(FONT_FAMILY, 12, "bold"),
             bg="#2980B9",
             fg="white",
             relief=tk.FLAT,
             padx=30,
             pady=10,
-            command=self._manual_publish_now,
+            command=self._manual_publish_selected,
         ).pack()
+        tk.Button(
+            publish_frame,
+            text="지금 상태 즉시 발행",
+            font=(FONT_FAMILY, 10, "bold"),
+            bg=COLOR_INFO,
+            fg="white",
+            relief=tk.FLAT,
+            padx=20,
+            pady=6,
+            command=self._manual_publish_now,
+        ).pack(pady=(6, 0))
 
     def _publish_vibration_status(self, status):
-        """진동센서 상태 발행"""
-        self.vibration_status = status
-        self.publish_status()
-
-        showinfo_topmost(
-            "발행 완료",
-            f"진동센서 상태: {status}\n\n"
-            f"{MQTT_TOPIC_STATUS} 토픽으로 발행됨",
-        )
+        """진동센서 상태 선택"""
+        self._manual_vibration_var.set(status)
+        self.show_toast(f"선택: 진동 {status}")
 
     def _send_relay_test_signal(self):
         """Jetson2 릴레이 테스트 신호 발행"""
         self.publish_relay_status("TEST")
 
-        showinfo_topmost(
-            "테스트 신호 발행",
-            "jetson1/relay/status 토픽으로\n"
-            "TEST 신호 발행 완료\n\n"
-            "Jetson2 로그 확인:\n"
-            "sudo journalctl -u jetson2-monitor -f | grep '릴레이'\n\n"
-            "예상 출력: '알 수 없는 상태: TEST'",
-        )
+        self.show_toast("TEST 신호 발행 완료")
+
+    def _manual_publish_selected(self):
+        """선택된 항목만 업데이트 후 발행"""
+        if not self._manual_vibration_enabled.get():
+            self.show_toast("선택된 항목이 없습니다")
+            return
+
+        self.vibration_status = self._manual_vibration_var.get()
+        self.publish_status()
+        self.show_toast("선택 상태 발행 완료")
 
     def _manual_publish_now(self):
         """현재 상태 즉시 발행"""
         self.publish_status()
 
-        status_summary = (
-            "현재 상태 발행 완료\n\n"
-            f"진동: {self.vibration_status}\n"
-            f"사람 감지: {self.person_detected}\n"
-            f"릴레이: {'ON' if self.relay_enabled else 'OFF'}"
-        )
-        showinfo_topmost("발행 완료", status_summary)
+        self.show_toast("현재 상태 발행 완료")
 
     def handle_settings_tap(self):
         """Handle settings button tap - 5 taps reveals shutdown"""
