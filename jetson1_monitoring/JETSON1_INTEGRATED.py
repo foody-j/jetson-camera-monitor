@@ -146,6 +146,7 @@ MQTT_PUBLISH_INTERVAL = config.get('mqtt_publish_interval', 5)  # seconds
 
 # MQTT 발행 토픽 (Jetson1 → 로봇PC) - 단일 토픽으로 통합
 MQTT_TOPIC_STATUS = config.get('mqtt_topic_status', 'jetson1/status')
+MQTT_TOPIC_JETSON1_RELAY = config.get('mqtt_topic_jetson1_relay', 'jetson1/relay/status')
 
 # MQTT 구독 토픽 (로봇PC → Jetson1)
 MQTT_TOPIC_ROBOT_STATUS = config.get('mqtt_topic_robot_status', 'HR/Status')
@@ -2281,8 +2282,23 @@ class IntegratedMonitorApp:
 
     def publish_relay_status(self, status):
         """Publish relay status to MQTT for Jetson #2 synchronization"""
-        # relay_enabled는 jetson1/status에 포함되어 주기적으로 발행됨
-        print(f"[MQTT] 릴레이 상태: {status} (jetson1/status에 포함)")
+        if self.mqtt_client is None or not self.mqtt_client.is_connected():
+            print(f"[MQTT] 연결 안됨 - 릴레이 상태 전송 실패: {status}")
+            return
+
+        payload = json.dumps({
+            "relay_status": status.upper(),
+            "source": "jetson1",
+            "device_id": DEVICE_ID,
+            "device_name": DEVICE_NAME,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }, ensure_ascii=False)
+
+        try:
+            self.mqtt_client.client.publish(MQTT_TOPIC_JETSON1_RELAY, payload, qos=MQTT_QOS)
+            print(f"[MQTT] {MQTT_TOPIC_JETSON1_RELAY} 토픽에 릴레이 상태 발행: {status}")
+        except Exception as e:
+            print(f"[MQTT] 릴레이 상태 발행 오류: {e}")
 
     def publish_mqtt(self, message):
         """Publish message to MQTT broker - send ON/OFF to robot PC"""
@@ -3351,12 +3367,137 @@ class IntegratedMonitorApp:
         # 초기 메시지 로드
         refresh_messages()
 
+        # === 탭 3: 수동 발행 ===
+        tab_manual = tk.Frame(notebook, bg=COLOR_PANEL)
+        notebook.add(tab_manual, text="수동 발행")
+        self._create_manual_publish_tab(tab_manual)
+
         # 닫기 버튼
         tk.Button(popup, text="닫기",
                  font=(FONT_FAMILY, 11, "bold"),
                  command=popup.destroy,
                  bg=COLOR_BUTTON, fg="white",
                  relief=tk.FLAT, padx=20, pady=5).pack(pady=10)
+
+    def _create_manual_publish_tab(self, parent_frame):
+        """MQTT 수동 발행 탭 생성"""
+        parent_frame.configure(bg=COLOR_PANEL)
+
+        vibration_frame = tk.LabelFrame(
+            parent_frame,
+            text="🔧 진동센서 상태",
+            font=(FONT_FAMILY, 11, "bold"),
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+            padx=10,
+            pady=10,
+        )
+        vibration_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        vibration_btn_frame = tk.Frame(vibration_frame, bg=COLOR_PANEL)
+        vibration_btn_frame.pack()
+
+        vibration_states = [
+            ("IDLE", "대기 중", "#95A5A6"),
+            ("MEASURING", "측정 중", "#3498DB"),
+            ("NORMAL", "정상", "#27AE60"),
+            ("ABNORMAL", "이상 감지", "#E74C3C"),
+        ]
+
+        for status, label, color in vibration_states:
+            tk.Button(
+                vibration_btn_frame,
+                text=f"{status}\n{label}",
+                font=(FONT_FAMILY, 10, "bold"),
+                bg=color,
+                fg="white",
+                width=12,
+                height=2,
+                relief=tk.FLAT,
+                command=lambda s=status: self._publish_vibration_status(s),
+            ).pack(side=tk.LEFT, padx=5, pady=5)
+
+        relay_frame = tk.LabelFrame(
+            parent_frame,
+            text="🔗 Jetson2 연결 테스트",
+            font=(FONT_FAMILY, 11, "bold"),
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+            padx=10,
+            pady=10,
+        )
+        relay_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        tk.Button(
+            relay_frame,
+            text="TEST 신호 보내기",
+            font=(FONT_FAMILY, 11, "bold"),
+            bg="#3498DB",
+            fg="white",
+            relief=tk.FLAT,
+            padx=20,
+            pady=10,
+            command=self._send_relay_test_signal,
+        ).pack(pady=5)
+
+        tk.Label(
+            relay_frame,
+            text="jetson1/relay/status 토픽으로 TEST 신호 발행\n(실제 릴레이는 동작하지 않음)",
+            font=(FONT_FAMILY, 9),
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT_LIGHT,
+        ).pack()
+
+        publish_frame = tk.Frame(parent_frame, bg=COLOR_PANEL)
+        publish_frame.pack(fill=tk.X, padx=10, pady=20)
+
+        tk.Button(
+            publish_frame,
+            text="지금 상태 즉시 발행",
+            font=(FONT_FAMILY, 12, "bold"),
+            bg="#2980B9",
+            fg="white",
+            relief=tk.FLAT,
+            padx=30,
+            pady=10,
+            command=self._manual_publish_now,
+        ).pack()
+
+    def _publish_vibration_status(self, status):
+        """진동센서 상태 발행"""
+        self.vibration_status = status
+        self.publish_status()
+
+        showinfo_topmost(
+            "발행 완료",
+            f"진동센서 상태: {status}\n\n"
+            f"{MQTT_TOPIC_STATUS} 토픽으로 발행됨",
+        )
+
+    def _send_relay_test_signal(self):
+        """Jetson2 릴레이 테스트 신호 발행"""
+        self.publish_relay_status("TEST")
+
+        showinfo_topmost(
+            "테스트 신호 발행",
+            "jetson1/relay/status 토픽으로\n"
+            "TEST 신호 발행 완료\n\n"
+            "Jetson2 로그 확인:\n"
+            "sudo journalctl -u jetson2-monitor -f | grep '릴레이'\n\n"
+            "예상 출력: '알 수 없는 상태: TEST'",
+        )
+
+    def _manual_publish_now(self):
+        """현재 상태 즉시 발행"""
+        self.publish_status()
+
+        status_summary = (
+            "현재 상태 발행 완료\n\n"
+            f"진동: {self.vibration_status}\n"
+            f"사람 감지: {self.person_detected}\n"
+            f"릴레이: {'ON' if self.relay_enabled else 'OFF'}"
+        )
+        showinfo_topmost("발행 완료", status_summary)
 
     def handle_settings_tap(self):
         """Handle settings button tap - 5 taps reveals shutdown"""

@@ -3135,243 +3135,242 @@ class JetsonIntegratedApp:
                  relief=tk.FLAT, padx=20, pady=5).pack(pady=10)
 
     def _create_manual_publish_tab(self, parent_frame):
-        """Create manual MQTT publish tab"""
+        """MQTT 수동 발행 탭 생성"""
         parent_frame.configure(bg=COLOR_PANEL)
 
-        quick_frame = tk.Frame(parent_frame, bg=COLOR_PANEL, bd=2, relief=tk.RAISED)
-        quick_frame.pack(fill=tk.X, padx=5, pady=5)
+        vibration_frame = tk.LabelFrame(
+            parent_frame,
+            text="🔧 진동센서 상태",
+            font=(FONT_FAMILY, 11, "bold"),
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+            padx=10,
+            pady=10,
+        )
+        vibration_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        tk.Label(quick_frame, text="빠른 테스트 (프리셋)",
-                font=MEDIUM_FONT, bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=8, pady=6)
+        vibration_btn_frame = tk.Frame(vibration_frame, bg=COLOR_PANEL)
+        vibration_btn_frame.pack()
 
-        def _preset_button(parent, text, command, bg):
-            tk.Button(parent, text=text, font=NORMAL_FONT, width=10,
-                     command=command, bg=bg, fg="white",
-                     relief=tk.FLAT, padx=6, pady=4).pack(side=tk.LEFT, padx=3, pady=2)
-
-        pot1_row = tk.Frame(quick_frame, bg=COLOR_PANEL)
-        pot1_row.pack(anchor="w", padx=8)
-        tk.Label(pot1_row, text="POT1:", font=NORMAL_FONT,
-                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(side=tk.LEFT, padx=3)
-        _preset_button(pot1_row, "IDLE", lambda: self._publish_preset_frying(1, "IDLE"), "#27AE60")
-        _preset_button(pot1_row, "COOKING", lambda: self._publish_preset_frying(1, "COOKING"), "#3498DB")
-        _preset_button(pot1_row, "DISCHARGE", lambda: self._publish_preset_frying(1, "DISCHARGE"), "#9B59B6")
-
-        pot2_row = tk.Frame(quick_frame, bg=COLOR_PANEL)
-        pot2_row.pack(anchor="w", padx=8)
-        tk.Label(pot2_row, text="POT2:", font=NORMAL_FONT,
-                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(side=tk.LEFT, padx=3)
-        _preset_button(pot2_row, "IDLE", lambda: self._publish_preset_frying(2, "IDLE"), "#27AE60")
-        _preset_button(pot2_row, "COOKING", lambda: self._publish_preset_frying(2, "COOKING"), "#3498DB")
-        _preset_button(pot2_row, "DISCHARGE", lambda: self._publish_preset_frying(2, "DISCHARGE"), "#9B59B6")
-
-        obs_left_row = tk.Frame(quick_frame, bg=COLOR_PANEL)
-        obs_left_row.pack(anchor="w", padx=8, pady=(6, 0))
-        tk.Label(obs_left_row, text="왼쪽 바켓:", font=NORMAL_FONT,
-                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(side=tk.LEFT, padx=3)
-        _preset_button(obs_left_row, "EMPTY", lambda: self._publish_preset_observe("left", "EMPTY"), "#95A5A6")
-        _preset_button(obs_left_row, "FILLED", lambda: self._publish_preset_observe("left", "FILLED"), "#27AE60")
-        _preset_button(obs_left_row, "NO_BASKET", lambda: self._publish_preset_observe("left", "NO_BASKET"), "#E67E22")
-
-        obs_right_row = tk.Frame(quick_frame, bg=COLOR_PANEL)
-        obs_right_row.pack(anchor="w", padx=8)
-        tk.Label(obs_right_row, text="오른쪽 바켓:", font=NORMAL_FONT,
-                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(side=tk.LEFT, padx=3)
-        _preset_button(obs_right_row, "EMPTY", lambda: self._publish_preset_observe("right", "EMPTY"), "#95A5A6")
-        _preset_button(obs_right_row, "FILLED", lambda: self._publish_preset_observe("right", "FILLED"), "#27AE60")
-        _preset_button(obs_right_row, "NO_BASKET", lambda: self._publish_preset_observe("right", "NO_BASKET"), "#E67E22")
-
-        tk.Button(quick_frame, text="지금 상태 즉시 발행",
-                 font=MEDIUM_FONT,
-                 command=self._publish_current_status,
-                 bg=COLOR_INFO, fg="white",
-                 relief=tk.FLAT, padx=10, pady=6).pack(pady=8)
-
-        custom_frame = tk.Frame(parent_frame, bg=COLOR_PANEL, bd=2, relief=tk.RAISED)
-        custom_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        tk.Label(custom_frame, text="커스텀 메시지",
-                font=MEDIUM_FONT, bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=8, pady=6)
-
-        topic_frame = tk.Frame(custom_frame, bg=COLOR_PANEL)
-        topic_frame.pack(fill=tk.X, padx=8, pady=4)
-        tk.Label(topic_frame, text="토픽:", font=NORMAL_FONT,
-                bg=COLOR_PANEL, fg=COLOR_TEXT).pack(side=tk.LEFT, padx=3)
-
-        topic_presets = [
-            MQTT_TOPIC_STATUS,
-            "test/frying",
-            "test/observe",
-            "custom..."
+        vibration_states = [
+            ("IDLE", "대기 중", "#95A5A6"),
+            ("MEASURING", "측정 중", "#3498DB"),
+            ("NORMAL", "정상", "#27AE60"),
+            ("ABNORMAL", "이상 감지", "#E74C3C"),
         ]
-        topic_var = tk.StringVar(value=MQTT_TOPIC_STATUS)
-        topic_combo = ttk.Combobox(topic_frame, textvariable=topic_var,
-                                   values=topic_presets, width=25)
-        topic_combo.pack(side=tk.LEFT, padx=5)
 
-        def _on_topic_selected(event):
-            if topic_var.get().strip() == "custom...":
-                topic_var.set("")
-                topic_combo.focus_set()
+        for status, label, color in vibration_states:
+            tk.Button(
+                vibration_btn_frame,
+                text=f"{status}\n{label}",
+                font=(FONT_FAMILY, 10, "bold"),
+                bg=color,
+                fg="white",
+                width=12,
+                height=2,
+                relief=tk.FLAT,
+                command=lambda s=status: self._publish_vibration_status(s),
+            ).pack(side=tk.LEFT, padx=5, pady=5)
 
-        topic_combo.bind("<<ComboboxSelected>>", _on_topic_selected)
+        frying_frame = tk.LabelFrame(
+            parent_frame,
+            text="🍳 튀김 상태",
+            font=(FONT_FAMILY, 11, "bold"),
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+            padx=10,
+            pady=10,
+        )
+        frying_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        tk.Label(custom_frame, text="메시지 (JSON):",
-                font=NORMAL_FONT, bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=8)
+        pot1_frame = tk.Frame(frying_frame, bg=COLOR_PANEL)
+        pot1_frame.pack(fill=tk.X, pady=5)
+        tk.Label(
+            pot1_frame,
+            text="POT1:",
+            font=(FONT_FAMILY, 10, "bold"),
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        for status, color in [
+            ("IDLE", "#95A5A6"),
+            ("COOKING", "#F39C12"),
+            ("DISCHARGE", "#E74C3C"),
+        ]:
+            tk.Button(
+                pot1_frame,
+                text=status,
+                font=(FONT_FAMILY, 10, "bold"),
+                bg=color,
+                fg="white",
+                width=10,
+                relief=tk.FLAT,
+                command=lambda s=status: self._publish_frying_status(1, s),
+            ).pack(side=tk.LEFT, padx=5)
 
-        msg_text = tk.Text(custom_frame, height=6, font=(FONT_FAMILY, 9),
-                          bg=COLOR_BG, fg=COLOR_TEXT, wrap=tk.WORD)
-        msg_text.pack(fill=tk.X, padx=8, pady=4)
-        msg_text.insert(tk.END, '{\n  "test": "message"\n}')
+        pot2_frame = tk.Frame(frying_frame, bg=COLOR_PANEL)
+        pot2_frame.pack(fill=tk.X, pady=5)
+        tk.Label(
+            pot2_frame,
+            text="POT2:",
+            font=(FONT_FAMILY, 10, "bold"),
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        for status, color in [
+            ("IDLE", "#95A5A6"),
+            ("COOKING", "#F39C12"),
+            ("DISCHARGE", "#E74C3C"),
+        ]:
+            tk.Button(
+                pot2_frame,
+                text=status,
+                font=(FONT_FAMILY, 10, "bold"),
+                bg=color,
+                fg="white",
+                width=10,
+                relief=tk.FLAT,
+                command=lambda s=status: self._publish_frying_status(2, s),
+            ).pack(side=tk.LEFT, padx=5)
 
-        btn_row = tk.Frame(custom_frame, bg=COLOR_PANEL)
-        btn_row.pack(pady=6)
+        observe_frame = tk.LabelFrame(
+            parent_frame,
+            text="🧺 바켓 상태",
+            font=(FONT_FAMILY, 11, "bold"),
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+            padx=10,
+            pady=10,
+        )
+        observe_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        def _publish_custom_message():
-            topic = topic_var.get().strip()
-            if not topic:
-                showwarning_topmost("MQTT", "토픽을 입력하세요.")
-                return
-            raw_message = msg_text.get("1.0", tk.END).strip()
-            if not raw_message:
-                showwarning_topmost("MQTT", "메시지를 입력하세요.")
-                return
-            try:
-                message_dict = json.loads(raw_message)
-            except json.JSONDecodeError as e:
-                showerror_topmost("JSON 오류", f"JSON 형식 오류:\n{e}")
-                return
-            self._publish_test_message(topic, message_dict)
+        left_frame = tk.Frame(observe_frame, bg=COLOR_PANEL)
+        left_frame.pack(fill=tk.X, pady=5)
+        tk.Label(
+            left_frame,
+            text="왼쪽:",
+            font=(FONT_FAMILY, 10, "bold"),
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        for status, color in [
+            ("EMPTY", "#95A5A6"),
+            ("FILLED", "#27AE60"),
+            ("NO_BASKET", "#E67E22"),
+        ]:
+            tk.Button(
+                left_frame,
+                text=status,
+                font=(FONT_FAMILY, 10, "bold"),
+                bg=color,
+                fg="white",
+                width=10,
+                relief=tk.FLAT,
+                command=lambda s=status: self._publish_observe_status("left", s),
+            ).pack(side=tk.LEFT, padx=5)
 
-        tk.Button(btn_row, text="JSON 검증",
-                 font=NORMAL_FONT,
-                 command=lambda: self._validate_json_text(msg_text),
-                 bg=COLOR_BUTTON, fg="white",
-                 relief=tk.FLAT, padx=10).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_row, text="발행하기",
-                 font=NORMAL_FONT,
-                 command=_publish_custom_message,
-                 bg=COLOR_OK, fg="white",
-                 relief=tk.FLAT, padx=10).pack(side=tk.LEFT, padx=5)
+        right_frame = tk.Frame(observe_frame, bg=COLOR_PANEL)
+        right_frame.pack(fill=tk.X, pady=5)
+        tk.Label(
+            right_frame,
+            text="오른쪽:",
+            font=(FONT_FAMILY, 10, "bold"),
+            bg=COLOR_PANEL,
+            fg=COLOR_TEXT,
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        for status, color in [
+            ("EMPTY", "#95A5A6"),
+            ("FILLED", "#27AE60"),
+            ("NO_BASKET", "#E67E22"),
+        ]:
+            tk.Button(
+                right_frame,
+                text=status,
+                font=(FONT_FAMILY, 10, "bold"),
+                bg=color,
+                fg="white",
+                width=10,
+                relief=tk.FLAT,
+                command=lambda s=status: self._publish_observe_status("right", s),
+            ).pack(side=tk.LEFT, padx=5)
 
-        log_frame = tk.Frame(parent_frame, bg=COLOR_PANEL, bd=2, relief=tk.RAISED)
-        log_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        publish_frame = tk.Frame(parent_frame, bg=COLOR_PANEL)
+        publish_frame.pack(fill=tk.X, padx=10, pady=20)
+        tk.Button(
+            publish_frame,
+            text="지금 상태 즉시 발행",
+            font=(FONT_FAMILY, 12, "bold"),
+            bg="#2980B9",
+            fg="white",
+            relief=tk.FLAT,
+            padx=30,
+            pady=10,
+            command=self._manual_publish_now,
+        ).pack()
 
-        tk.Label(log_frame, text="발행 로그 (최근 10개)",
-                font=MEDIUM_FONT, bg=COLOR_PANEL, fg=COLOR_TEXT).pack(anchor="w", padx=8, pady=6)
-
-        log_text = tk.Text(log_frame, height=7, font=(FONT_FAMILY, 9),
-                          bg=COLOR_BG, fg=COLOR_TEXT, wrap=tk.WORD, state=tk.DISABLED)
-        log_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
-
-        self._mqtt_publish_log_widget = log_text
-        self._refresh_publish_log_widget(log_text)
-
-    def _validate_json_text(self, text_widget):
-        """Validate JSON in a Text widget"""
-        raw_message = text_widget.get("1.0", tk.END).strip()
-        if not raw_message:
-            showwarning_topmost("JSON", "메시지를 입력하세요.")
-            return False
-        try:
-            json.loads(raw_message)
-            showinfo_topmost("JSON", "JSON 형식이 올바릅니다.")
-            return True
-        except json.JSONDecodeError as e:
-            showerror_topmost("JSON 오류", f"JSON 형식 오류:\n{e}")
-            return False
-
-    def _refresh_publish_log_widget(self, log_widget):
-        """Refresh publish log text widget"""
-        if log_widget is None:
-            return
-        log_widget.config(state=tk.NORMAL)
-        log_widget.delete(1.0, tk.END)
-        if not self.mqtt_publish_log:
-            log_widget.insert(tk.END, "(발행 내역 없음)")
-        else:
-            for entry in reversed(self.mqtt_publish_log):
-                status = "OK" if entry["success"] else "FAIL"
-                log_widget.insert(tk.END, f"[{entry['time']}] {entry['topic']} {status}\n")
-                log_widget.insert(tk.END, f"-> {entry['payload']}\n\n")
-        log_widget.config(state=tk.DISABLED)
-
-    def _append_publish_log(self, topic, payload, success, log_widget=None):
-        """Append entry to publish log and refresh widget"""
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        log_entry = {
-            "time": timestamp,
-            "topic": topic,
-            "payload": payload,
-            "success": success
-        }
-        self.mqtt_publish_log.append(log_entry)
-        if len(self.mqtt_publish_log) > self.mqtt_publish_log_max:
-            self.mqtt_publish_log.pop(0)
-
-        widget = log_widget
-        if widget is None and hasattr(self, "_mqtt_publish_log_widget"):
-            widget = self._mqtt_publish_log_widget
-
-        try:
-            if widget and widget.winfo_exists():
-                self._refresh_publish_log_widget(widget)
-        except Exception:
-            pass
-
-    def _publish_current_status(self, log_widget=None):
-        """Publish current unified status and log it"""
-        if not MQTT_ENABLED or not self.mqtt_client:
-            showwarning_topmost("MQTT", "MQTT 비활성화 상태입니다.")
-            self._append_publish_log(MQTT_TOPIC_STATUS, "(MQTT disabled)", False, log_widget)
-            return False
-
-        status_data = self._build_status_payload()
-        payload = json.dumps(status_data, ensure_ascii=False)
+    def _publish_vibration_status(self, status):
+        """진동센서 상태 발행"""
+        self.vibration_status = status
         success = self.publish_status()
-        self._append_publish_log(MQTT_TOPIC_STATUS, payload, success, log_widget)
-        return success
 
-    def _publish_test_message(self, topic, message_dict, log_widget=None):
-        """테스트용 MQTT 메시지 발행"""
-        if not MQTT_ENABLED or not self.mqtt_client:
-            showwarning_topmost("MQTT", "MQTT 비활성화 상태입니다.")
-            self._append_publish_log(topic, "(MQTT disabled)", False, log_widget)
-            return False
+        if success:
+            showinfo_topmost(
+                "발행 완료",
+                f"진동센서 상태: {status}\n\n"
+                f"{MQTT_TOPIC_STATUS} 토픽으로 발행됨",
+            )
+        else:
+            showerror_topmost("발행 실패", "MQTT 연결 확인 필요")
 
-        try:
-            payload = json.dumps(message_dict, ensure_ascii=False)
-        except (TypeError, ValueError) as e:
-            showerror_topmost("JSON 오류", f"JSON 직렬화 실패: {e}")
-            self._append_publish_log(topic, str(message_dict), False, log_widget)
-            return False
-
-        try:
-            self.mqtt_client.client.publish(topic, payload, qos=MQTT_QOS)
-            success = True
-        except Exception as e:
-            showerror_topmost("MQTT 오류", f"발행 실패: {e}")
-            success = False
-
-        self._append_publish_log(topic, payload, success, log_widget)
-        return success
-
-    def _publish_preset_frying(self, pot_num, status):
-        """프리셋: 튀김 상태 발행"""
+    def _publish_frying_status(self, pot_num, status):
+        """튀김 상태 발행"""
         if pot_num == 1:
             self.pot1_pot_status = status
-        elif pot_num == 2:
+        else:
             self.pot2_pot_status = status
-        return self._publish_current_status()
 
-    def _publish_preset_observe(self, side, status):
-        """프리셋: 관찰 상태 발행"""
+        success = self.publish_status()
+        if success:
+            showinfo_topmost(
+                "발행 완료",
+                f"POT{pot_num} 상태: {status}\n\n"
+                f"{MQTT_TOPIC_STATUS} 토픽으로 발행됨",
+            )
+        else:
+            showerror_topmost("발행 실패", "MQTT 연결 확인 필요")
+
+    def _publish_observe_status(self, side, status):
+        """바켓 상태 발행"""
         if side == "left":
             self.observe_left_state = status
-        elif side == "right":
+        else:
             self.observe_right_state = status
-        return self._publish_current_status()
+
+        success = self.publish_status()
+        if success:
+            showinfo_topmost(
+                "발행 완료",
+                f"{side} 바켓 상태: {status}\n\n"
+                f"{MQTT_TOPIC_STATUS} 토픽으로 발행됨",
+            )
+        else:
+            showerror_topmost("발행 실패", "MQTT 연결 확인 필요")
+
+    def _manual_publish_now(self):
+        """현재 상태 즉시 발행"""
+        success = self.publish_status()
+        if success:
+            status_summary = (
+                "현재 상태 발행 완료\n\n"
+                f"진동: {self.vibration_status}\n"
+                f"POT1: {self.pot1_pot_status}\n"
+                f"POT2: {self.pot2_pot_status}\n"
+                f"왼쪽 바켓: {self.observe_left_state}\n"
+                f"오른쪽 바켓: {self.observe_right_state}"
+            )
+            showinfo_topmost("발행 완료", status_summary)
+        else:
+            showerror_topmost("발행 실패", "MQTT 연결 확인 필요")
 
     def open_settings(self):
         """Open settings dialog (placeholder)"""

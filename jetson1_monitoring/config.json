@@ -55,6 +55,7 @@
   "_comment_mqtt_publish": "MQTT 발행 토픽 (Jetson → Robot PC)",
   "mqtt_topic": "robot/control",
   "mqtt_topic_ai_mode": "jetson1/system/ai_mode",
+  "mqtt_topic_jetson1_relay": "jetson1/relay/status",
   "_comment_mqtt_subscribe": "MQTT 구독 토픽 (Robot PC → Jetson)",
   "mqtt_topic_stirfry_pot1_food_type": "stirfry/pot1/food_type",
   "mqtt_topic_stirfry_pot1_control": "stirfry/pot1/control",
