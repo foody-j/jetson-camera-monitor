@@ -1960,10 +1960,20 @@ class JetsonIntegratedApp:
                     print(f"[POT1 색상 DEBUG] color_result = {color_result}")  # DEBUG
                     if "error" not in color_result:
                         color_diff = color_result['color_diff']
-                        cv2.putText(vis, f"Color: {color_diff:.1f}",
-                                    (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
-                        cv2.putText(vis, f"Progress: {color_result['progress_pct']:.0f}%",
-                                    (16, 85), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+                        # Bottom-right, larger text for visibility
+                        h, w = vis.shape[:2]
+                        color_text = f"Color: {color_diff:.1f}"
+                        prog_text = f"Progress: {color_result['progress_pct']:.0f}%"
+                        font_scale = 1.6
+                        thickness = 3
+                        (ct_w, ct_h), _ = cv2.getTextSize(color_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+                        (pt_w, pt_h), _ = cv2.getTextSize(prog_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+                        x = max(10, w - max(ct_w, pt_w) - 16)
+                        y = max(ct_h + pt_h + 20, h - 16)
+                        cv2.putText(vis, color_text, (x, y - pt_h - 8),
+                                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
+                        cv2.putText(vis, prog_text, (x, y),
+                                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
 
                         # Update GUI color_diff label
                         self.frying_left_color_diff_label.config(text=f"색상변화: {color_diff:.1f}")
@@ -2108,10 +2118,20 @@ class JetsonIntegratedApp:
                     print(f"[POT2 색상 DEBUG] color_result = {color_result}")  # DEBUG
                     if "error" not in color_result:
                         color_diff = color_result['color_diff']
-                        cv2.putText(vis, f"Color: {color_diff:.1f}",
-                                    (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
-                        cv2.putText(vis, f"Progress: {color_result['progress_pct']:.0f}%",
-                                    (16, 85), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+                        # Bottom-right, larger text for visibility
+                        h, w = vis.shape[:2]
+                        color_text = f"Color: {color_diff:.1f}"
+                        prog_text = f"Progress: {color_result['progress_pct']:.0f}%"
+                        font_scale = 1.6
+                        thickness = 3
+                        (ct_w, ct_h), _ = cv2.getTextSize(color_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+                        (pt_w, pt_h), _ = cv2.getTextSize(prog_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+                        x = max(10, w - max(ct_w, pt_w) - 16)
+                        y = max(ct_h + pt_h + 20, h - 16)
+                        cv2.putText(vis, color_text, (x, y - pt_h - 8),
+                                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
+                        cv2.putText(vis, prog_text, (x, y),
+                                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
 
                         # Update GUI color_diff label
                         self.frying_right_color_diff_label.config(text=f"색상변화: {color_diff:.1f}")
