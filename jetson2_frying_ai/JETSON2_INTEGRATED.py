@@ -884,7 +884,7 @@ class JetsonIntegratedApp:
 
             # Color checker baseline 리셋 (새로운 조리 시작)
             self.color_checker_left.reset()
-            print(f"[색상] POT1 baseline 리셋 완료")
+            print(f"[색상] POT1 baseline 리셋 완료 (로봇 감지 대기)")
 
             # 로봇 감지기 리셋
             self.robot_detector_pot1.reset()
@@ -957,7 +957,7 @@ class JetsonIntegratedApp:
 
             # Color checker baseline 리셋 (새로운 조리 시작)
             self.color_checker_right.reset()
-            print(f"[색상] POT2 baseline 리셋 완료")
+            print(f"[색상] POT2 baseline 리셋 완료 (로봇 감지 대기)")
 
             # 로봇 감지기 리셋
             self.robot_detector_pot2.reset()
@@ -1904,6 +1904,9 @@ class JetsonIntegratedApp:
 
                 if robot_result["state_changed"] and robot_result["robot_detected"]:
                     print(f"[POT1] 로봇 진입 감지! metal_ratio={robot_result['metal_ratio']:.4f}")
+                    baseline_result = self.color_checker_left.set_baseline(frame)
+                    if baseline_result.get("baseline_set"):
+                        print(f"[POT1] 색상 baseline 설정 완료: {baseline_result['color']}")
                     self.schedule_taltal_capture(pot=1, delay_sec=2.0)
 
                 if robot_result["state_changed"] and not robot_result["robot_detected"]:
@@ -1976,10 +1979,9 @@ class JetsonIntegratedApp:
                             if self.pot1_pot_status != "COOKING":
                                 self.pot1_pot_status = "COOKING"
                     elif color_result.get("error") == "baseline_not_set":
-                        # 첫 프레임에서 자동으로 baseline 설정
-                        self.color_checker_left.set_baseline(frame)
-                        # GUI 초기화
-                        self.frying_left_color_diff_label.config(text="색상변화: 0.0")
+                        self.frying_left_color_diff_label.config(text="색상변화: 대기중")
+                        cv2.putText(vis, "Waiting for robot...",
+                                    (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (128, 128, 128), 2)
                     else:
                         # Error case
                         self.frying_left_color_diff_label.config(text="색상변화: --")
@@ -2053,6 +2055,9 @@ class JetsonIntegratedApp:
 
                 if robot_result["state_changed"] and robot_result["robot_detected"]:
                     print(f"[POT2] 로봇 진입 감지! metal_ratio={robot_result['metal_ratio']:.4f}")
+                    baseline_result = self.color_checker_right.set_baseline(frame)
+                    if baseline_result.get("baseline_set"):
+                        print(f"[POT2] 색상 baseline 설정 완료: {baseline_result['color']}")
                     self.schedule_taltal_capture(pot=2, delay_sec=2.0)
 
                 if robot_result["state_changed"] and not robot_result["robot_detected"]:
@@ -2122,10 +2127,9 @@ class JetsonIntegratedApp:
                             if self.pot2_pot_status != "COOKING":
                                 self.pot2_pot_status = "COOKING"
                     elif color_result.get("error") == "baseline_not_set":
-                        # 첫 프레임에서 자동으로 baseline 설정
-                        self.color_checker_right.set_baseline(frame)
-                        # GUI 초기화
-                        self.frying_right_color_diff_label.config(text="색상변화: 0.0")
+                        self.frying_right_color_diff_label.config(text="색상변화: 대기중")
+                        cv2.putText(vis, "Waiting for robot...",
+                                    (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (128, 128, 128), 2)
                     else:
                         # Error case
                         self.frying_right_color_diff_label.config(text="색상변화: --")
