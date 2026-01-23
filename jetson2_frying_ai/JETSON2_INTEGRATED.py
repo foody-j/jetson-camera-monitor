@@ -2216,18 +2216,22 @@ class JetsonIntegratedApp:
             print(f"[POT2] 탈탈 캡처 예약 ({delay_sec}초 후)")
 
     def capture_taltal_frame(self, pot: int):
-        """탈탈 프레임 캡처 및 색상 측정."""
+        """탈탈 프레임 캡처 및 색상 측정 (최신 프레임 사용 - cap.read() 경합 방지)."""
         try:
             if pot == 1:
-                ret, frame = self.frying_left_cap.read()
-                if ret and frame is not None:
+                frame = self.latest_frying_left_frame
+                if frame is not None:
                     color_result = self.color_checker_left.measure(frame)
                     print(f"[POT1 탈탈] 색상 측정: {color_result}")
+                else:
+                    print(f"[POT1 탈탈] 최신 프레임 없음 - 스킵")
             else:
-                ret, frame = self.frying_right_cap.read()
-                if ret and frame is not None:
+                frame = self.latest_frying_right_frame
+                if frame is not None:
                     color_result = self.color_checker_right.measure(frame)
                     print(f"[POT2 탈탈] 색상 측정: {color_result}")
+                else:
+                    print(f"[POT2 탈탈] 최신 프레임 없음 - 스킵")
 
         except Exception as e:
             print(f"[POT{pot} 탈탈] 캡처 실패: {e}")
@@ -3802,7 +3806,7 @@ class JetsonIntegratedApp:
         self.pot1_collecting = False
         duration = (datetime.now() - self.pot1_start_time).total_seconds()
 
-        # Save session info
+        # Save session info (백그라운드 스레드에서 저장 - GUI 프리징 방지)
         session_info = {
             "pot": "pot1",
             "session_id": self.pot1_session_id,
@@ -3815,14 +3819,13 @@ class JetsonIntegratedApp:
             "completion_marked": self.pot1_completion_marked,
             "cameras_used": [0, 2],
             "total_frames_saved": self.pot1_frame_counter,
-            "raw_metadata": self.pot1_metadata,
+            "raw_metadata": list(self.pot1_metadata),  # 복사본
             "metadata_count": len(self.pot1_metadata)
         }
 
-        # Save metadata
+        # 백그라운드 스레드에서 JSON 저장
         info_path = os.path.join(self.pot1_session_dir, "session_info.json")
-        with open(info_path, 'w', encoding='utf-8') as f:
-            json.dump(session_info, f, indent=2, ensure_ascii=False)
+        threading.Thread(target=self._save_session_info, args=(info_path, session_info), daemon=True).start()
 
         print(f"[POT1 수집] 종료: {self.pot1_frame_counter}장 저장, {duration:.1f}초")
         print(f"[POT1 수집] 음식 종류: {self.pot1_food_type}")
@@ -3890,7 +3893,7 @@ class JetsonIntegratedApp:
         self.pot2_collecting = False
         duration = (datetime.now() - self.pot2_start_time).total_seconds()
 
-        # Save session info
+        # Save session info (백그라운드 스레드에서 저장 - GUI 프리징 방지)
         session_info = {
             "pot": "pot2",
             "session_id": self.pot2_session_id,
@@ -3903,14 +3906,13 @@ class JetsonIntegratedApp:
             "completion_marked": self.pot2_completion_marked,
             "cameras_used": [1, 3],
             "total_frames_saved": self.pot2_frame_counter,
-            "raw_metadata": self.pot2_metadata,
+            "raw_metadata": list(self.pot2_metadata),  # 복사본
             "metadata_count": len(self.pot2_metadata)
         }
 
-        # Save metadata
+        # 백그라운드 스레드에서 JSON 저장
         info_path = os.path.join(self.pot2_session_dir, "session_info.json")
-        with open(info_path, 'w', encoding='utf-8') as f:
-            json.dump(session_info, f, indent=2, ensure_ascii=False)
+        threading.Thread(target=self._save_session_info, args=(info_path, session_info), daemon=True).start()
 
         print(f"[POT2 수집] 종료: {self.pot2_frame_counter}장 저장, {duration:.1f}초")
         print(f"[POT2 수집] 음식 종류: {self.pot2_food_type}")
@@ -3954,6 +3956,16 @@ class JetsonIntegratedApp:
             # 3-of-4 전략: 수집 종료 후 카메라도 OFF (dynamic_camera_enabled=true인 경우만)
             if DYNAMIC_CAMERA_ENABLED:
                 self.stop_frying_camera("1")
+
+    def _save_session_info(self, info_path, session_info):
+        """세션 정보 JSON 저장 (백그라운드 스레드에서 호출)"""
+        import json
+        try:
+            with open(info_path, 'w', encoding='utf-8') as f:
+                json.dump(session_info, f, indent=2, ensure_ascii=False)
+            print(f"[세션저장] 완료: {info_path}")
+        except Exception as e:
+            print(f"[세션저장] 실패: {e}")
 
     def save_pot1_data(self, frying_left, observe_left, observe_right):
         """Save POT1 frames (cameras 0, 2) - 별도 프로세스에서 저장"""
