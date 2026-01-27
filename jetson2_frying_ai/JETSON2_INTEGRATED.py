@@ -24,6 +24,9 @@ import json
 import threading
 import sys
 import numpy as np
+import torch
+import torch.nn.functional as F
+import glob
 from collections import deque
 from queue import Queue, Empty
 import socket
@@ -47,6 +50,7 @@ from frying_segmenter import FoodSegmenter
 
 # Import Simple Color Checker
 from simple_checker.color_checker import SimpleColorChecker
+from gpu_postprocess import GPUPostProcessor
 from simple_checker.robot_detector import RobotDetector, PotType
 
 # Import GPIO for Relay control
@@ -78,6 +82,31 @@ def _path_exists(path):
     if os.path.isabs(path):
         return os.path.exists(path)
     return os.path.exists(path) or os.path.exists(os.path.join(SCRIPT_DIR, path))
+
+class SimulatedCamera:
+    """Camera shim that returns frames from disk."""
+    def __init__(self, image_paths, name="camera"):
+        self.image_paths = image_paths
+        self.index = 0
+        self.name = name
+
+    def start(self):
+        return True
+
+    def stop(self):
+        return True
+
+    def read(self):
+        if not self.image_paths:
+            return False, None
+        if self.index >= len(self.image_paths):
+            self.index = 0
+        path = self.image_paths[self.index]
+        self.index += 1
+        frame = cv2.imread(path)
+        if frame is None:
+            return False, None
+        return True, frame
 
 def get_ip_address():
     """Get local IP address"""
@@ -273,17 +302,27 @@ GUI_UPDATE_INTERVAL = config.get('gui_update_interval_ms', 50)
 # Frame skip settings (CPU 절약)
 FRYING_FRAME_SKIP = config.get('frying_frame_skip', 3)
 OBSERVE_FRAME_SKIP = config.get('observe_frame_skip', 5)
-GUI_FRAME_SKIP = config.get('gui_frame_skip', 3)  # GUI 표시 프레임 스킵 (3=10fps)
+GUI_FRAME_SKIP = config.get('gui_frame_skip', 3)  # GUI 표시 프레임 스킵 (기본)
+FRYING_GUI_FRAME_SKIP = config.get('frying_gui_frame_skip', GUI_FRAME_SKIP)
+OBSERVE_GUI_FRAME_SKIP = config.get('observe_gui_frame_skip', GUI_FRAME_SKIP)
+COLOR_CHECK_INTERVAL = config.get('color_check_interval', 10)
+DEBUG_PRINT = config.get('debug_print_enabled', False)
+HEADLESS_MODE = config.get('headless_mode', False)
+TEXT_ONLY_MODE = config.get('text_only_mode', False)
 
 
 # =========================
 # Main Application Class
 # =========================
 class JetsonIntegratedApp:
-    def __init__(self, root):
+    def __init__(self, root, simulate_config=None):
         self.root = root
         self.root.title("Jetson #2 - AI Monitoring System")
         self.root.configure(bg=COLOR_BG)  # WHITE MODE
+        self.simulate_mode = bool(simulate_config)
+        self.simulate_config = simulate_config or {}
+        self._process = psutil.Process(os.getpid()) if psutil else None
+        self.gui_image_enabled = not (HEADLESS_MODE or TEXT_ONLY_MODE)
 
         # Window decorations (config에서 설정)
         if not WINDOW_DECORATIONS:
@@ -301,6 +340,9 @@ class JetsonIntegratedApp:
             # Windowed mode
             self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+0+0")
             print(f"[디스플레이] 창 모드 ({WINDOW_WIDTH}x{WINDOW_HEIGHT})")
+
+        if HEADLESS_MODE:
+            self.root.withdraw()
 
         # System info
         self.sys_info = SystemInfo(device_name="Jetson2", location="Kitchen")
@@ -325,7 +367,6 @@ class JetsonIntegratedApp:
 
         # Check CUDA availability
         import gc
-        import torch
 
         # GPU 메모리 정리 (이전 실행 잔여물 제거)
         gc.collect()
@@ -350,6 +391,7 @@ class JetsonIntegratedApp:
         self.color_checker_left = SimpleColorChecker(color_threshold=25.0)
         self.color_checker_right = SimpleColorChecker(color_threshold=25.0)
         print(f"[모델] Color checker 초기화 완료")
+        self.gpu_post = GPUPostProcessor(device=self.device)
 
         # Robot detector (로봇 암 진입 감지)
         self.robot_detector_pot1 = RobotDetector(pot_type=PotType.POT1)  # 우측 상단 감지
@@ -442,6 +484,11 @@ class JetsonIntegratedApp:
         self.gui_frame_skip_frying_right = 0
         self.gui_frame_skip_observe_left = 0
         self.gui_frame_skip_observe_right = 0
+        # Color check throttling
+        self.color_check_left_count = 0
+        self.color_check_right_count = 0
+        self.last_pot1_color_result = None
+        self.last_pot2_color_result = None
 
         # Camera objects
         self.frying_left_cap = None
@@ -1377,6 +1424,12 @@ class JetsonIntegratedApp:
                                    bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT)
         self.disk_label.pack(side=tk.LEFT, padx=3)
 
+        # 프로세스 CPU 사용률 (축소)
+        self.cpu_label = tk.Label(header_frame, text="🧠 --%",
+                                  font=(FONT_FAMILY, 10),
+                                  bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT)
+        self.cpu_label.pack(side=tk.LEFT, padx=3)
+
         # RIGHT: 버튼들 (오른쪽 정렬)
 
         # Vibration check toggle button
@@ -1632,6 +1685,10 @@ class JetsonIntegratedApp:
         # 카메라 초기화 딜레이 (드라이버 안정화)
         CAMERA_INIT_DELAY = 4.0  # 초 (현장 IVC 채널 과부하 방지)
 
+        if self.simulate_mode:
+            self._init_simulated_cameras()
+            return
+
         # ==============================================
         # 3-of-4 카메라 전략: video0,1,2 항상 ON, video3(바켓 오른쪽) OFF
         # ==============================================
@@ -1716,6 +1773,68 @@ class JetsonIntegratedApp:
         if self.observe_left_cap: active_cams.append("video2(바켓L)")
         if self.observe_right_cap: active_cams.append("video3(바켓R)")
         print(f"[카메라] 초기화 완료! 활성: {', '.join(active_cams) if active_cams else '없음'}")
+
+    def _init_simulated_cameras(self):
+        """Initialize simulated cameras from recorded frames."""
+        print("[카메라] 시뮬레이션 모드 - 녹화 이미지 로드")
+
+        def _load_images(folder):
+            if not folder or not os.path.isdir(folder):
+                return []
+            return sorted(glob.glob(os.path.join(folder, "*.jpg")))
+
+        def _resolve_camera_root(base_dir, cam_dirs):
+            """Resolve to a folder that contains camera_* directories."""
+            if not base_dir or not os.path.isdir(base_dir):
+                return None
+
+            candidates = []
+
+            def _has_cam_dirs(path):
+                return any(os.path.isdir(os.path.join(path, cam)) for cam in cam_dirs)
+
+            # base_dir itself
+            if _has_cam_dirs(base_dir):
+                candidates.append(base_dir)
+
+            # one-level subdirs (session or food_type)
+            for child in sorted(glob.glob(os.path.join(base_dir, "*"))):
+                if os.path.isdir(child) and _has_cam_dirs(child):
+                    candidates.append(child)
+
+            # two-level subdirs (session/food_type)
+            for child in sorted(glob.glob(os.path.join(base_dir, "*", "*"))):
+                if os.path.isdir(child) and _has_cam_dirs(child):
+                    candidates.append(child)
+
+            if not candidates:
+                return None
+
+            # pick most recent folder to match latest auto-collection
+            return max(candidates, key=lambda p: os.path.getmtime(p))
+
+        pot1_dir = _resolve_camera_root(self.simulate_config.get("pot1"), ["camera_0", "camera_2"])
+        pot2_dir = _resolve_camera_root(self.simulate_config.get("pot2"), ["camera_1", "camera_3"])
+
+        pot1_cam0 = _load_images(os.path.join(pot1_dir, "camera_0")) if pot1_dir else []
+        pot1_cam2 = _load_images(os.path.join(pot1_dir, "camera_2")) if pot1_dir else []
+        pot2_cam1 = _load_images(os.path.join(pot2_dir, "camera_1")) if pot2_dir else []
+        pot2_cam3 = _load_images(os.path.join(pot2_dir, "camera_3")) if pot2_dir else []
+
+        self.frying_left_cap = SimulatedCamera(pot1_cam0, name="camera_0") if pot1_cam0 else None
+        self.observe_left_cap = SimulatedCamera(pot1_cam2, name="camera_2") if pot1_cam2 else None
+        self.frying_right_cap = SimulatedCamera(pot2_cam1, name="camera_1") if pot2_cam1 else None
+        self.observe_right_cap = SimulatedCamera(pot2_cam3, name="camera_3") if pot2_cam3 else None
+
+        self.frying_left_streaming = self.frying_left_cap is not None
+        self.frying_right_streaming = self.frying_right_cap is not None
+
+        active = []
+        if self.frying_left_cap: active.append("sim:camera_0")
+        if self.frying_right_cap: active.append("sim:camera_1")
+        if self.observe_left_cap: active.append("sim:camera_2")
+        if self.observe_right_cap: active.append("sim:camera_3")
+        print(f"[카메라] 시뮬레이션 초기화 완료! 활성: {', '.join(active) if active else '없음'}")
 
     def _start_ai_workers(self):
         """Start AI inference workers (single-threaded per model)."""
@@ -1873,6 +1992,17 @@ class JetsonIntegratedApp:
                 except Exception as e:
                     self.disk_label.config(text="💾 --", fg=COLOR_TEXT)
 
+            # Update process CPU usage (every second)
+            if self._process:
+                try:
+                    cpu_pct = self._process.cpu_percent(interval=None)
+                    cpu_color = COLOR_OK if cpu_pct < 50 else COLOR_WARNING if cpu_pct < 80 else COLOR_ERROR
+                    self.cpu_label.config(text=f"🧠 {cpu_pct:.0f}%", fg=cpu_color)
+                except Exception:
+                    self.cpu_label.config(text="🧠 --%", fg=COLOR_TEXT)
+            else:
+                self.cpu_label.config(text="🧠 --%", fg=COLOR_TEXT)
+
         # 로봇 상태 업데이트 처리 (MQTT 콜백에서 전달받음)
         if self._robot_status_update:
             try:
@@ -1889,22 +2019,35 @@ class JetsonIntegratedApp:
         if not self.running:
             return
 
+        # POT1 수집 타이머 (카메라 상태와 무관하게 항상 작동)
+        if self.pot1_collecting:
+            self.pot1_timer += GUI_UPDATE_INTERVAL / 1000.0
+            if self.pot1_timer >= self.collection_interval:
+                self.pot1_timer = 0
+                if DEBUG_PRINT:
+                    print(f"[POT1 수집] 저장 트리거: interval={self.collection_interval}, frying_left={'OK' if self.latest_frying_left_frame is not None else 'None'}")
+                self.save_pot1_data(
+                    self.latest_frying_left_frame,
+                    self.latest_observe_left_frame,
+                    self.latest_observe_right_frame
+                )
+
         if self.frying_left_cap is None:
-            # 카메라 없어도 다음 스케줄 유지 (동적 ON/OFF 지원)
             self.root.after(GUI_UPDATE_INTERVAL, self.update_frying_left)
             return
 
         ret, frame = self.frying_left_cap.read()
         if ret:
-            vis = frame.copy()
+            frame_snapshot = frame.copy()
+            color_result = None
 
             if self.frying_running or self.pot1_collecting:
                 # 로봇 감지 (색상 체크 전에 실행)
-                robot_result = self.robot_detector_pot1.detect(frame)
+                robot_result = self.robot_detector_pot1.detect(frame_snapshot)
 
                 if robot_result["state_changed"] and robot_result["robot_detected"]:
                     print(f"[POT1] 로봇 진입 감지! metal_ratio={robot_result['metal_ratio']:.4f}")
-                    baseline_result = self.color_checker_left.set_baseline(frame)
+                    baseline_result = self.color_checker_left.set_baseline(frame_snapshot)
                     if baseline_result.get("baseline_set"):
                         print(f"[POT1] 색상 baseline 설정 완료: {baseline_result['color']}")
                     self.schedule_taltal_capture(pot=1, delay_sec=2.0)
@@ -1918,63 +2061,21 @@ class JetsonIntegratedApp:
                     self.frying_frame_skip = 0
 
                     try:
-                        self.frying_left_queue.put_nowait(frame.copy())
+                        self.frying_left_queue.put_nowait(frame_snapshot)
                     except Exception:
                         pass
 
-                # 이전 AI 결과 사용 (매 프레임 화면 업데이트)
-                if self.frying_left_result is not None:
-                    result = self.frying_left_result
-                    try:
-                        # Draw food mask overlay (green tint)
-                        if result.food_mask is not None:
-                            green_overlay = np.zeros_like(vis)
-                            green_overlay[:, :] = (0, 255, 0)
-                            mask_3ch = cv2.cvtColor(result.food_mask, cv2.COLOR_GRAY2BGR)
-                            vis = cv2.addWeighted(vis, 0.7, cv2.bitwise_and(green_overlay, mask_3ch), 0.3, 0)
-
-                        # Extract color features (kept for future use, not displayed)
-                        # feat = result.color_features
-                        # brown_pct = int(feat.brown_ratio * 100)
-                        # golden_pct = int(feat.golden_ratio * 100)
-                        # area_pct = int(result.food_area_ratio * 100)
-
-                        # Draw features on frame - DISABLED per user request
-                        # cv2.putText(vis, f"Brown: {brown_pct}%", (16, 40),
-                        #             cv2.FONT_HERSHEY_SIMPLEX, 1, (60, 120, 200), 2)
-                        # cv2.putText(vis, f"Golden: {golden_pct}%", (16, 80),
-                        #             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 200, 255), 2)
-                        # cv2.putText(vis, f"Area: {area_pct}%", (16, 120),
-                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
-
-                        # Update GUI labels - DISABLED per user request
-                        # self.frying_left_color_label.config(
-                        #     text=f"갈색: {brown_pct}% | 황금: {golden_pct}%"
-                        # )
-                    except:
-                        pass
-
-                # 색상 변화 측정 (SimpleColorChecker)
+                # 색상 변화 측정 (SimpleColorChecker) - throttle
                 try:
-                    color_result = self.color_checker_left.measure(frame)
-                    print(f"[POT1 색상 DEBUG] color_result = {color_result}")  # DEBUG
+                    self.color_check_left_count += 1
+                    if self.color_check_left_count >= COLOR_CHECK_INTERVAL:
+                        self.color_check_left_count = 0
+                        self.last_pot1_color_result = self.color_checker_left.measure(frame_snapshot)
+                    color_result = self.last_pot1_color_result
+                    if not color_result:
+                        color_result = {"error": "no_result"}
                     if "error" not in color_result:
                         color_diff = color_result['color_diff']
-                        # Bottom-right, larger text for visibility
-                        h, w = vis.shape[:2]
-                        color_text = f"Color: {color_diff:.1f}"
-                        prog_text = f"Progress: {color_result['progress_pct']:.0f}%"
-                        font_scale = 1.6
-                        thickness = 3
-                        (ct_w, ct_h), _ = cv2.getTextSize(color_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-                        (pt_w, pt_h), _ = cv2.getTextSize(prog_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-                        x = max(10, w - max(ct_w, pt_w) - 16)
-                        y = max(ct_h + pt_h + 20, h - 16)
-                        cv2.putText(vis, color_text, (x, y - pt_h - 8),
-                                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
-                        cv2.putText(vis, prog_text, (x, y),
-                                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
-
                         # Update GUI color_diff label
                         self.frying_left_color_diff_label.config(text=f"색상변화: {color_diff:.1f}")
 
@@ -1990,8 +2091,8 @@ class JetsonIntegratedApp:
                                 self.pot1_pot_status = "COOKING"
                     elif color_result.get("error") == "baseline_not_set":
                         self.frying_left_color_diff_label.config(text="색상변화: 대기중")
-                        cv2.putText(vis, "Waiting for robot...",
-                                    (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (128, 128, 128), 2)
+                    elif color_result.get("error") == "no_result":
+                        self.frying_left_color_diff_label.config(text="색상변화: --")
                     else:
                         # Error case
                         self.frying_left_color_diff_label.config(text="색상변화: --")
@@ -2001,47 +2102,61 @@ class JetsonIntegratedApp:
                     self.frying_left_color_diff_label.config(text="색상변화: ERR")
 
             # Store latest frame for data collection (매 프레임 저장)
-            self.latest_frying_left_frame = frame.copy()
+            self.latest_frying_left_frame = frame_snapshot
 
             # GUI 표시는 N프레임마다 (부하 감소)
             self.gui_frame_skip_frying_left += 1
-            if self.gui_frame_skip_frying_left >= GUI_FRAME_SKIP:
+            if self.gui_image_enabled and self.gui_frame_skip_frying_left >= FRYING_GUI_FRAME_SKIP:
                 self.gui_frame_skip_frying_left = 0
 
+                vis = frame_snapshot.copy()
+                if self.frying_left_result is not None:
+                    result = self.frying_left_result
+                    try:
+                        if result.food_mask is not None:
+                            vis = self.gpu_post.overlay_mask(vis, result.food_mask, (0, 255, 0), 0.3)
+                    except Exception:
+                        pass
+
+                if color_result and "error" not in color_result:
+                    color_diff = color_result['color_diff']
+                    h, w = vis.shape[:2]
+                    color_text = f"Color: {color_diff:.1f}"
+                    prog_text = f"Progress: {color_result['progress_pct']:.0f}%"
+                    font_scale = 1.6
+                    thickness = 3
+                    (ct_w, ct_h), _ = cv2.getTextSize(color_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+                    (pt_w, pt_h), _ = cv2.getTextSize(prog_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+                    x = max(10, w - max(ct_w, pt_w) - 16)
+                    y = max(ct_h + pt_h + 20, h - 16)
+                    cv2.putText(vis, color_text, (x, y - pt_h - 8),
+                                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
+                    cv2.putText(vis, prog_text, (x, y),
+                                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
+                elif color_result and color_result.get("error") == "baseline_not_set":
+                    cv2.putText(vis, "Waiting for robot...",
+                                (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (128, 128, 128), 2)
+
                 # Display (resize once)
-                display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
-                display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+                display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
+                display_frame = display_frame[:, :, ::-1].copy()
 
                 img = Image.fromarray(display_frame)
                 imgtk = ImageTk.PhotoImage(image=img)
                 self.frying_left_label.imgtk = imgtk
                 self.frying_left_label.configure(image=imgtk)
 
-            # POT1 data collection timer
-            if self.pot1_collecting:
-                self.pot1_timer += GUI_UPDATE_INTERVAL / 1000.0
-                if self.pot1_timer >= self.collection_interval:
-                    self.pot1_timer = 0
-                    # Trigger POT1 data collection (cameras 0, 2)
-                    print(f"[DEBUG] POT1 데이터 저장: timer={self.pot1_timer:.2f}, interval={self.collection_interval}")
-                    self.save_pot1_data(
-                        self.latest_frying_left_frame,
-                        self.latest_observe_left_frame,
-                        self.latest_observe_right_frame
-                    )
-
-            # LEGACY: Data collection timer (shared across all active cameras)
-            if self.data_collection_active:
-                self.collection_timer += GUI_UPDATE_INTERVAL / 1000.0
-                if self.collection_timer >= self.collection_interval:
-                    self.collection_timer = 0
-                    # Trigger data collection from all cameras
-                    self.save_collection_data(
-                        self.latest_frying_left_frame,
-                        self.latest_frying_right_frame,
-                        self.latest_observe_left_frame,
-                        self.latest_observe_right_frame
-                    )
+        # LEGACY: Data collection timer (shared across all active cameras)
+        if self.data_collection_active:
+            self.collection_timer += GUI_UPDATE_INTERVAL / 1000.0
+            if self.collection_timer >= self.collection_interval:
+                self.collection_timer = 0
+                self.save_collection_data(
+                    self.latest_frying_left_frame,
+                    self.latest_frying_right_frame,
+                    self.latest_observe_left_frame,
+                    self.latest_observe_right_frame
+                )
 
         self.root.after(GUI_UPDATE_INTERVAL, self.update_frying_left)
 
@@ -2057,15 +2172,16 @@ class JetsonIntegratedApp:
 
         ret, frame = self.frying_right_cap.read()
         if ret:
-            vis = frame.copy()
+            frame_snapshot = frame.copy()
+            color_result = None
 
             if self.frying_running or self.pot2_collecting:
                 # 로봇 감지 (색상 체크 전에 실행)
-                robot_result = self.robot_detector_pot2.detect(frame)
+                robot_result = self.robot_detector_pot2.detect(frame_snapshot)
 
                 if robot_result["state_changed"] and robot_result["robot_detected"]:
                     print(f"[POT2] 로봇 진입 감지! metal_ratio={robot_result['metal_ratio']:.4f}")
-                    baseline_result = self.color_checker_right.set_baseline(frame)
+                    baseline_result = self.color_checker_right.set_baseline(frame_snapshot)
                     if baseline_result.get("baseline_set"):
                         print(f"[POT2] 색상 baseline 설정 완료: {baseline_result['color']}")
                     self.schedule_taltal_capture(pot=2, delay_sec=2.0)
@@ -2076,63 +2192,21 @@ class JetsonIntegratedApp:
                 # Frame skip은 왼쪽과 공유 (같은 카운터)
                 if self.frying_frame_skip == 0:  # 왼쪽에서 리셋된 경우
                     try:
-                        self.frying_right_queue.put_nowait(frame.copy())
+                        self.frying_right_queue.put_nowait(frame_snapshot)
                     except Exception:
                         pass
 
-                # 이전 AI 결과 사용
-                if self.frying_right_result is not None:
-                    result = self.frying_right_result
-                    try:
-                        # Draw food mask overlay (green tint)
-                        if result.food_mask is not None:
-                            green_overlay = np.zeros_like(vis)
-                            green_overlay[:, :] = (0, 255, 0)
-                            mask_3ch = cv2.cvtColor(result.food_mask, cv2.COLOR_GRAY2BGR)
-                            vis = cv2.addWeighted(vis, 0.7, cv2.bitwise_and(green_overlay, mask_3ch), 0.3, 0)
-
-                        # Extract color features (kept for future use, not displayed)
-                        # feat = result.color_features
-                        # brown_pct = int(feat.brown_ratio * 100)
-                        # golden_pct = int(feat.golden_ratio * 100)
-                        # area_pct = int(result.food_area_ratio * 100)
-
-                        # Draw features on frame - DISABLED per user request
-                        # cv2.putText(vis, f"Brown: {brown_pct}%", (16, 40),
-                        #             cv2.FONT_HERSHEY_SIMPLEX, 1, (60, 120, 200), 2)
-                        # cv2.putText(vis, f"Golden: {golden_pct}%", (16, 80),
-                        #             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 200, 255), 2)
-                        # cv2.putText(vis, f"Area: {area_pct}%", (16, 120),
-                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
-
-                        # Update GUI labels - DISABLED per user request
-                        # self.frying_right_color_label.config(
-                        #     text=f"갈색: {brown_pct}% | 황금: {golden_pct}%"
-                        # )
-                    except:
-                        pass
-
-                # 색상 변화 측정 (SimpleColorChecker)
+                # 색상 변화 측정 (SimpleColorChecker) - throttle
                 try:
-                    color_result = self.color_checker_right.measure(frame)
-                    print(f"[POT2 색상 DEBUG] color_result = {color_result}")  # DEBUG
+                    self.color_check_right_count += 1
+                    if self.color_check_right_count >= COLOR_CHECK_INTERVAL:
+                        self.color_check_right_count = 0
+                        self.last_pot2_color_result = self.color_checker_right.measure(frame_snapshot)
+                    color_result = self.last_pot2_color_result
+                    if not color_result:
+                        color_result = {"error": "no_result"}
                     if "error" not in color_result:
                         color_diff = color_result['color_diff']
-                        # Bottom-right, larger text for visibility
-                        h, w = vis.shape[:2]
-                        color_text = f"Color: {color_diff:.1f}"
-                        prog_text = f"Progress: {color_result['progress_pct']:.0f}%"
-                        font_scale = 1.6
-                        thickness = 3
-                        (ct_w, ct_h), _ = cv2.getTextSize(color_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-                        (pt_w, pt_h), _ = cv2.getTextSize(prog_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-                        x = max(10, w - max(ct_w, pt_w) - 16)
-                        y = max(ct_h + pt_h + 20, h - 16)
-                        cv2.putText(vis, color_text, (x, y - pt_h - 8),
-                                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
-                        cv2.putText(vis, prog_text, (x, y),
-                                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
-
                         # Update GUI color_diff label
                         self.frying_right_color_diff_label.config(text=f"색상변화: {color_diff:.1f}")
 
@@ -2148,8 +2222,8 @@ class JetsonIntegratedApp:
                                 self.pot2_pot_status = "COOKING"
                     elif color_result.get("error") == "baseline_not_set":
                         self.frying_right_color_diff_label.config(text="색상변화: 대기중")
-                        cv2.putText(vis, "Waiting for robot...",
-                                    (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (128, 128, 128), 2)
+                    elif color_result.get("error") == "no_result":
+                        self.frying_right_color_diff_label.config(text="색상변화: --")
                     else:
                         # Error case
                         self.frying_right_color_diff_label.config(text="색상변화: --")
@@ -2159,16 +2233,44 @@ class JetsonIntegratedApp:
                     self.frying_right_color_diff_label.config(text="색상변화: ERR")
 
             # Store latest frame for data collection (매 프레임 저장)
-            self.latest_frying_right_frame = frame.copy()
+            self.latest_frying_right_frame = frame_snapshot
 
             # GUI 표시는 N프레임마다 (부하 감소)
             self.gui_frame_skip_frying_right += 1
-            if self.gui_frame_skip_frying_right >= GUI_FRAME_SKIP:
+            if self.gui_image_enabled and self.gui_frame_skip_frying_right >= FRYING_GUI_FRAME_SKIP:
                 self.gui_frame_skip_frying_right = 0
 
+                vis = frame_snapshot.copy()
+                if self.frying_right_result is not None:
+                    result = self.frying_right_result
+                    try:
+                        if result.food_mask is not None:
+                            vis = self.gpu_post.overlay_mask(vis, result.food_mask, (0, 255, 0), 0.3)
+                    except Exception:
+                        pass
+
+                if color_result and "error" not in color_result:
+                    color_diff = color_result['color_diff']
+                    h, w = vis.shape[:2]
+                    color_text = f"Color: {color_diff:.1f}"
+                    prog_text = f"Progress: {color_result['progress_pct']:.0f}%"
+                    font_scale = 1.6
+                    thickness = 3
+                    (ct_w, ct_h), _ = cv2.getTextSize(color_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+                    (pt_w, pt_h), _ = cv2.getTextSize(prog_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+                    x = max(10, w - max(ct_w, pt_w) - 16)
+                    y = max(ct_h + pt_h + 20, h - 16)
+                    cv2.putText(vis, color_text, (x, y - pt_h - 8),
+                                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
+                    cv2.putText(vis, prog_text, (x, y),
+                                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
+                elif color_result and color_result.get("error") == "baseline_not_set":
+                    cv2.putText(vis, "Waiting for robot...",
+                                (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (128, 128, 128), 2)
+
                 # Display
-                display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
-                display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+                display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
+                display_frame = display_frame[:, :, ::-1].copy()
 
                 img = Image.fromarray(display_frame)
                 imgtk = ImageTk.PhotoImage(image=img)
@@ -2241,15 +2343,33 @@ class JetsonIntegratedApp:
         if not self.running:
             return
 
+        # POT2 수집 타이머 (카메라 상태와 무관하게 항상 작동)
+        if self.pot2_collecting:
+            self.pot2_timer += GUI_UPDATE_INTERVAL / 1000.0
+            if self.pot2_timer >= self.collection_interval:
+                self.pot2_timer = 0
+                if DEBUG_PRINT:
+                    print(f"[POT2 수집] 저장 트리거: interval={self.collection_interval}, frying_right={'OK' if self.latest_frying_right_frame is not None else 'None'}")
+                self.save_pot2_data(
+                    self.latest_frying_right_frame,
+                    self.latest_observe_left_frame,
+                    self.latest_observe_right_frame
+                )
+
         if self.observe_left_cap is None:
-            # 카메라 없어도 다음 스케줄 유지 (동적 ON/OFF 지원)
             self.root.after(GUI_UPDATE_INTERVAL, self.update_observe_left)
             return
 
         ret, frame = self.observe_left_cap.read()
         if ret:
-            vis = frame.copy()
-            H, W = frame.shape[:2]
+            frame_snapshot = frame.copy()
+            H, W = frame_snapshot.shape[:2]
+            self.gui_frame_skip_observe_left += 1
+            should_display = False
+            if self.gui_image_enabled and self.gui_frame_skip_observe_left >= OBSERVE_GUI_FRAME_SKIP:
+                self.gui_frame_skip_observe_left = 0
+                should_display = True
+                vis = frame_snapshot.copy()
 
             if self.observe_running:
                 # Frame skip: YOLO는 매우 무거움 (config로 조정)
@@ -2258,19 +2378,19 @@ class JetsonIntegratedApp:
                     self.observe_frame_skip = 0
 
                     try:
-                        self.observe_left_queue.put_nowait(frame.copy())
+                        self.observe_left_queue.put_nowait(frame_snapshot)
                     except Exception:
                         pass
 
                 # 이전 YOLO 결과 사용
                 if self.observe_left_result is None:
-                    # Display raw frame
-                    display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
-                    display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-                    img = Image.fromarray(display_frame)
-                    imgtk = ImageTk.PhotoImage(image=img)
-                    self.observe_left_label.imgtk = imgtk
-                    self.observe_left_label.configure(image=imgtk)
+                    if should_display:
+                        display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
+                        display_frame = display_frame[:, :, ::-1].copy()
+                        img = Image.fromarray(display_frame)
+                        imgtk = ImageTk.PhotoImage(image=img)
+                        self.observe_left_label.imgtk = imgtk
+                        self.observe_left_label.configure(image=imgtk)
                     self.root.after(GUI_UPDATE_INTERVAL, self.update_observe_left)
                     return
 
@@ -2281,8 +2401,9 @@ class JetsonIntegratedApp:
                 if r.masks is not None:
                     for i, cls_idx in enumerate(r.boxes.cls.cpu().numpy().astype(int)):
                         if r.names[cls_idx] == "basket":
-                            m = (r.masks.data[i].cpu().numpy() > 0.5).astype(np.uint8) * 255
-                            m = cv2.resize(m, (W, H), interpolation=cv2.INTER_NEAREST)
+                            m = r.masks.data[i][None, None, ...].float()
+                            m = F.interpolate(m, size=(H, W), mode="nearest")
+                            m = (m.squeeze(0).squeeze(0) > 0.5).byte().mul(255).cpu().numpy()
                             basket_mask = np.maximum(basket_mask, m)
 
                 detected = False
@@ -2296,14 +2417,15 @@ class JetsonIntegratedApp:
 
                     if cnt is not None:
                         detected = True
-                        cv2.drawContours(vis, [cnt], -1, (0, 255, 255), 2)
+                        if should_display:
+                            cv2.drawContours(vis, [cnt], -1, (0, 255, 255), 2)
 
                         # Crop ROI
                         x, y, w, h = cv2.boundingRect(cnt)
                         x2, y2 = x + w, y + h
                         x, y = max(0, x), max(0, y)
                         x2, y2 = min(W, x2), min(H, y2)
-                        roi = frame[y:y2, x:x2]
+                        roi = frame_snapshot[y:y2, x:x2]
 
                         # Classification
                         cls_res = self.observe_left_cls_model.predict(
@@ -2315,9 +2437,10 @@ class JetsonIntegratedApp:
                         is_filled = (top1_name.lower() == POSITIVE_LABEL.lower())
 
                         # Draw results
-                        cv2.rectangle(vis, (x, y), (x2, y2), (255, 128, 0), 2)
-                        cv2.putText(vis, f"{top1_name} ({prob:.2f})", (x, y-10),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+                        if should_display:
+                            cv2.rectangle(vis, (x, y), (x2, y2), (255, 128, 0), 2)
+                            cv2.putText(vis, f"{top1_name} ({prob:.2f})", (x, y-10),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
 
                 # Majority voting
                 if detected:
@@ -2326,8 +2449,9 @@ class JetsonIntegratedApp:
                     state_txt = "FILLED" if filled_stable else "EMPTY"
                     color = (0, 0, 255) if filled_stable else (200, 200, 200)
 
-                    cv2.putText(vis, f"STATUS: {state_txt}", (16, 50),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3)
+                    if should_display:
+                        cv2.putText(vis, f"STATUS: {state_txt}", (16, 50),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3)
 
                     # State change detection & MQTT
                     if state_txt != self.observe_left_state:
@@ -2337,8 +2461,9 @@ class JetsonIntegratedApp:
                         self.observe_left_status.config(text=f"상태: {state_txt}")
                 else:
                     self.observe_left_votes.clear()
-                    cv2.putText(vis, "Basket Not Found", (16, 50),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    if should_display:
+                        cv2.putText(vis, "Basket Not Found", (16, 50),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                     if self.observe_left_state is not None:
                         self.log_signal("왼쪽", "NO_BASKET")
                         self.send_mqtt_message(MQTT_TOPIC_OBSERVE, "LEFT:NO_BASKET")
@@ -2346,47 +2471,27 @@ class JetsonIntegratedApp:
                         self.observe_left_status.config(text="바켓 없음")
 
             # Store latest frame for data collection (매 프레임 저장)
-            self.latest_observe_left_frame = frame.copy()
+            self.latest_observe_left_frame = frame_snapshot
 
-            # GUI 표시는 N프레임마다 (부하 감소)
-            self.gui_frame_skip_observe_left += 1
-            if self.gui_frame_skip_observe_left >= GUI_FRAME_SKIP:
-                self.gui_frame_skip_observe_left = 0
-
-                # Display
-                display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
-                display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-
+            if should_display:
+                display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
+                display_frame = display_frame[:, :, ::-1].copy()
                 img = Image.fromarray(display_frame)
                 imgtk = ImageTk.PhotoImage(image=img)
                 self.observe_left_label.imgtk = imgtk
                 self.observe_left_label.configure(image=imgtk)
 
-            # POT2 data collection timer
-            if self.pot2_collecting:
-                self.pot2_timer += GUI_UPDATE_INTERVAL / 1000.0
-                if self.pot2_timer >= self.collection_interval:
-                    self.pot2_timer = 0
-                    # Trigger POT2 data collection (cameras 1, 3)
-                    print(f"[DEBUG] POT2 데이터 저장: timer={self.pot2_timer:.2f}, interval={self.collection_interval}")
-                    self.save_pot2_data(
-                        self.latest_frying_right_frame,
-                        self.latest_observe_left_frame,
-                        self.latest_observe_right_frame
-                    )
-
-            # LEGACY: Data collection timer (only if frying cameras are not active)
-            if self.data_collection_active and self.frying_left_cap is None and self.frying_right_cap is None:
-                self.collection_timer += GUI_UPDATE_INTERVAL / 1000.0
-                if self.collection_timer >= self.collection_interval:
-                    self.collection_timer = 0
-                    # Trigger data collection from all cameras
-                    self.save_collection_data(
-                        self.latest_frying_left_frame,
-                        self.latest_frying_right_frame,
-                        self.latest_observe_left_frame,
-                        self.latest_observe_right_frame
-                    )
+        # LEGACY: Data collection timer (only if frying cameras are not active)
+        if self.data_collection_active and self.frying_left_cap is None and self.frying_right_cap is None:
+            self.collection_timer += GUI_UPDATE_INTERVAL / 1000.0
+            if self.collection_timer >= self.collection_interval:
+                self.collection_timer = 0
+                self.save_collection_data(
+                    self.latest_frying_left_frame,
+                    self.latest_frying_right_frame,
+                    self.latest_observe_left_frame,
+                    self.latest_observe_right_frame
+                )
 
         self.root.after(GUI_UPDATE_INTERVAL, self.update_observe_left)
 
@@ -2402,26 +2507,32 @@ class JetsonIntegratedApp:
 
         ret, frame = self.observe_right_cap.read()
         if ret:
-            vis = frame.copy()
-            H, W = frame.shape[:2]
+            frame_snapshot = frame.copy()
+            H, W = frame_snapshot.shape[:2]
+            self.gui_frame_skip_observe_right += 1
+            should_display = False
+            if self.gui_image_enabled and self.gui_frame_skip_observe_right >= OBSERVE_GUI_FRAME_SKIP:
+                self.gui_frame_skip_observe_right = 0
+                should_display = True
+                vis = frame_snapshot.copy()
 
             if self.observe_running:
                 # Frame skip은 왼쪽과 공유 (같은 카운터)
                 if self.observe_frame_skip == 0:  # 왼쪽에서 리셋된 경우
                     try:
-                        self.observe_right_queue.put_nowait(frame.copy())
+                        self.observe_right_queue.put_nowait(frame_snapshot)
                     except Exception:
                         pass
 
                 # 이전 YOLO 결과 사용
                 if self.observe_right_result is None:
-                    # Display raw frame
-                    display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
-                    display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-                    img = Image.fromarray(display_frame)
-                    imgtk = ImageTk.PhotoImage(image=img)
-                    self.observe_right_label.imgtk = imgtk
-                    self.observe_right_label.configure(image=imgtk)
+                    if should_display:
+                        display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
+                        display_frame = display_frame[:, :, ::-1].copy()
+                        img = Image.fromarray(display_frame)
+                        imgtk = ImageTk.PhotoImage(image=img)
+                        self.observe_right_label.imgtk = imgtk
+                        self.observe_right_label.configure(image=imgtk)
                     self.root.after(GUI_UPDATE_INTERVAL, self.update_observe_right)
                     return
 
@@ -2432,8 +2543,9 @@ class JetsonIntegratedApp:
                 if r.masks is not None:
                     for i, cls_idx in enumerate(r.boxes.cls.cpu().numpy().astype(int)):
                         if r.names[cls_idx] == "basket":
-                            m = (r.masks.data[i].cpu().numpy() > 0.5).astype(np.uint8) * 255
-                            m = cv2.resize(m, (W, H), interpolation=cv2.INTER_NEAREST)
+                            m = r.masks.data[i][None, None, ...].float()
+                            m = F.interpolate(m, size=(H, W), mode="nearest")
+                            m = (m.squeeze(0).squeeze(0) > 0.5).byte().mul(255).cpu().numpy()
                             basket_mask = np.maximum(basket_mask, m)
 
                 detected = False
@@ -2447,14 +2559,15 @@ class JetsonIntegratedApp:
 
                     if cnt is not None:
                         detected = True
-                        cv2.drawContours(vis, [cnt], -1, (0, 255, 255), 2)
+                        if should_display:
+                            cv2.drawContours(vis, [cnt], -1, (0, 255, 255), 2)
 
                         # Crop ROI
                         x, y, w, h = cv2.boundingRect(cnt)
                         x2, y2 = x + w, y + h
                         x, y = max(0, x), max(0, y)
                         x2, y2 = min(W, x2), min(H, y2)
-                        roi = frame[y:y2, x:x2]
+                        roi = frame_snapshot[y:y2, x:x2]
 
                         # Classification
                         cls_res = self.observe_right_cls_model.predict(
@@ -2466,9 +2579,10 @@ class JetsonIntegratedApp:
                         is_filled = (top1_name.lower() == POSITIVE_LABEL.lower())
 
                         # Draw results
-                        cv2.rectangle(vis, (x, y), (x2, y2), (255, 128, 0), 2)
-                        cv2.putText(vis, f"{top1_name} ({prob:.2f})", (x, y-10),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+                        if should_display:
+                            cv2.rectangle(vis, (x, y), (x2, y2), (255, 128, 0), 2)
+                            cv2.putText(vis, f"{top1_name} ({prob:.2f})", (x, y-10),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
 
                 # Majority voting
                 if detected:
@@ -2477,8 +2591,9 @@ class JetsonIntegratedApp:
                     state_txt = "FILLED" if filled_stable else "EMPTY"
                     color = (0, 0, 255) if filled_stable else (200, 200, 200)
 
-                    cv2.putText(vis, f"STATUS: {state_txt}", (16, 50),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3)
+                    if should_display:
+                        cv2.putText(vis, f"STATUS: {state_txt}", (16, 50),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3)
 
                     # State change detection & MQTT
                     if state_txt != self.observe_right_state:
@@ -2488,8 +2603,9 @@ class JetsonIntegratedApp:
                         self.observe_right_status.config(text=f"상태: {state_txt}")
                 else:
                     self.observe_right_votes.clear()
-                    cv2.putText(vis, "Basket Not Found", (16, 50),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    if should_display:
+                        cv2.putText(vis, "Basket Not Found", (16, 50),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                     if self.observe_right_state is not None:
                         self.log_signal("오른쪽", "NO_BASKET")
                         self.send_mqtt_message(MQTT_TOPIC_OBSERVE, "RIGHT:NO_BASKET")
@@ -2497,17 +2613,11 @@ class JetsonIntegratedApp:
                         self.observe_right_status.config(text="바켓 없음")
 
             # Store latest frame for data collection (매 프레임 저장)
-            self.latest_observe_right_frame = frame.copy()
+            self.latest_observe_right_frame = frame_snapshot
 
-            # GUI 표시는 N프레임마다 (부하 감소)
-            self.gui_frame_skip_observe_right += 1
-            if self.gui_frame_skip_observe_right >= GUI_FRAME_SKIP:
-                self.gui_frame_skip_observe_right = 0
-
-                # Display
-                display_frame = cv2.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_NEAREST)
-                display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-
+            if should_display:
+                display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
+                display_frame = display_frame[:, :, ::-1].copy()
                 img = Image.fromarray(display_frame)
                 imgtk = ImageTk.PhotoImage(image=img)
                 self.observe_right_label.imgtk = imgtk
@@ -3793,6 +3903,8 @@ class JetsonIntegratedApp:
         print(f"[POT1 수집] 시작: {self.pot1_session_id}")
         print(f"[POT1 수집] 음식 종류: {self.pot1_food_type}")
         print(f"[POT1 수집] 저장 경로: {self.pot1_session_dir}")
+        print(f"[POT1 수집] 상태: collecting={self.pot1_collecting}, timer={self.pot1_timer}, interval={self.collection_interval}")
+        print(f"[POT1 수집] 프레임현황: frying_left={'OK' if self.latest_frying_left_frame is not None else 'None'}, observe_left={'OK' if self.latest_observe_left_frame is not None else 'None'}")
 
     def stop_pot1_collection(self):
         """Stop POT1 data collection"""
@@ -3880,6 +3992,8 @@ class JetsonIntegratedApp:
         print(f"[POT2 수집] 시작: {self.pot2_session_id}")
         print(f"[POT2 수집] 음식 종류: {self.pot2_food_type}")
         print(f"[POT2 수집] 저장 경로: {self.pot2_session_dir}")
+        print(f"[POT2 수집] 상태: collecting={self.pot2_collecting}, timer={self.pot2_timer}, interval={self.collection_interval}")
+        print(f"[POT2 수집] 프레임현황: frying_right={'OK' if self.latest_frying_right_frame is not None else 'None'}, observe_right={'OK' if self.latest_observe_right_frame is not None else 'None'}")
 
     def stop_pot2_collection(self):
         """Stop POT2 data collection"""
@@ -3972,6 +4086,12 @@ class JetsonIntegratedApp:
         if not self.pot1_collecting:
             return
 
+        # 진입 로그 (프레임 상태 포함)
+        fl_ok = frying_left is not None
+        ol_ok = observe_left is not None
+        if DEBUG_PRINT:
+            print(f"[POT1 수집진입] frame_counter={self.pot1_frame_counter}, frying_left={'OK' if fl_ok else 'None'}, observe_left={'OK' if ol_ok else 'None'}, session_dir={self.pot1_session_dir}")
+
         from datetime import datetime
 
         timestamp = datetime.now().strftime("%H%M%S_%f")[:-3]  # HHMMss_mmm
@@ -4020,6 +4140,12 @@ class JetsonIntegratedApp:
         """Save POT2 frames (cameras 1, 3) - 별도 프로세스에서 저장"""
         if not self.pot2_collecting:
             return
+
+        # 진입 로그 (프레임 상태 포함)
+        fr_ok = frying_right is not None
+        or_ok = observe_right is not None
+        if DEBUG_PRINT:
+            print(f"[POT2 수집진입] frame_counter={self.pot2_frame_counter}, frying_right={'OK' if fr_ok else 'None'}, observe_right={'OK' if or_ok else 'None'}, session_dir={self.pot2_session_dir}")
 
         from datetime import datetime
 
@@ -4227,10 +4353,48 @@ class JetsonIntegratedApp:
 # Main Entry Point
 # =========================
 if __name__ == "__main__":
+    import argparse
     print("=" * 50)
     print("Jetson #2 - AI Monitoring System")
     print("=" * 50)
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--simulate", help="pot1/pot2 세션 디렉토리 (camera_0/2 또는 camera_1/3 포함)")
+    parser.add_argument("--simulate-pot2", help="pot2 세션 디렉토리 (옵션)")
+    args = parser.parse_args()
+
+    simulate_config = None
+    if args.simulate or args.simulate_pot2:
+        def _has_cam(path, cam_name):
+            return path and os.path.isdir(os.path.join(path, cam_name))
+
+        pot1_dir = None
+        pot2_dir = None
+
+        if args.simulate:
+            if _has_cam(args.simulate, "camera_0") or _has_cam(args.simulate, "camera_2"):
+                pot1_dir = args.simulate
+            if _has_cam(args.simulate, "camera_1") or _has_cam(args.simulate, "camera_3"):
+                pot2_dir = args.simulate
+
+        if args.simulate_pot2:
+            if _has_cam(args.simulate_pot2, "camera_0") or _has_cam(args.simulate_pot2, "camera_2"):
+                pot1_dir = args.simulate_pot2
+            if _has_cam(args.simulate_pot2, "camera_1") or _has_cam(args.simulate_pot2, "camera_3"):
+                pot2_dir = args.simulate_pot2
+
+        if pot1_dir and not pot2_dir and "/pot1/" in pot1_dir:
+            guess = pot1_dir.replace("/pot1/", "/pot2/")
+            if os.path.isdir(guess):
+                pot2_dir = guess
+        if pot2_dir and not pot1_dir and "/pot2/" in pot2_dir:
+            guess = pot2_dir.replace("/pot2/", "/pot1/")
+            if os.path.isdir(guess):
+                pot1_dir = guess
+
+        simulate_config = {"pot1": pot1_dir, "pot2": pot2_dir}
+        print(f"[SIM] pot1={pot1_dir or 'None'} pot2={pot2_dir or 'None'}")
+
     root = tk.Tk()
-    app = JetsonIntegratedApp(root)
+    app = JetsonIntegratedApp(root, simulate_config=simulate_config)
     root.mainloop()

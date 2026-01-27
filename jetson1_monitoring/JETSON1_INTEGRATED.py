@@ -694,6 +694,10 @@ class IntegratedMonitorApp:
                                        bg=COLOR_PANEL, fg=COLOR_WARNING, anchor="w")
         self.auto_mqtt_label.grid(row=1, column=1, sticky="w", padx=5, pady=2)
 
+        self.auto_night_label = tk.Label(status_container, text="야간 감지: -", font=MEDIUM_FONT,
+                                        bg=COLOR_PANEL, fg=COLOR_TEXT, anchor="w")
+        self.auto_night_label.grid(row=2, column=0, columnspan=2, sticky="w", padx=5, pady=2)
+
         # Camera preview area with camera number overlay - FIXED HEIGHT for 768x1024
         preview_height = int(280 * self.scale_factor)  # 줄임: 350 -> 280
         preview_container = tk.Frame(panel, bg="black", height=preview_height)
@@ -2127,7 +2131,7 @@ class IntegratedMonitorApp:
                 if not self.stirfry_left_preview_visible:
                     self.stirfry_left_preview_visible = True
 
-            # Get container size for aspect-fill resize (no letterbox)
+            # Get container size for aspect-fit resize (letterbox)
             container_width = self.stirfry_left_preview_label.winfo_width()
             container_height = self.stirfry_left_preview_label.winfo_height()
 
@@ -2136,19 +2140,19 @@ class IntegratedMonitorApp:
                 container_width = int(340 * self.scale_factor)
                 container_height = int(220 * self.scale_factor)
 
-            # Resize to fill container (aspect-fill, may crop)
+            # Resize to fit container (aspect-fit, no crop)
             h, w = frame.shape[:2]
             aspect_frame = w / h
             aspect_container = container_width / container_height
 
             if aspect_frame > aspect_container:
-                # Frame is wider - fit height, crop width
-                new_h = container_height
-                new_w = int(new_h * aspect_frame)
-            else:
-                # Frame is taller - fit width, crop height
+                # Frame is wider - fit width
                 new_w = container_width
                 new_h = int(new_w / aspect_frame)
+            else:
+                # Frame is taller - fit height
+                new_h = container_height
+                new_w = int(new_h * aspect_frame)
 
             # Resize with GPU if available
             if USE_CUDA:
@@ -2162,10 +2166,12 @@ class IntegratedMonitorApp:
             else:
                 preview = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
-            # Center crop to container size
-            y_offset = (new_h - container_height) // 2
-            x_offset = (new_w - container_width) // 2
-            preview = preview[y_offset:y_offset+container_height, x_offset:x_offset+container_width]
+            # Letterbox to container size
+            canvas = np.zeros((container_height, container_width, 3), dtype=preview.dtype)
+            y_offset = (container_height - new_h) // 2
+            x_offset = (container_width - new_w) // 2
+            canvas[y_offset:y_offset + new_h, x_offset:x_offset + new_w] = preview
+            preview = canvas
 
             preview_rgb = cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(preview_rgb)
@@ -2192,7 +2198,7 @@ class IntegratedMonitorApp:
                 if not self.stirfry_right_preview_visible:
                     self.stirfry_right_preview_visible = True
 
-            # Get container size for aspect-fill resize (no letterbox)
+            # Get container size for aspect-fit resize (letterbox)
             container_width = self.stirfry_right_preview_label.winfo_width()
             container_height = self.stirfry_right_preview_label.winfo_height()
 
@@ -2201,19 +2207,19 @@ class IntegratedMonitorApp:
                 container_width = int(340 * self.scale_factor)
                 container_height = int(220 * self.scale_factor)
 
-            # Resize to fill container (aspect-fill, may crop)
+            # Resize to fit container (aspect-fit, no crop)
             h, w = frame.shape[:2]
             aspect_frame = w / h
             aspect_container = container_width / container_height
 
             if aspect_frame > aspect_container:
-                # Frame is wider - fit height, crop width
-                new_h = container_height
-                new_w = int(new_h * aspect_frame)
-            else:
-                # Frame is taller - fit width, crop height
+                # Frame is wider - fit width
                 new_w = container_width
                 new_h = int(new_w / aspect_frame)
+            else:
+                # Frame is taller - fit height
+                new_h = container_height
+                new_w = int(new_h * aspect_frame)
 
             # Resize with GPU if available
             if USE_CUDA:
@@ -2227,10 +2233,12 @@ class IntegratedMonitorApp:
             else:
                 preview = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
-            # Center crop to container size
-            y_offset = (new_h - container_height) // 2
-            x_offset = (new_w - container_width) // 2
-            preview = preview[y_offset:y_offset+container_height, x_offset:x_offset+container_width]
+            # Letterbox to container size
+            canvas = np.zeros((container_height, container_width, 3), dtype=preview.dtype)
+            y_offset = (container_height - new_h) // 2
+            x_offset = (container_width - new_w) // 2
+            canvas[y_offset:y_offset + new_h, x_offset:x_offset + new_w] = preview
+            preview = canvas
 
             preview_rgb = cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(preview_rgb)
@@ -2382,6 +2390,13 @@ class IntegratedMonitorApp:
             self.snapshot_count += 1
             self.last_snapshot_path = out_path
             self.last_snapshot_time = timestamp
+
+            if hasattr(self, "auto_night_label"):
+                ts_text = timestamp.strftime("%m/%d %H:%M:%S")
+                self.auto_night_label.config(
+                    text=f"야간 감지: {self.snapshot_count}장 (마지막 {ts_text})",
+                    fg=COLOR_INFO
+                )
 
             print(f"[스냅샷] {timestamp.strftime('%Y-%m-%d %H:%M:%S')} -> {out_path}")
 

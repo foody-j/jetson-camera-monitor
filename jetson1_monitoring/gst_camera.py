@@ -10,6 +10,7 @@ from gi.repository import Gst, GLib
 import numpy as np
 import threading
 import time
+import os
 
 # Initialize GStreamer
 Gst.init(None)
@@ -25,6 +26,8 @@ class GstCamera:
         self.height = height
         self.fps = fps
         self.device_path = f"/dev/video{device_index}"
+        self.use_nvvidconv = os.getenv("GMSL_USE_NVVIDCONV", "1").lower() not in ("0", "false", "no")
+        self.io_mode = os.getenv("GMSL_IO_MODE", "4")  # 4=dmabuf, 2=mmap
 
         # 출력 해상도/FPS (저지연을 위해 항상 원본 해상도 사용)
         self.output_width = width
@@ -58,13 +61,24 @@ class GstCamera:
             return True
 
         # Build GStreamer pipeline (저지연: videorate/videoscale 제거)
-        pipeline_str = (
-            f"v4l2src device={self.device_path} io-mode=2 ! "
-            f"video/x-raw, format=UYVY, width={self.width}, height={self.height}, framerate={self.fps}/1 ! "
-            f"videoconvert ! "
-            f"video/x-raw, format=BGR ! "
-            f"appsink name=sink emit-signals=true max-buffers=1 drop=true sync=false"
-        )
+        if self.use_nvvidconv:
+            pipeline_str = (
+                f"v4l2src device={self.device_path} io-mode={self.io_mode} ! "
+                f"video/x-raw, format=UYVY, width={self.width}, height={self.height}, framerate={self.fps}/1 ! "
+                f"queue max-size-buffers=1 leaky=downstream ! "
+                f"nvvidconv ! video/x-raw, format=BGRx ! "
+                f"videoconvert ! video/x-raw, format=BGR ! "
+                f"appsink name=sink emit-signals=true max-buffers=1 drop=true sync=false"
+            )
+        else:
+            pipeline_str = (
+                f"v4l2src device={self.device_path} io-mode={self.io_mode} ! "
+                f"video/x-raw, format=UYVY, width={self.width}, height={self.height}, framerate={self.fps}/1 ! "
+                f"queue max-size-buffers=1 leaky=downstream ! "
+                f"videoconvert ! "
+                f"video/x-raw, format=BGR ! "
+                f"appsink name=sink emit-signals=true max-buffers=1 drop=true sync=false"
+            )
 
         print(f"[GstCamera] Pipeline: {pipeline_str}")
 

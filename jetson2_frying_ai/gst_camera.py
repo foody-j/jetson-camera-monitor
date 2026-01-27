@@ -24,6 +24,8 @@ class GstCamera:
         self.fps = fps
         self.device_path = f"/dev/video{device_index}"
         self.preview_sink = os.getenv("GMSL_PREVIEW_SINK", "none")  # GUI에만 표시, GST 윈도우 안 띄움
+        self.use_nvvidconv = os.getenv("GMSL_USE_NVVIDCONV", "1").lower() not in ("0", "false", "no")
+        self.io_mode = os.getenv("GMSL_IO_MODE", "4")  # 4=dmabuf, 2=mmap
 
         self.process = None
         self.latest_frame = None
@@ -45,22 +47,38 @@ class GstCamera:
         # GStreamer pipeline - tee preview sink to keep stream alive
         gst_cmd = [
             "gst-launch-1.0", "-q",
-            "v4l2src", f"device={self.device_path}", "io-mode=2", "!",
+            "v4l2src", f"device={self.device_path}", f"io-mode={self.io_mode}", "!",
             f"video/x-raw,format=UYVY,width={self.width},height={self.height},framerate={self.fps}/1", "!",
             "tee", "name=t",
         ]
 
         if self.preview_sink.lower() != "none":
-            gst_cmd += [
-                "t.", "!", "queue", "!", "videoconvert", "!",
-                self.preview_sink, "sync=false"
-            ]
+            if self.use_nvvidconv:
+                gst_cmd += [
+                    "t.", "!", "queue", "max-size-buffers=1", "leaky=downstream", "!",
+                    "nvvidconv", "!", "video/x-raw,format=BGRx", "!", "videoconvert", "!",
+                    self.preview_sink, "sync=false"
+                ]
+            else:
+                gst_cmd += [
+                    "t.", "!", "queue", "max-size-buffers=1", "leaky=downstream", "!", "videoconvert", "!",
+                    self.preview_sink, "sync=false"
+                ]
 
-        gst_cmd += [
-            "t.", "!", "queue", "!", "videoconvert", "!",
-            "video/x-raw,format=BGR", "!",
-            "fdsink", "fd=1", "sync=false"
-        ]
+        if self.use_nvvidconv:
+            gst_cmd += [
+                "t.", "!", "queue", "max-size-buffers=1", "leaky=downstream", "!",
+                "nvvidconv", "!", "video/x-raw,format=BGRx", "!", "videoconvert", "!",
+                "video/x-raw,format=BGR", "!",
+                "fdsink", "fd=1", "sync=false", "async=false"
+            ]
+        else:
+            gst_cmd += [
+                "t.", "!", "queue", "max-size-buffers=1", "leaky=downstream", "!",
+                "videoconvert", "!",
+                "video/x-raw,format=BGR", "!",
+                "fdsink", "fd=1", "sync=false", "async=false"
+            ]
 
         print(f"[GstCamera] Starting: {' '.join(gst_cmd)}")
 
