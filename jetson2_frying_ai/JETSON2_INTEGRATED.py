@@ -292,8 +292,9 @@ CAMERA_HEIGHT = config.get('camera_height', 1536)
 CAMERA_FPS = config.get('camera_fps', 30)
 
 # Display resolution (최적화)
-DISPLAY_WIDTH = config.get('display_width', 600)
-DISPLAY_HEIGHT = config.get('display_height', 450)
+# Preview container 실제 크기 (768/2 - padding ≈ 374, height=85)
+DISPLAY_WIDTH = config.get('display_width', 374)
+DISPLAY_HEIGHT = config.get('display_height', 85)
 
 # GUI update interval
 GUI_UPDATE_INTERVAL = config.get('gui_update_interval_ms', 50)
