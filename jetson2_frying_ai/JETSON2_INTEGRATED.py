@@ -1106,8 +1106,16 @@ class JetsonIntegratedApp:
                 self._last_chk_vibration = chk_vibration
                 if chk_vibration:
                     print(f"[로봇상태] ChkVibration=True 감지 (DeviceNum=0)")
+                    try:
+                        self.root.after(0, lambda: self.show_toast("진동 측정 시작"))
+                    except Exception:
+                        pass
                 else:
                     print(f"[로봇상태] ChkVibration=False 감지 (DeviceNum=0)")
+                    try:
+                        self.root.after(0, lambda: self.show_toast("진동 측정 종료"))
+                    except Exception:
+                        pass
 
             # ChkVibration이 True이면 매번 진동센서 측정 실행
             if seen_device and chk_vibration:

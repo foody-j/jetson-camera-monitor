@@ -109,7 +109,7 @@
   "_comment_preview": "프리뷰 자동 숨김 시간 (초, 999999=항상 표시)",
   "preview_hide_delay": 999999,
   "_comment_vibration_test_mode": "진동센서 테스트 모드 (true=VibrationRequest 시 즉시 NORMAL 응답, false=실제 측정)",
-  "vibration_test_mode": true,
+  "vibration_test_mode": false,
   "_comment_night_review": "야간 감지 사진 리뷰 설정",
   "night_review_enabled": true,
   "_comment_night_review_time": "리뷰 시작 시간 (HH:MM 형식) - 보통 아침에 확인",
