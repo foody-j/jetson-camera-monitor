@@ -292,7 +292,7 @@ CAMERA_HEIGHT = config.get('camera_height', 1536)
 CAMERA_FPS = config.get('camera_fps', 30)
 
 # Display resolution (최적화)
-# Preview container 실제 크기 (768/2 - padding ≈ 374, height=85)
+# Preview container 실제 크기 (768/2 - padding ≈ 374, height=300)
 DISPLAY_WIDTH = config.get('display_width', 374)
 DISPLAY_HEIGHT = config.get('display_height', 85)
 
@@ -1460,7 +1460,7 @@ class JetsonIntegratedApp:
         title.pack(pady=2)
 
         # Camera preview (높이 축소로 여백 최소화)
-        preview_container = tk.Frame(panel, bg="black", height=85)
+        preview_container = tk.Frame(panel, bg="black", height=300)
         preview_container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         preview_container.pack_propagate(False)
 
@@ -1521,7 +1521,7 @@ class JetsonIntegratedApp:
         title.pack(pady=2)
 
         # Camera preview (높이 축소로 여백 최소화)
-        preview_container = tk.Frame(panel, bg="black", height=85)
+        preview_container = tk.Frame(panel, bg="black", height=300)
         preview_container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         preview_container.pack_propagate(False)
 
@@ -1582,7 +1582,7 @@ class JetsonIntegratedApp:
         title.pack(pady=2)
 
         # Camera preview (높이 축소로 여백 최소화)
-        preview_container = tk.Frame(panel, bg="black", height=85)
+        preview_container = tk.Frame(panel, bg="black", height=300)
         preview_container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         preview_container.pack_propagate(False)
 
@@ -1612,7 +1612,7 @@ class JetsonIntegratedApp:
         title.pack(pady=2)
 
         # Camera preview (높이 축소로 여백 최소화)
-        preview_container = tk.Frame(panel, bg="black", height=85)
+        preview_container = tk.Frame(panel, bg="black", height=300)
         preview_container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         preview_container.pack_propagate(False)
 

@@ -43,7 +43,7 @@
   "camera_height": 1536,
   "camera_fps": 30,
   "display_width": 374,
-  "display_height": 85,
+  "display_height": 300,
   "gui_update_interval_ms": 300,
   "frying_frame_skip": 15,
   "observe_frame_skip": 20,
