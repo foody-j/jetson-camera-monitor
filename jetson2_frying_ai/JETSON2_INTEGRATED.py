@@ -1116,6 +1116,8 @@ class JetsonIntegratedApp:
                         self.root.after(0, lambda: self.show_toast("진동 측정 종료"))
                     except Exception:
                         pass
+                    # ChkVibration 종료 시 진동센서 중지
+                    self.stop_vibration_check()
 
             # ChkVibration이 True이면 매번 진동센서 측정 실행
             if seen_device and chk_vibration:
