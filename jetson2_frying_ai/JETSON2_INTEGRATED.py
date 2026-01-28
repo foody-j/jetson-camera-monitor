@@ -3631,25 +3631,33 @@ class JetsonIntegratedApp:
         if var is None:
             return
         var.set(status)
-        self.show_toast(f"선택: {label} {status}")
+        self.show_toast(f"{label} {status} 발행 완료")
 
     def _publish_vibration_status(self, status):
         """진동센서 상태 선택"""
         self._set_manual_status(self._manual_vibration_var, status, "진동")
+        self.vibration_status = self._manual_vibration_var.get()
+        self.publish_status()
 
     def _publish_frying_status(self, pot_num, status):
         """튀김 상태 선택"""
         if pot_num == 1:
             self._set_manual_status(self._manual_pot1_var, status, "POT1")
+            self.pot1_pot_status = self._manual_pot1_var.get()
         else:
             self._set_manual_status(self._manual_pot2_var, status, "POT2")
+            self.pot2_pot_status = self._manual_pot2_var.get()
+        self.publish_status()
 
     def _publish_observe_status(self, side, status):
         """바켓 상태 선택"""
         if side == "left":
             self._set_manual_status(self._manual_observe_left_var, status, "왼쪽 바켓")
+            self.observe_left_state = self._manual_observe_left_var.get()
         else:
             self._set_manual_status(self._manual_observe_right_var, status, "오른쪽 바켓")
+            self.observe_right_state = self._manual_observe_right_var.get()
+        self.publish_status()
 
     def _manual_publish_selected(self):
         """선택된 항목만 업데이트 후 발행"""
