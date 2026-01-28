@@ -1564,7 +1564,7 @@ class JetsonIntegratedApp:
         # Status (크고 명확하게)
         self.observe_left_status = tk.Label(
             panel, text="대기 중", font=(FONT_FAMILY, 14, "bold"),
-            bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT, wraplength=300
+            bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
         )
         self.observe_left_status.pack(pady=5, fill=tk.X)
 
@@ -1594,7 +1594,7 @@ class JetsonIntegratedApp:
         # Status (크고 명확하게)
         self.observe_right_status = tk.Label(
             panel, text="대기 중", font=(FONT_FAMILY, 14, "bold"),
-            bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT, wraplength=300
+            bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
         )
         self.observe_right_status.pack(pady=5, fill=tk.X)
 
