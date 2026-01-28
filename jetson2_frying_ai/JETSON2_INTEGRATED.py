@@ -348,6 +348,7 @@ class JetsonIntegratedApp:
 
         # 로봇 상태 업데이트 (MQTT 콜백 → 메인 스레드 전달용)
         self._robot_status_update = None
+        self._last_chk_vibration = False
 
         # GPIO relay control
         self.relay_enabled = False
@@ -1098,10 +1099,22 @@ class JetsonIntegratedApp:
                     chk_vibration = True
                     break
 
-            if chk_vibration or vibration_request:
+            if chk_vibration != self._last_chk_vibration:
+                self._last_chk_vibration = chk_vibration
                 if chk_vibration:
                     print(f"[로봇상태] ChkVibration 수신 (DeviceNum=0)")
+                    try:
+                        self.root.after(0, lambda: self.show_toast("진동 측정 시작"))
+                    except Exception:
+                        pass
                 else:
+                    try:
+                        self.root.after(0, lambda: self.show_toast("진동 측정 종료"))
+                    except Exception:
+                        pass
+
+            if chk_vibration or vibration_request:
+                if not chk_vibration:
                     print(f"[로봇상태] VibrationRequest 수신: {vibration_request}")
                 if VIBRATION_TEST_MODE:
                     # 테스트 모드: 즉시 NORMAL 응답

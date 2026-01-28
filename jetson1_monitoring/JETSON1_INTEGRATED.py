@@ -325,6 +325,7 @@ class IntegratedMonitorApp:
         self.mqtt_client = None
         self.mqtt_message_log = []  # 최근 MQTT 메시지 저장 (원본 보기용)
         self.mqtt_message_log_max = 50  # 최대 저장 개수
+        self._last_chk_vibration = False
         self.system_info = SystemInfo(device_name="Jetson1", location="Kitchen")
         self.yolo_model = None
         self.device = 'cpu'  # Will be set to 'cuda' in init_yolo() if available
@@ -1397,10 +1398,22 @@ class IntegratedMonitorApp:
                     chk_vibration = True
                     break
 
-            if chk_vibration or vibration_request:
+            if chk_vibration != self._last_chk_vibration:
+                self._last_chk_vibration = chk_vibration
                 if chk_vibration:
                     print(f"[로봇상태] ChkVibration 수신 (DeviceNum=1)")
+                    try:
+                        self.root.after(0, lambda: self.show_toast("진동 측정 시작"))
+                    except Exception:
+                        pass
                 else:
+                    try:
+                        self.root.after(0, lambda: self.show_toast("진동 측정 종료"))
+                    except Exception:
+                        pass
+
+            if chk_vibration or vibration_request:
+                if not chk_vibration:
                     print(f"[로봇상태] VibrationRequest 수신: {vibration_request}")
                 if VIBRATION_TEST_MODE:
                     # 테스트 모드: 즉시 NORMAL 응답
