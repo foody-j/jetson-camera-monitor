@@ -1388,9 +1388,11 @@ class IntegratedMonitorApp:
             vibration_request = data.get("VibrationRequest", False)
             status_list = data.get("Status", [])
             chk_vibration = False
+            seen_device = False
             for status in status_list:
                 if str(status.get("DeviceNum", "")) != "1":
                     continue
+                seen_device = True
                 chk_val = status.get("ChkVibration", False)
                 if isinstance(chk_val, str):
                     chk_val = chk_val.strip().lower() == "true"
@@ -1399,7 +1401,7 @@ class IntegratedMonitorApp:
                     break
 
             # ChkVibration 상태 변화 로깅
-            if chk_vibration != self._last_chk_vibration:
+            if seen_device and chk_vibration != self._last_chk_vibration:
                 self._last_chk_vibration = chk_vibration
                 if chk_vibration:
                     print(f"[로봇상태] ChkVibration=True 감지 (DeviceNum=1)")
@@ -1407,7 +1409,7 @@ class IntegratedMonitorApp:
                     print(f"[로봇상태] ChkVibration=False 감지 (DeviceNum=1)")
 
             # ChkVibration이 True이면 매번 진동센서 측정 실행
-            if chk_vibration:
+            if seen_device and chk_vibration:
                 print(f"[진동] ChkVibration=True → 진동센서 측정 시작")
                 if VIBRATION_TEST_MODE:
                     # 테스트 모드: 즉시 NORMAL 응답
