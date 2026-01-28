@@ -3635,20 +3635,25 @@ class JetsonIntegratedApp:
 
     def _publish_vibration_status(self, status):
         """진동센서 상태 선택"""
+        self._manual_vibration_enabled.set(True)
         self._set_manual_status(self._manual_vibration_var, status, "진동")
 
     def _publish_frying_status(self, pot_num, status):
         """튀김 상태 선택"""
         if pot_num == 1:
+            self._manual_pot1_enabled.set(True)
             self._set_manual_status(self._manual_pot1_var, status, "POT1")
         else:
+            self._manual_pot2_enabled.set(True)
             self._set_manual_status(self._manual_pot2_var, status, "POT2")
 
     def _publish_observe_status(self, side, status):
         """바켓 상태 선택"""
         if side == "left":
+            self._manual_observe_left_enabled.set(True)
             self._set_manual_status(self._manual_observe_left_var, status, "왼쪽 바켓")
         else:
+            self._manual_observe_right_enabled.set(True)
             self._set_manual_status(self._manual_observe_right_var, status, "오른쪽 바켓")
 
     def _manual_publish_selected(self):

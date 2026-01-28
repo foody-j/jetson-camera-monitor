@@ -3551,6 +3551,7 @@ class IntegratedMonitorApp:
 
     def _publish_vibration_status(self, status):
         """진동센서 상태 선택"""
+        self._manual_vibration_enabled.set(True)
         self._manual_vibration_var.set(status)
         self.show_toast(f"선택: 진동 {status}")
 
