@@ -3090,7 +3090,7 @@ class JetsonIntegratedApp:
             # 진동 센서 프로그램을 별도 프로세스로 실행
             # stdout/stderr=None → 부모 프로세스(이 프로그램)의 출력으로 리다이렉트 (journalctl에서 보임)
             env = os.environ.copy()
-            env["VIB_UNIT_IDS"] = "0x51"  # Jetson2는 0x51만 사용
+            env["VIB_UNIT_IDS"] = "0x50,0x51,0x52"
             self.vibration_process = subprocess.Popen(
                 ["python3", vibration_script],
                 cwd=base_dir,
