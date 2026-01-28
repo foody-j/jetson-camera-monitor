@@ -1471,21 +1471,37 @@ class JetsonIntegratedApp:
                                                      bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.frying_left_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
-        # Info frame (나중에 AI 분석 결과 표시용)
+        # Info frame (2열 레이아웃: 좌측=음식/온도, 우측=시간/색상)
         info_frame = tk.Frame(panel, bg=COLOR_PANEL)
-        info_frame.pack(pady=2, fill=tk.X)
+        info_frame.pack(pady=2, fill=tk.X, padx=5)
 
-        # Target Time (나중에 로봇 상태로부터 업데이트)
+        # 좌측 컬럼: 음식 종류 + 온도
+        left_col = tk.Frame(info_frame, bg=COLOR_PANEL)
+        left_col.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.frying_left_food_label = tk.Label(
+            left_col, text="음식: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT, anchor="w"
+        )
+        self.frying_left_food_label.pack(fill=tk.X)
+
+        self.frying_left_temp_label = tk.Label(
+            left_col, text="온도: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT, anchor="w"
+        )
+        self.frying_left_temp_label.pack(fill=tk.X)
+
+        # 우측 컬럼: 목표시간 + 색상변화
+        right_col = tk.Frame(info_frame, bg=COLOR_PANEL)
+        right_col.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
         self.frying_left_target_time_label = tk.Label(
-            info_frame, text="목표시간: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            right_col, text="목표: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT, anchor="e"
         )
-        self.frying_left_target_time_label.pack()
+        self.frying_left_target_time_label.pack(fill=tk.X)
 
-        # 색상 차이 (나중에 Roboflow 모델 적용 시 사용)
         self.frying_left_color_label = tk.Label(
-            info_frame, text="색상변화: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            right_col, text="색상: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT, anchor="e"
         )
-        self.frying_left_color_label.pack()
+        self.frying_left_color_label.pack(fill=tk.X)
 
         # Status
         self.frying_left_status = tk.Label(
@@ -1516,21 +1532,37 @@ class JetsonIntegratedApp:
                                                       bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.frying_right_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
-        # Info frame (나중에 AI 분석 결과 표시용)
+        # Info frame (2열 레이아웃: 좌측=음식/온도, 우측=시간/색상)
         info_frame = tk.Frame(panel, bg=COLOR_PANEL)
-        info_frame.pack(pady=2, fill=tk.X)
+        info_frame.pack(pady=2, fill=tk.X, padx=5)
 
-        # Target Time (나중에 로봇 상태로부터 업데이트)
+        # 좌측 컬럼: 음식 종류 + 온도
+        left_col = tk.Frame(info_frame, bg=COLOR_PANEL)
+        left_col.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.frying_right_food_label = tk.Label(
+            left_col, text="음식: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT, anchor="w"
+        )
+        self.frying_right_food_label.pack(fill=tk.X)
+
+        self.frying_right_temp_label = tk.Label(
+            left_col, text="온도: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT, anchor="w"
+        )
+        self.frying_right_temp_label.pack(fill=tk.X)
+
+        # 우측 컬럼: 목표시간 + 색상변화
+        right_col = tk.Frame(info_frame, bg=COLOR_PANEL)
+        right_col.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
         self.frying_right_target_time_label = tk.Label(
-            info_frame, text="목표시간: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            right_col, text="목표: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT, anchor="e"
         )
-        self.frying_right_target_time_label.pack()
+        self.frying_right_target_time_label.pack(fill=tk.X)
 
-        # 색상 차이 (나중에 Roboflow 모델 적용 시 사용)
         self.frying_right_color_label = tk.Label(
-            info_frame, text="색상변화: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            right_col, text="색상: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT, anchor="e"
         )
-        self.frying_right_color_label.pack()
+        self.frying_right_color_label.pack(fill=tk.X)
 
         # Status
         self.frying_right_status = tk.Label(
@@ -2065,11 +2097,25 @@ class JetsonIntegratedApp:
                 running_time = self.pot1_robot_status.get("running_time", "00:00:00")
                 target_time = self.pot1_robot_status.get("target_time", "00:00:00")
 
-                # GUI에 Target Time 표시 (수집 중일 때만)
-                if self.pot1_collecting and target_time != "00:00:00":
-                    self.frying_left_target_time_label.config(text=f"목표시간: {target_time}")
+                # GUI에 정보 표시 (수집 중일 때만)
+                if self.pot1_collecting:
+                    # 음식 종류
+                    food_text = self.pot1_food_type if self.pot1_food_type != "unknown" else "--"
+                    self.frying_left_food_label.config(text=f"음식: {food_text}")
+
+                    # 온도
+                    temp = self.pot1_robot_status.get("temperature", "--")
+                    self.frying_left_temp_label.config(text=f"온도: {temp}")
+
+                    # 목표시간
+                    if target_time != "00:00:00":
+                        self.frying_left_target_time_label.config(text=f"목표: {target_time}")
+                    else:
+                        self.frying_left_target_time_label.config(text="목표: --")
                 else:
-                    self.frying_left_target_time_label.config(text="목표시간: --")
+                    self.frying_left_food_label.config(text="음식: --")
+                    self.frying_left_temp_label.config(text="온도: --")
+                    self.frying_left_target_time_label.config(text="목표: --")
 
                 if self._compare_time(running_time, target_time):
                     if self.pot1_pot_status != "DISCHARGE":
@@ -2156,11 +2202,25 @@ class JetsonIntegratedApp:
                 running_time = self.pot2_robot_status.get("running_time", "00:00:00")
                 target_time = self.pot2_robot_status.get("target_time", "00:00:00")
 
-                # GUI에 Target Time 표시 (수집 중일 때만)
-                if self.pot2_collecting and target_time != "00:00:00":
-                    self.frying_right_target_time_label.config(text=f"목표시간: {target_time}")
+                # GUI에 정보 표시 (수집 중일 때만)
+                if self.pot2_collecting:
+                    # 음식 종류
+                    food_text = self.pot2_food_type if self.pot2_food_type != "unknown" else "--"
+                    self.frying_right_food_label.config(text=f"음식: {food_text}")
+
+                    # 온도
+                    temp = self.pot2_robot_status.get("temperature", "--")
+                    self.frying_right_temp_label.config(text=f"온도: {temp}")
+
+                    # 목표시간
+                    if target_time != "00:00:00":
+                        self.frying_right_target_time_label.config(text=f"목표: {target_time}")
+                    else:
+                        self.frying_right_target_time_label.config(text="목표: --")
                 else:
-                    self.frying_right_target_time_label.config(text="목표시간: --")
+                    self.frying_right_food_label.config(text="음식: --")
+                    self.frying_right_temp_label.config(text="온도: --")
+                    self.frying_right_target_time_label.config(text="목표: --")
 
                 if self._compare_time(running_time, target_time):
                     if self.pot2_pot_status != "DISCHARGE":
