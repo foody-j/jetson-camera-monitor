@@ -48,8 +48,7 @@ from image_saver_mp import get_image_saver, stop_image_saver
 # Import Frying AI segmenter
 from frying_segmenter import FoodSegmenter
 
-# Import Simple Color Checker
-from simple_checker.color_checker import SimpleColorChecker
+# Import GPU post-processor
 from gpu_postprocess import GPUPostProcessor
 from simple_checker.robot_detector import RobotDetector, PotType
 
@@ -305,7 +304,6 @@ OBSERVE_FRAME_SKIP = config.get('observe_frame_skip', 5)
 GUI_FRAME_SKIP = config.get('gui_frame_skip', 3)  # GUI 표시 프레임 스킵 (기본)
 FRYING_GUI_FRAME_SKIP = config.get('frying_gui_frame_skip', GUI_FRAME_SKIP)
 OBSERVE_GUI_FRAME_SKIP = config.get('observe_gui_frame_skip', GUI_FRAME_SKIP)
-COLOR_CHECK_INTERVAL = config.get('color_check_interval', 10)
 DEBUG_PRINT = config.get('debug_print_enabled', False)
 HEADLESS_MODE = config.get('headless_mode', False)
 TEXT_ONLY_MODE = config.get('text_only_mode', False)
@@ -387,10 +385,7 @@ class JetsonIntegratedApp:
         self.frying_segmenter = FoodSegmenter(mode="auto")
         print(f"[모델] Frying segmenter 로드 완료")
 
-        # Simple Color Checker (튀김 색상 변화 측정)
-        self.color_checker_left = SimpleColorChecker(color_threshold=25.0)
-        self.color_checker_right = SimpleColorChecker(color_threshold=25.0)
-        print(f"[모델] Color checker 초기화 완료")
+        # GPU post-processor
         self.gpu_post = GPUPostProcessor(device=self.device)
 
         # Robot detector (로봇 암 진입 감지)
@@ -484,11 +479,6 @@ class JetsonIntegratedApp:
         self.gui_frame_skip_frying_right = 0
         self.gui_frame_skip_observe_left = 0
         self.gui_frame_skip_observe_right = 0
-        # Color check throttling
-        self.color_check_left_count = 0
-        self.color_check_right_count = 0
-        self.last_pot1_color_result = None
-        self.last_pot2_color_result = None
 
         # Camera objects
         self.frying_left_cap = None
@@ -929,10 +919,6 @@ class JetsonIntegratedApp:
             self.pot1_pot_status = "COOKING"
             print(f"[POT1] 상태 변경: COOKING")
 
-            # Color checker baseline 리셋 (새로운 조리 시작)
-            self.color_checker_left.reset()
-            print(f"[색상] POT1 baseline 리셋 완료 (로봇 감지 대기)")
-
             # 로봇 감지기 리셋
             self.robot_detector_pot1.reset()
 
@@ -1001,10 +987,6 @@ class JetsonIntegratedApp:
             # Pot status: IDLE → COOKING
             self.pot2_pot_status = "COOKING"
             print(f"[POT2] 상태 변경: COOKING")
-
-            # Color checker baseline 리셋 (새로운 조리 시작)
-            self.color_checker_right.reset()
-            print(f"[색상] POT2 baseline 리셋 완료 (로봇 감지 대기)")
 
             # 로봇 감지기 리셋
             self.robot_detector_pot2.reset()
@@ -1476,8 +1458,8 @@ class JetsonIntegratedApp:
         title = tk.Label(panel, text="🍤 튀김 AI - 왼쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
         title.pack(pady=2)
 
-        # Camera preview (세로 레이아웃 - 높이 더 축소)
-        preview_container = tk.Frame(panel, bg="black", height=125)
+        # Camera preview (높이 축소로 여백 최소화)
+        preview_container = tk.Frame(panel, bg="black", height=85)
         preview_container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         preview_container.pack_propagate(False)
 
@@ -1489,15 +1471,21 @@ class JetsonIntegratedApp:
                                                      bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.frying_left_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
-        # Info frame (color diff only)
+        # Info frame (나중에 AI 분석 결과 표시용)
         info_frame = tk.Frame(panel, bg=COLOR_PANEL)
-        info_frame.pack(pady=1)
+        info_frame.pack(pady=2, fill=tk.X)
 
-        # Color Diff
-        self.frying_left_color_diff_label = tk.Label(
-            info_frame, text="색상변화: --", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_WARNING
+        # Target Time (나중에 로봇 상태로부터 업데이트)
+        self.frying_left_target_time_label = tk.Label(
+            info_frame, text="목표시간: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
         )
-        self.frying_left_color_diff_label.pack()
+        self.frying_left_target_time_label.pack()
+
+        # 색상 차이 (나중에 Roboflow 모델 적용 시 사용)
+        self.frying_left_color_label = tk.Label(
+            info_frame, text="색상변화: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+        )
+        self.frying_left_color_label.pack()
 
         # Status
         self.frying_left_status = tk.Label(
@@ -1515,8 +1503,8 @@ class JetsonIntegratedApp:
         title = tk.Label(panel, text="🍤 튀김 AI - 오른쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
         title.pack(pady=2)
 
-        # Camera preview (세로 레이아웃 - 높이 더 축소)
-        preview_container = tk.Frame(panel, bg="black", height=125)
+        # Camera preview (높이 축소로 여백 최소화)
+        preview_container = tk.Frame(panel, bg="black", height=85)
         preview_container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         preview_container.pack_propagate(False)
 
@@ -1528,15 +1516,21 @@ class JetsonIntegratedApp:
                                                       bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.frying_right_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
-        # Info frame (color diff only)
+        # Info frame (나중에 AI 분석 결과 표시용)
         info_frame = tk.Frame(panel, bg=COLOR_PANEL)
-        info_frame.pack(pady=1)
+        info_frame.pack(pady=2, fill=tk.X)
 
-        # Color Diff
-        self.frying_right_color_diff_label = tk.Label(
-            info_frame, text="색상변화: --", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_WARNING
+        # Target Time (나중에 로봇 상태로부터 업데이트)
+        self.frying_right_target_time_label = tk.Label(
+            info_frame, text="목표시간: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
         )
-        self.frying_right_color_diff_label.pack()
+        self.frying_right_target_time_label.pack()
+
+        # 색상 차이 (나중에 Roboflow 모델 적용 시 사용)
+        self.frying_right_color_label = tk.Label(
+            info_frame, text="색상변화: --", font=(FONT_FAMILY, 9), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+        )
+        self.frying_right_color_label.pack()
 
         # Status
         self.frying_right_status = tk.Label(
@@ -1554,8 +1548,8 @@ class JetsonIntegratedApp:
         title = tk.Label(panel, text="🥘 바켓 감지 - 왼쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
         title.pack(pady=2)
 
-        # Camera preview (세로 레이아웃 - 높이 더 축소)
-        preview_container = tk.Frame(panel, bg="black", height=125)
+        # Camera preview (높이 축소로 여백 최소화)
+        preview_container = tk.Frame(panel, bg="black", height=85)
         preview_container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         preview_container.pack_propagate(False)
 
@@ -1567,11 +1561,12 @@ class JetsonIntegratedApp:
                                                       bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.observe_left_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
-        # Status
+        # Status (크고 명확하게)
         self.observe_left_status = tk.Label(
-            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            panel, text="대기 중", font=(FONT_FAMILY, 14, "bold"),
+            bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT, wraplength=300
         )
-        self.observe_left_status.pack(pady=2)
+        self.observe_left_status.pack(pady=5, fill=tk.X)
 
     def create_observe_right_panel(self):
         """Create Observe_add Right camera panel (2x2 그리드 레이아웃)"""
@@ -1583,8 +1578,8 @@ class JetsonIntegratedApp:
         title = tk.Label(panel, text="🥘 바켓 감지 - 오른쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
         title.pack(pady=2)
 
-        # Camera preview (세로 레이아웃 - 높이 더 축소)
-        preview_container = tk.Frame(panel, bg="black", height=125)
+        # Camera preview (높이 축소로 여백 최소화)
+        preview_container = tk.Frame(panel, bg="black", height=85)
         preview_container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         preview_container.pack_propagate(False)
 
@@ -1596,11 +1591,12 @@ class JetsonIntegratedApp:
                                                        bg="black", fg="yellow", font=(FONT_FAMILY, 10, "bold"))
         self.observe_right_cam_number_label.place(relx=1.0, rely=0, x=-5, y=5, anchor="ne")
 
-        # Status
+        # Status (크고 명확하게)
         self.observe_right_status = tk.Label(
-            panel, text="대기 중", font=(FONT_FAMILY, 10), bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT
+            panel, text="대기 중", font=(FONT_FAMILY, 14, "bold"),
+            bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT, wraplength=300
         )
-        self.observe_right_status.pack(pady=2)
+        self.observe_right_status.pack(pady=5, fill=tk.X)
 
     def create_control_panel(self):
         """Create bottom control panel (세로 레이아웃 최적화)"""
@@ -2065,41 +2061,23 @@ class JetsonIntegratedApp:
                     except Exception:
                         pass
 
-                # 색상 변화 측정 (SimpleColorChecker) - throttle
-                try:
-                    self.color_check_left_count += 1
-                    if self.color_check_left_count >= COLOR_CHECK_INTERVAL:
-                        self.color_check_left_count = 0
-                        self.last_pot1_color_result = self.color_checker_left.measure(frame_snapshot)
-                    color_result = self.last_pot1_color_result
-                    if not color_result:
-                        color_result = {"error": "no_result"}
-                    if "error" not in color_result:
-                        color_diff = color_result['color_diff']
-                        # Update GUI color_diff label
-                        self.frying_left_color_diff_label.config(text=f"색상변화: {color_diff:.1f}")
+                # DISCHARGE 조건 체크: running_time >= target_time
+                running_time = self.pot1_robot_status.get("running_time", "00:00:00")
+                target_time = self.pot1_robot_status.get("target_time", "00:00:00")
 
-                        # DISCHARGE 조건 체크: running_time >= target_time AND color_diff >= 25.0
-                        running_time = self.pot1_robot_status.get("running_time", "00:00:00")
-                        target_time = self.pot1_robot_status.get("target_time", "00:00:00")
-                        if self._compare_time(running_time, target_time) and color_diff >= 25.0:
-                            if self.pot1_pot_status != "DISCHARGE":
-                                self.pot1_pot_status = "DISCHARGE"
-                                print(f"[POT1] DISCHARGE 조건 만족: {running_time}/{target_time}, color_diff={color_diff:.1f}")
-                        elif self.pot1_collecting:
-                            if self.pot1_pot_status != "COOKING":
-                                self.pot1_pot_status = "COOKING"
-                    elif color_result.get("error") == "baseline_not_set":
-                        self.frying_left_color_diff_label.config(text="색상변화: 대기중")
-                    elif color_result.get("error") == "no_result":
-                        self.frying_left_color_diff_label.config(text="색상변화: --")
-                    else:
-                        # Error case
-                        self.frying_left_color_diff_label.config(text="색상변화: --")
-                        print(f"[POT1 색상] 에러: {color_result.get('error', 'unknown')}")
-                except Exception as e:
-                    print(f"[POT1 색상] 예외 발생: {type(e).__name__}: {e}")
-                    self.frying_left_color_diff_label.config(text="색상변화: ERR")
+                # GUI에 Target Time 표시 (수집 중일 때만)
+                if self.pot1_collecting and target_time != "00:00:00":
+                    self.frying_left_target_time_label.config(text=f"목표시간: {target_time}")
+                else:
+                    self.frying_left_target_time_label.config(text="목표시간: --")
+
+                if self._compare_time(running_time, target_time):
+                    if self.pot1_pot_status != "DISCHARGE":
+                        self.pot1_pot_status = "DISCHARGE"
+                        print(f"[POT1] DISCHARGE 조건 만족: {running_time}/{target_time}")
+                elif self.pot1_collecting:
+                    if self.pot1_pot_status != "COOKING":
+                        self.pot1_pot_status = "COOKING"
 
             # Store latest frame for data collection (매 프레임 저장)
             self.latest_frying_left_frame = frame_snapshot
@@ -2117,25 +2095,6 @@ class JetsonIntegratedApp:
                             vis = self.gpu_post.overlay_mask(vis, result.food_mask, (0, 255, 0), 0.3)
                     except Exception:
                         pass
-
-                if color_result and "error" not in color_result:
-                    color_diff = color_result['color_diff']
-                    h, w = vis.shape[:2]
-                    color_text = f"Color: {color_diff:.1f}"
-                    prog_text = f"Progress: {color_result['progress_pct']:.0f}%"
-                    font_scale = 1.6
-                    thickness = 3
-                    (ct_w, ct_h), _ = cv2.getTextSize(color_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-                    (pt_w, pt_h), _ = cv2.getTextSize(prog_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-                    x = max(10, w - max(ct_w, pt_w) - 16)
-                    y = max(ct_h + pt_h + 20, h - 16)
-                    cv2.putText(vis, color_text, (x, y - pt_h - 8),
-                                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
-                    cv2.putText(vis, prog_text, (x, y),
-                                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
-                elif color_result and color_result.get("error") == "baseline_not_set":
-                    cv2.putText(vis, "Waiting for robot...",
-                                (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (128, 128, 128), 2)
 
                 # Display (resize once)
                 display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
@@ -2181,9 +2140,6 @@ class JetsonIntegratedApp:
 
                 if robot_result["state_changed"] and robot_result["robot_detected"]:
                     print(f"[POT2] 로봇 진입 감지! metal_ratio={robot_result['metal_ratio']:.4f}")
-                    baseline_result = self.color_checker_right.set_baseline(frame_snapshot)
-                    if baseline_result.get("baseline_set"):
-                        print(f"[POT2] 색상 baseline 설정 완료: {baseline_result['color']}")
                     self.schedule_taltal_capture(pot=2, delay_sec=2.0)
 
                 if robot_result["state_changed"] and not robot_result["robot_detected"]:
@@ -2196,41 +2152,23 @@ class JetsonIntegratedApp:
                     except Exception:
                         pass
 
-                # 색상 변화 측정 (SimpleColorChecker) - throttle
-                try:
-                    self.color_check_right_count += 1
-                    if self.color_check_right_count >= COLOR_CHECK_INTERVAL:
-                        self.color_check_right_count = 0
-                        self.last_pot2_color_result = self.color_checker_right.measure(frame_snapshot)
-                    color_result = self.last_pot2_color_result
-                    if not color_result:
-                        color_result = {"error": "no_result"}
-                    if "error" not in color_result:
-                        color_diff = color_result['color_diff']
-                        # Update GUI color_diff label
-                        self.frying_right_color_diff_label.config(text=f"색상변화: {color_diff:.1f}")
+                # DISCHARGE 조건 체크: running_time >= target_time
+                running_time = self.pot2_robot_status.get("running_time", "00:00:00")
+                target_time = self.pot2_robot_status.get("target_time", "00:00:00")
 
-                        # DISCHARGE 조건 체크: running_time >= target_time AND color_diff >= 25.0
-                        running_time = self.pot2_robot_status.get("running_time", "00:00:00")
-                        target_time = self.pot2_robot_status.get("target_time", "00:00:00")
-                        if self._compare_time(running_time, target_time) and color_diff >= 25.0:
-                            if self.pot2_pot_status != "DISCHARGE":
-                                self.pot2_pot_status = "DISCHARGE"
-                                print(f"[POT2] DISCHARGE 조건 만족: {running_time}/{target_time}, color_diff={color_diff:.1f}")
-                        elif self.pot2_collecting:
-                            if self.pot2_pot_status != "COOKING":
-                                self.pot2_pot_status = "COOKING"
-                    elif color_result.get("error") == "baseline_not_set":
-                        self.frying_right_color_diff_label.config(text="색상변화: 대기중")
-                    elif color_result.get("error") == "no_result":
-                        self.frying_right_color_diff_label.config(text="색상변화: --")
-                    else:
-                        # Error case
-                        self.frying_right_color_diff_label.config(text="색상변화: --")
-                        print(f"[POT2 색상] 에러: {color_result.get('error', 'unknown')}")
-                except Exception as e:
-                    print(f"[POT2 색상] 예외 발생: {type(e).__name__}: {e}")
-                    self.frying_right_color_diff_label.config(text="색상변화: ERR")
+                # GUI에 Target Time 표시 (수집 중일 때만)
+                if self.pot2_collecting and target_time != "00:00:00":
+                    self.frying_right_target_time_label.config(text=f"목표시간: {target_time}")
+                else:
+                    self.frying_right_target_time_label.config(text="목표시간: --")
+
+                if self._compare_time(running_time, target_time):
+                    if self.pot2_pot_status != "DISCHARGE":
+                        self.pot2_pot_status = "DISCHARGE"
+                        print(f"[POT2] DISCHARGE 조건 만족: {running_time}/{target_time}")
+                elif self.pot2_collecting:
+                    if self.pot2_pot_status != "COOKING":
+                        self.pot2_pot_status = "COOKING"
 
             # Store latest frame for data collection (매 프레임 저장)
             self.latest_frying_right_frame = frame_snapshot
@@ -2248,25 +2186,6 @@ class JetsonIntegratedApp:
                             vis = self.gpu_post.overlay_mask(vis, result.food_mask, (0, 255, 0), 0.3)
                     except Exception:
                         pass
-
-                if color_result and "error" not in color_result:
-                    color_diff = color_result['color_diff']
-                    h, w = vis.shape[:2]
-                    color_text = f"Color: {color_diff:.1f}"
-                    prog_text = f"Progress: {color_result['progress_pct']:.0f}%"
-                    font_scale = 1.6
-                    thickness = 3
-                    (ct_w, ct_h), _ = cv2.getTextSize(color_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-                    (pt_w, pt_h), _ = cv2.getTextSize(prog_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-                    x = max(10, w - max(ct_w, pt_w) - 16)
-                    y = max(ct_h + pt_h + 20, h - 16)
-                    cv2.putText(vis, color_text, (x, y - pt_h - 8),
-                                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
-                    cv2.putText(vis, prog_text, (x, y),
-                                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
-                elif color_result and color_result.get("error") == "baseline_not_set":
-                    cv2.putText(vis, "Waiting for robot...",
-                                (16, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (128, 128, 128), 2)
 
                 # Display
                 display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
@@ -2318,20 +2237,18 @@ class JetsonIntegratedApp:
             print(f"[POT2] 탈탈 캡처 예약 ({delay_sec}초 후)")
 
     def capture_taltal_frame(self, pot: int):
-        """탈탈 프레임 캡처 및 색상 측정 (최신 프레임 사용 - cap.read() 경합 방지)."""
+        """탈탈 프레임 캡처 (최신 프레임 사용 - cap.read() 경합 방지)."""
         try:
             if pot == 1:
                 frame = self.latest_frying_left_frame
                 if frame is not None:
-                    color_result = self.color_checker_left.measure(frame)
-                    print(f"[POT1 탈탈] 색상 측정: {color_result}")
+                    print(f"[POT1 탈탈] 프레임 캡처 완료")
                 else:
                     print(f"[POT1 탈탈] 최신 프레임 없음 - 스킵")
             else:
                 frame = self.latest_frying_right_frame
                 if frame is not None:
-                    color_result = self.color_checker_right.measure(frame)
-                    print(f"[POT2 탈탈] 색상 측정: {color_result}")
+                    print(f"[POT2 탈탈] 프레임 캡처 완료")
                 else:
                     print(f"[POT2 탈탈] 최신 프레임 없음 - 스킵")
 
@@ -2458,7 +2375,11 @@ class JetsonIntegratedApp:
                         self.log_signal("왼쪽", state_txt)
                         self.send_mqtt_message(MQTT_TOPIC_OBSERVE, f"LEFT:{state_txt}")
                         self.observe_left_state = state_txt
-                        self.observe_left_status.config(text=f"상태: {state_txt}")
+                        # 명확한 상태 표시
+                        if state_txt == "FILLED":
+                            self.observe_left_status.config(text="🔴 바켓 감지 - 가득함", fg="red")
+                        else:  # EMPTY
+                            self.observe_left_status.config(text="⚪ 바켓 감지 - 비어있음", fg="gray")
                 else:
                     self.observe_left_votes.clear()
                     if should_display:
@@ -2468,7 +2389,7 @@ class JetsonIntegratedApp:
                         self.log_signal("왼쪽", "NO_BASKET")
                         self.send_mqtt_message(MQTT_TOPIC_OBSERVE, "LEFT:NO_BASKET")
                         self.observe_left_state = None
-                        self.observe_left_status.config(text="바켓 없음")
+                        self.observe_left_status.config(text="⚫ 바켓 없음", fg=COLOR_TEXT_LIGHT)
 
             # Store latest frame for data collection (매 프레임 저장)
             self.latest_observe_left_frame = frame_snapshot
@@ -2600,7 +2521,11 @@ class JetsonIntegratedApp:
                         self.log_signal("오른쪽", state_txt)
                         self.send_mqtt_message(MQTT_TOPIC_OBSERVE, f"RIGHT:{state_txt}")
                         self.observe_right_state = state_txt
-                        self.observe_right_status.config(text=f"상태: {state_txt}")
+                        # 명확한 상태 표시
+                        if state_txt == "FILLED":
+                            self.observe_right_status.config(text="🔴 바켓 감지 - 가득함", fg="red")
+                        else:  # EMPTY
+                            self.observe_right_status.config(text="⚪ 바켓 감지 - 비어있음", fg="gray")
                 else:
                     self.observe_right_votes.clear()
                     if should_display:
@@ -2610,7 +2535,7 @@ class JetsonIntegratedApp:
                         self.log_signal("오른쪽", "NO_BASKET")
                         self.send_mqtt_message(MQTT_TOPIC_OBSERVE, "RIGHT:NO_BASKET")
                         self.observe_right_state = None
-                        self.observe_right_status.config(text="바켓 없음")
+                        self.observe_right_status.config(text="⚫ 바켓 없음", fg=COLOR_TEXT_LIGHT)
 
             # Store latest frame for data collection (매 프레임 저장)
             self.latest_observe_right_frame = frame_snapshot
@@ -4105,27 +4030,15 @@ class JetsonIntegratedApp:
                 saver.save(save_path, frame)
                 self.pot1_frame_counter += 1
 
-        # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프 + 색상 변화)
+        # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프)
         meta_path = os.path.join(self.pot1_session_dir, "meta", f"meta_{timestamp}.json")
         os.makedirs(os.path.dirname(meta_path), exist_ok=True)
-
-        # Color diff 측정 (POT1 = 좌측 튀김)
-        color_data = {}
-        if frying_left is not None:
-            try:
-                color_result = self.color_checker_left.measure(frying_left)
-                if "error" not in color_result:
-                    color_data["color_diff"] = color_result["color_diff"]
-                    color_data["progress_pct"] = color_result["progress_pct"]
-            except Exception as e:
-                print(f"[POT1 색상] 측정 실패: {e}")
 
         meta_data = {
             "timestamp": full_timestamp,
             "frame_id": timestamp,
             "pot": "pot1",
-            **self.pot1_robot_status,
-            **color_data
+            **self.pot1_robot_status
         }
         try:
             with open(meta_path, 'w', encoding='utf-8') as f:
@@ -4160,27 +4073,15 @@ class JetsonIntegratedApp:
                 saver.save(save_path, frame)
                 self.pot2_frame_counter += 1
 
-        # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프 + 색상 변화)
+        # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프)
         meta_path = os.path.join(self.pot2_session_dir, "meta", f"meta_{timestamp}.json")
         os.makedirs(os.path.dirname(meta_path), exist_ok=True)
-
-        # Color diff 측정 (POT2 = 우측 튀김)
-        color_data = {}
-        if frying_right is not None:
-            try:
-                color_result = self.color_checker_right.measure(frying_right)
-                if "error" not in color_result:
-                    color_data["color_diff"] = color_result["color_diff"]
-                    color_data["progress_pct"] = color_result["progress_pct"]
-            except Exception as e:
-                print(f"[POT2 색상] 측정 실패: {e}")
 
         meta_data = {
             "timestamp": full_timestamp,
             "frame_id": timestamp,
             "pot": "pot2",
-            **self.pot2_robot_status,
-            **color_data
+            **self.pot2_robot_status
         }
         try:
             with open(meta_path, 'w', encoding='utf-8') as f:
