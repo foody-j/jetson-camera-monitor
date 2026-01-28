@@ -3289,12 +3289,20 @@ class IntegratedMonitorApp:
         """MQTT 상태 상세 팝업 표시 (탭 형태)"""
         from tkinter import ttk
 
+        if hasattr(self, "_mqtt_popup") and self._mqtt_popup is not None:
+            try:
+                if self._mqtt_popup.winfo_exists():
+                    self._mqtt_popup.lift()
+                    return
+            except Exception:
+                self._mqtt_popup = None
+
         popup = tk.Toplevel(self.root)
+        self._mqtt_popup = popup
         popup.title("MQTT 상태")
         popup.geometry("550x500")
         popup.configure(bg=COLOR_PANEL)
-        popup.transient(self.root)
-        popup.grab_set()
+        popup.protocol("WM_DELETE_WINDOW", lambda: self._close_mqtt_popup())
 
         # 연결 상태 (상단 고정)
         status_frame = tk.Frame(popup, bg=COLOR_PANEL)
@@ -3420,9 +3428,19 @@ class IntegratedMonitorApp:
         # 닫기 버튼
         tk.Button(popup, text="닫기",
                  font=(FONT_FAMILY, 11, "bold"),
-                 command=popup.destroy,
+                 command=self._close_mqtt_popup,
                  bg=COLOR_BUTTON, fg="white",
                  relief=tk.FLAT, padx=20, pady=5).pack(pady=10)
+
+    def _close_mqtt_popup(self):
+        """MQTT 팝업 닫기 (참조 정리)"""
+        try:
+            if hasattr(self, "_mqtt_popup") and self._mqtt_popup is not None:
+                if self._mqtt_popup.winfo_exists():
+                    self._mqtt_popup.destroy()
+        except Exception:
+            pass
+        self._mqtt_popup = None
 
     def _create_manual_publish_tab(self, parent_frame):
         """MQTT 수동 발행 탭 생성"""
