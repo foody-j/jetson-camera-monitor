@@ -1401,13 +1401,13 @@ class JetsonIntegratedApp:
         tk.Frame(header_frame, width=1, bg=COLOR_TEXT_LIGHT).pack(side=tk.LEFT, fill=tk.Y, padx=3, pady=8)
 
         # 디스크 용량 (축소)
-        self.disk_label = tk.Label(header_frame, text="💾 --/--GB",
+        self.disk_label = tk.Label(header_frame, text="--/--GB",
                                    font=(FONT_FAMILY, 10),
                                    bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT)
         self.disk_label.pack(side=tk.LEFT, padx=3)
 
         # 프로세스 CPU 사용률 (축소)
-        self.cpu_label = tk.Label(header_frame, text="🧠 --%",
+        self.cpu_label = tk.Label(header_frame, text="--%",
                                   font=(FONT_FAMILY, 10),
                                   bg=COLOR_PANEL, fg=COLOR_TEXT_LIGHT)
         self.cpu_label.pack(side=tk.LEFT, padx=3)
@@ -1455,7 +1455,7 @@ class JetsonIntegratedApp:
         panel.grid(row=0, column=0, padx=2, pady=1, sticky="nsew")
 
         # Title (축소)
-        title = tk.Label(panel, text="🍤 튀김 AI - 왼쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
+        title = tk.Label(panel, text="튀김 AI - 왼쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
         title.pack(pady=2)
 
         # Camera preview (높이 축소로 여백 최소화)
@@ -1500,7 +1500,7 @@ class JetsonIntegratedApp:
         panel.grid(row=0, column=1, padx=2, pady=1, sticky="nsew")
 
         # Title (축소)
-        title = tk.Label(panel, text="🍤 튀김 AI - 오른쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
+        title = tk.Label(panel, text="튀김 AI - 오른쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
         title.pack(pady=2)
 
         # Camera preview (높이 축소로 여백 최소화)
@@ -1545,7 +1545,7 @@ class JetsonIntegratedApp:
         panel.grid(row=1, column=0, padx=2, pady=1, sticky="nsew")
 
         # Title (축소)
-        title = tk.Label(panel, text="🥘 바켓 감지 - 왼쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
+        title = tk.Label(panel, text="바켓 감지 - 왼쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
         title.pack(pady=2)
 
         # Camera preview (높이 축소로 여백 최소화)
@@ -1575,7 +1575,7 @@ class JetsonIntegratedApp:
         panel.grid(row=1, column=1, padx=2, pady=1, sticky="nsew")
 
         # Title (축소)
-        title = tk.Label(panel, text="🥘 바켓 감지 - 오른쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
+        title = tk.Label(panel, text="바켓 감지 - 오른쪽", font=(FONT_FAMILY, 12, "bold"), bg=COLOR_PANEL, fg=COLOR_TEXT)
         title.pack(pady=2)
 
         # Camera preview (높이 축소로 여백 최소화)
@@ -2377,9 +2377,9 @@ class JetsonIntegratedApp:
                         self.observe_left_state = state_txt
                         # 명확한 상태 표시
                         if state_txt == "FILLED":
-                            self.observe_left_status.config(text="🔴 바켓 감지 - 가득함", fg="red")
+                            self.observe_left_status.config(text="[바켓 감지] 가득함", fg="red")
                         else:  # EMPTY
-                            self.observe_left_status.config(text="⚪ 바켓 감지 - 비어있음", fg="gray")
+                            self.observe_left_status.config(text="[바켓 감지] 비어있음", fg="gray")
                 else:
                     self.observe_left_votes.clear()
                     if should_display:
@@ -2389,7 +2389,7 @@ class JetsonIntegratedApp:
                         self.log_signal("왼쪽", "NO_BASKET")
                         self.send_mqtt_message(MQTT_TOPIC_OBSERVE, "LEFT:NO_BASKET")
                         self.observe_left_state = None
-                        self.observe_left_status.config(text="⚫ 바켓 없음", fg=COLOR_TEXT_LIGHT)
+                        self.observe_left_status.config(text="[바켓 없음]", fg=COLOR_TEXT_LIGHT)
 
             # Store latest frame for data collection (매 프레임 저장)
             self.latest_observe_left_frame = frame_snapshot
@@ -2523,9 +2523,9 @@ class JetsonIntegratedApp:
                         self.observe_right_state = state_txt
                         # 명확한 상태 표시
                         if state_txt == "FILLED":
-                            self.observe_right_status.config(text="🔴 바켓 감지 - 가득함", fg="red")
+                            self.observe_right_status.config(text="[바켓 감지] 가득함", fg="red")
                         else:  # EMPTY
-                            self.observe_right_status.config(text="⚪ 바켓 감지 - 비어있음", fg="gray")
+                            self.observe_right_status.config(text="[바켓 감지] 비어있음", fg="gray")
                 else:
                     self.observe_right_votes.clear()
                     if should_display:
@@ -2535,7 +2535,7 @@ class JetsonIntegratedApp:
                         self.log_signal("오른쪽", "NO_BASKET")
                         self.send_mqtt_message(MQTT_TOPIC_OBSERVE, "RIGHT:NO_BASKET")
                         self.observe_right_state = None
-                        self.observe_right_status.config(text="⚫ 바켓 없음", fg=COLOR_TEXT_LIGHT)
+                        self.observe_right_status.config(text="[바켓 없음]", fg=COLOR_TEXT_LIGHT)
 
             # Store latest frame for data collection (매 프레임 저장)
             self.latest_observe_right_frame = frame_snapshot
@@ -3101,7 +3101,7 @@ class JetsonIntegratedApp:
             recording_parts.append("수동")
 
         if recording_parts:
-            status_text = f"🔴 {'+'.join(recording_parts)} 수집중"
+            status_text = f"[REC] {'+'.join(recording_parts)} 수집중"
             self.recording_status_label.config(text=status_text, fg=COLOR_ERROR)
             # 구분선 표시
             self.recording_separator.pack(side=tk.LEFT, fill=tk.Y, padx=3, pady=8)
