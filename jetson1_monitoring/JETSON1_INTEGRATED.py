@@ -1383,10 +1383,25 @@ class IntegratedMonitorApp:
             # MQTT 메시지 로그에 저장 (원본 보기용)
             self._log_mqtt_message(message.topic, payload)
 
-            # VibrationRequest 처리
+            # 진동 트리거: ChkVibration (DeviceNum=1=Jetson1) 우선 사용
             vibration_request = data.get("VibrationRequest", False)
-            if vibration_request:
-                print(f"[로봇상태] VibrationRequest 수신: {vibration_request}")
+            status_list = data.get("Status", [])
+            chk_vibration = False
+            for status in status_list:
+                if str(status.get("DeviceNum", "")) != "1":
+                    continue
+                chk_val = status.get("ChkVibration", False)
+                if isinstance(chk_val, str):
+                    chk_val = chk_val.strip().lower() == "true"
+                if chk_val:
+                    chk_vibration = True
+                    break
+
+            if chk_vibration or vibration_request:
+                if chk_vibration:
+                    print(f"[로봇상태] ChkVibration 수신 (DeviceNum=1)")
+                else:
+                    print(f"[로봇상태] VibrationRequest 수신: {vibration_request}")
                 if VIBRATION_TEST_MODE:
                     # 테스트 모드: 즉시 NORMAL 응답
                     print(f"[진동] 테스트 모드 - 즉시 NORMAL 응답")
@@ -1399,7 +1414,6 @@ class IntegratedMonitorApp:
             # Status 배열에서 볶음솥(DeviceNum=1) 찾기
             # DeviceNum: "0"=튀김(Jetson2), "1"=볶음(Jetson1)
             # PTNum: "0"=왼쪽, "1"=오른쪽
-            status_list = data.get("Status", [])
             for status in status_list:
                 device_num = status.get("DeviceNum", "")
 
@@ -3099,9 +3113,9 @@ class IntegratedMonitorApp:
             print("[진동] 이미 실행 중입니다")
             return
 
-        # 상대 경로로 수정 (jetson-food-ai 기준)
+        # 상대 경로 (jetson-food-ai 기준)
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        vibration_script = os.path.join(base_dir, "vibration_sensor_simple.py")
+        vibration_script = os.path.join(base_dir, "test_vibration_pymodbus3_finalrev.py")
 
         if not os.path.exists(vibration_script):
             print(f"[진동] 오류: {vibration_script} 파일이 없습니다")
@@ -3110,11 +3124,14 @@ class IntegratedMonitorApp:
         try:
             # 진동 센서 프로그램을 별도 프로세스로 실행
             # stdout/stderr=None → 부모 프로세스(이 프로그램)의 출력으로 리다이렉트 (journalctl에서 보임)
+            env = os.environ.copy()
+            env["VIB_UNIT_IDS"] = "0x53,0x54,0x55"
             self.vibration_process = subprocess.Popen(
                 ["python3", vibration_script],
                 cwd=base_dir,
                 stdout=None,  # 부모 프로세스의 stdout으로 출력 (journalctl에서 보임)
-                stderr=None   # 부모 프로세스의 stderr로 출력 (journalctl에서 보임)
+                stderr=None,  # 부모 프로세스의 stderr로 출력 (journalctl에서 보임)
+                env=env
             )
             self.child_processes.append(self.vibration_process)
             print(f"[진동] 프로세스 시작 (PID: {self.vibration_process.pid})")

@@ -34,9 +34,24 @@ except Exception:
 # =========================
 # 사용자 설정
 # =========================
-PORT = "/dev/ttyUSB0"
-BAUD = 115200
-UNIT_IDS = [0x53, 0x54, 0x55]   # 환경에 맞게 수정
+PORT = os.getenv("VIB_PORT", "/dev/ttyUSB0")
+BAUD = int(os.getenv("VIB_BAUD", "115200"))
+
+def _parse_unit_ids(env_val: str):
+    if not env_val:
+        return None
+    ids = []
+    for part in env_val.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            ids.append(int(part, 0))  # supports 0x.. or decimal
+        except ValueError:
+            pass
+    return ids or None
+
+UNIT_IDS = _parse_unit_ids(os.getenv("VIB_UNIT_IDS")) or [0x53, 0x54, 0x55]  # 환경에 맞게 수정
 PARITY = 'N'
 STOPBITS = 1
 BYTESIZE = 8
