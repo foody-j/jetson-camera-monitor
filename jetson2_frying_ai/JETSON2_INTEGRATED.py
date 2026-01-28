@@ -2970,6 +2970,11 @@ class JetsonIntegratedApp:
         """MQTT callback for Jetson #1 relay status synchronization"""
         try:
             raw_message = message.payload.decode('utf-8')
+            # GUI MQTT 로그에도 표시
+            try:
+                self._log_mqtt_message(message.topic, raw_message)
+            except Exception:
+                pass
             print("=" * 60)
             print(f"[릴레이 동기화] Jetson #1 릴레이 상태 수신:")
             print(f"  Raw: {raw_message}")
@@ -2989,9 +2994,17 @@ class JetsonIntegratedApp:
                 if relay_status == 'ON':
                     print("[릴레이 동기화] Jetson #1 ON 감지 → Jetson #2 릴레이 ON")
                     self.relay_turn_on()
+                    try:
+                        self.root.after(0, lambda: self.show_toast("릴레이 ON 수신"))
+                    except Exception:
+                        pass
                 elif relay_status == 'OFF':
                     print("[릴레이 동기화] Jetson #1 OFF 감지 → Jetson #2 릴레이 OFF")
                     self.relay_turn_off()
+                    try:
+                        self.root.after(0, lambda: self.show_toast("릴레이 OFF 수신"))
+                    except Exception:
+                        pass
                 else:
                     print(f"[릴레이 동기화] 알 수 없는 상태: {relay_status}")
 
