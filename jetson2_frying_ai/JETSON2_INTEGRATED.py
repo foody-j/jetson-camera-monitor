@@ -2142,8 +2142,8 @@ class JetsonIntegratedApp:
                     except Exception:
                         pass
 
-                # Display (resize once)
-                display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
+                # Display (center crop to fill without letterbox)
+                display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
                 display_frame = display_frame[:, :, ::-1].copy()
 
                 img = Image.fromarray(display_frame)
@@ -2248,7 +2248,7 @@ class JetsonIntegratedApp:
                         pass
 
                 # Display
-                display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
+                display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
                 display_frame = display_frame[:, :, ::-1].copy()
 
                 img = Image.fromarray(display_frame)
@@ -2362,7 +2362,7 @@ class JetsonIntegratedApp:
                 # 이전 YOLO 결과 사용
                 if self.observe_left_result is None:
                     if should_display:
-                        display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
+                        display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
                         display_frame = display_frame[:, :, ::-1].copy()
                         img = Image.fromarray(display_frame)
                         imgtk = ImageTk.PhotoImage(image=img)
@@ -2455,7 +2455,7 @@ class JetsonIntegratedApp:
             self.latest_observe_left_frame = frame_snapshot
 
             if should_display:
-                display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
+                display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
                 display_frame = display_frame[:, :, ::-1].copy()
                 img = Image.fromarray(display_frame)
                 imgtk = ImageTk.PhotoImage(image=img)
@@ -2508,7 +2508,7 @@ class JetsonIntegratedApp:
                 # 이전 YOLO 결과 사용
                 if self.observe_right_result is None:
                     if should_display:
-                        display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
+                        display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
                         display_frame = display_frame[:, :, ::-1].copy()
                         img = Image.fromarray(display_frame)
                         imgtk = ImageTk.PhotoImage(image=img)
@@ -2601,7 +2601,7 @@ class JetsonIntegratedApp:
             self.latest_observe_right_frame = frame_snapshot
 
             if should_display:
-                display_frame = self.gpu_post.resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT), mode="nearest")
+                display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
                 display_frame = display_frame[:, :, ::-1].copy()
                 img = Image.fromarray(display_frame)
                 imgtk = ImageTk.PhotoImage(image=img)

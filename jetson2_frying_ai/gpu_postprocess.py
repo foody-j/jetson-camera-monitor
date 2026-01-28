@@ -73,6 +73,38 @@ class GPUPostProcessor:
             interp = cv2.INTER_NEAREST if mode == "nearest" else cv2.INTER_LINEAR
             return cv2.resize(img, size, interpolation=interp)
 
+    def center_crop_resize(self, img: np.ndarray, size: tuple) -> np.ndarray:
+        """
+        Center crop하여 레터박스 없이 꽉 채우기
+
+        Args:
+            img: 입력 이미지 (H, W, C)
+            size: (width, height) 출력 크기
+
+        Returns:
+            Cropped & resized 이미지
+        """
+        h, w = img.shape[:2]
+        target_w, target_h = size
+
+        # 목표 비율
+        target_ratio = target_w / target_h
+        src_ratio = w / h
+
+        if src_ratio > target_ratio:
+            # 가로가 더 넓음 -> 가로 crop
+            new_w = int(h * target_ratio)
+            x_start = (w - new_w) // 2
+            cropped = img[:, x_start:x_start + new_w]
+        else:
+            # 세로가 더 길음 -> 세로 crop
+            new_h = int(w / target_ratio)
+            y_start = (h - new_h) // 2
+            cropped = img[y_start:y_start + new_h, :]
+
+        # Resize
+        return self.resize(cropped, size, mode="nearest")
+
     def overlay_mask(self, frame: np.ndarray, mask: np.ndarray,
                      color: tuple = (0, 255, 0), alpha: float = 0.3) -> np.ndarray:
         """
