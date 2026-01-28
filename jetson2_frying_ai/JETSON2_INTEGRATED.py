@@ -1099,30 +1099,33 @@ class JetsonIntegratedApp:
                     chk_vibration = True
                     break
 
+            # ChkVibration 상태 변화 로깅
             if chk_vibration != self._last_chk_vibration:
                 self._last_chk_vibration = chk_vibration
                 if chk_vibration:
-                    print(f"[로봇상태] ChkVibration 수신 (DeviceNum=0)")
-                    try:
-                        self.root.after(0, lambda: self.show_toast("진동 측정 시작"))
-                    except Exception:
-                        pass
+                    print(f"[로봇상태] ChkVibration=True 감지 (DeviceNum=0)")
                 else:
-                    try:
-                        self.root.after(0, lambda: self.show_toast("진동 측정 종료"))
-                    except Exception:
-                        pass
+                    print(f"[로봇상태] ChkVibration=False 감지 (DeviceNum=0)")
 
-            if chk_vibration or vibration_request:
-                if not chk_vibration:
-                    print(f"[로봇상태] VibrationRequest 수신: {vibration_request}")
+            # ChkVibration이 True이면 매번 진동센서 측정 실행
+            if chk_vibration:
+                print(f"[진동] ChkVibration=True → 진동센서 측정 시작")
                 if VIBRATION_TEST_MODE:
                     # 테스트 모드: 즉시 NORMAL 응답
                     print(f"[진동] 테스트 모드 - 즉시 NORMAL 응답")
                     self.vibration_status = "NORMAL"
-                    self.publish_status()  # 즉시 상태 발행
+                    self.publish_status()
                 else:
                     # 실제 모드: 진동센서 측정 시작
+                    self.start_vibration_check()
+            elif vibration_request:
+                # VibrationRequest (legacy)
+                print(f"[로봇상태] VibrationRequest 수신: {vibration_request}")
+                if VIBRATION_TEST_MODE:
+                    print(f"[진동] 테스트 모드 - 즉시 NORMAL 응답")
+                    self.vibration_status = "NORMAL"
+                    self.publish_status()
+                else:
                     self.start_vibration_check()
 
             # Status 배열 추출
