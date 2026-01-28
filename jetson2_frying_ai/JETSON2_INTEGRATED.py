@@ -2104,9 +2104,11 @@ class JetsonIntegratedApp:
                     food_text = self.pot1_food_type if self.pot1_food_type != "unknown" else "--"
                     self.frying_left_food_label.config(text=f"음식: {food_text}")
 
-                    # 온도
-                    temp = self.pot1_robot_status.get("temperature", "--")
-                    self.frying_left_temp_label.config(text=f"온도: {temp}")
+                    # 온도 (기름 온도)
+                    if self.oil_temp_left > 0:
+                        self.frying_left_temp_label.config(text=f"온도: {self.oil_temp_left:.0f}°C")
+                    else:
+                        self.frying_left_temp_label.config(text="온도: --")
 
                     # 목표시간
                     if target_time != "00:00:00":
@@ -2209,9 +2211,11 @@ class JetsonIntegratedApp:
                     food_text = self.pot2_food_type if self.pot2_food_type != "unknown" else "--"
                     self.frying_right_food_label.config(text=f"음식: {food_text}")
 
-                    # 온도
-                    temp = self.pot2_robot_status.get("temperature", "--")
-                    self.frying_right_temp_label.config(text=f"온도: {temp}")
+                    # 온도 (기름 온도)
+                    if self.oil_temp_right > 0:
+                        self.frying_right_temp_label.config(text=f"온도: {self.oil_temp_right:.0f}°C")
+                    else:
+                        self.frying_right_temp_label.config(text="온도: --")
 
                     # 목표시간
                     if target_time != "00:00:00":
