@@ -2097,11 +2097,17 @@ class JetsonIntegratedApp:
                 self.pot1_timer = 0
                 if DEBUG_PRINT:
                     print(f"[POT1 수집] 저장 트리거: interval={self.collection_interval}, frying_left={'OK' if self.latest_frying_left_frame is not None else 'None'}")
-                self.save_pot1_data(
-                    self.latest_frying_left_frame,
-                    self.latest_observe_left_frame,
-                    self.latest_observe_right_frame
-                )
+                # 백그라운드 스레드에서 저장 (GUI 블로킹 방지)
+                import threading
+                threading.Thread(
+                    target=self.save_pot1_data,
+                    args=(
+                        self.latest_frying_left_frame.copy() if self.latest_frying_left_frame is not None else None,
+                        self.latest_observe_left_frame.copy() if self.latest_observe_left_frame is not None else None,
+                        self.latest_observe_right_frame.copy() if self.latest_observe_right_frame is not None else None
+                    ),
+                    daemon=True
+                ).start()
 
         if self.frying_left_cap is None:
             self.root.after(GUI_UPDATE_INTERVAL, self.update_frying_left)
@@ -2384,11 +2390,17 @@ class JetsonIntegratedApp:
                 self.pot2_timer = 0
                 if DEBUG_PRINT:
                     print(f"[POT2 수집] 저장 트리거: interval={self.collection_interval}, frying_right={'OK' if self.latest_frying_right_frame is not None else 'None'}")
-                self.save_pot2_data(
-                    self.latest_frying_right_frame,
-                    self.latest_observe_left_frame,
-                    self.latest_observe_right_frame
-                )
+                # 백그라운드 스레드에서 저장 (GUI 블로킹 방지)
+                import threading
+                threading.Thread(
+                    target=self.save_pot2_data,
+                    args=(
+                        self.latest_frying_right_frame.copy() if self.latest_frying_right_frame is not None else None,
+                        self.latest_observe_left_frame.copy() if self.latest_observe_left_frame is not None else None,
+                        self.latest_observe_right_frame.copy() if self.latest_observe_right_frame is not None else None
+                    ),
+                    daemon=True
+                ).start()
 
         if self.observe_left_cap is None:
             self.root.after(GUI_UPDATE_INTERVAL, self.update_observe_left)
