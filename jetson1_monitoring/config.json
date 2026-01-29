@@ -7,7 +7,7 @@
   "mode": "auto",
   "_comment_time": "주간 모드 시작/종료 시간 (HH:MM 형식)",
   "day_start": "04:00",
-  "day_end": "19:00",
+  "day_end": "21:00",
   "_comment_camera": "사람 감지 카메라 (gmsl 또는 usb)",
   "camera_type": "gmsl",
   "camera_index": 2,

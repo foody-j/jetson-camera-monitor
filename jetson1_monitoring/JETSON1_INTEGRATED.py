@@ -1765,6 +1765,11 @@ class IntegratedMonitorApp:
             if not ret or frame is None:
                 self.root.after(50, self.update_auto_system)
                 return
+
+            # CRITICAL: GstCamera returns read-only buffer reference!
+            # Must copy before any cv2 drawing operations to avoid corrupting buffer pool
+            frame = frame.copy()
+
         except Exception as e:
             print(f"[Error] Auto camera read error: {e}")
             self.root.after(50, self.update_auto_system)
