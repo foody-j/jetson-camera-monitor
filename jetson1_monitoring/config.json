@@ -72,7 +72,7 @@
   "_comment_relay": "24V 옴론 릴레이 제어 (ULN2803 경유, Pin 29, 31)",
   "relay_mode": "pulse",
   "_comment_relay_mode": "pulse=펄스 신호(HIGH->LOW, 자기유지 릴레이용), continuous=계속 HIGH(일반 릴레이용)",
-  "auto_relay_enabled": false,
+  "auto_relay_enabled": true,
   "_comment_auto_relay": "자동 릴레이 제어 활성화 (true=자동 ON/OFF, false=수동 제어만)",
   "_comment_periodic_off_pulse": "야간모드 사람 미감지 시 주기적 OFF 펄스 (브로커 PC 상시전원용)",
   "periodic_off_pulse_enabled": true,
