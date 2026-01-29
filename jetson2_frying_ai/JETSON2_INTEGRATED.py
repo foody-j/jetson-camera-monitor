@@ -2178,23 +2178,28 @@ class JetsonIntegratedApp:
             if self.gui_image_enabled and self.gui_frame_skip_frying_left >= FRYING_GUI_FRAME_SKIP:
                 self.gui_frame_skip_frying_left = 0
 
-                vis = frame_snapshot.copy()
-                if self.frying_left_result is not None:
-                    result = self.frying_left_result
-                    try:
-                        if result.food_mask is not None:
-                            vis = self.gpu_post.overlay_mask(vis, result.food_mask, (0, 255, 0), 0.3)
-                    except Exception:
-                        pass
+                try:
+                    vis = frame_snapshot.copy()
+                    if self.frying_left_result is not None:
+                        result = self.frying_left_result
+                        try:
+                            if result.food_mask is not None:
+                                vis = self.gpu_post.overlay_mask(vis, result.food_mask, (0, 255, 0), 0.3)
+                        except Exception:
+                            pass
 
-                # Display (center crop to fill without letterbox)
-                display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
-                display_frame = display_frame[:, :, ::-1].copy()
+                    # Display (center crop to fill without letterbox)
+                    display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
+                    display_frame = display_frame[:, :, ::-1].copy()
 
-                img = Image.fromarray(display_frame)
-                imgtk = ImageTk.PhotoImage(image=img)
-                self.frying_left_label.imgtk = imgtk
-                self.frying_left_label.configure(image=imgtk)
+                    img = Image.fromarray(display_frame)
+                    imgtk = ImageTk.PhotoImage(image=img)
+                    self.frying_left_label.imgtk = imgtk
+                    self.frying_left_label.configure(image=imgtk)
+                except Exception as e:
+                    # GPU 작업 실패 시 루프는 계속 진행 (카메라 멈춤 방지)
+                    if DEBUG_PRINT:
+                        print(f"[Camera0] GUI update error: {e}")
 
         # LEGACY: Data collection timer (shared across all active cameras)
         if self.data_collection_active:
@@ -2285,23 +2290,28 @@ class JetsonIntegratedApp:
             if self.gui_image_enabled and self.gui_frame_skip_frying_right >= FRYING_GUI_FRAME_SKIP:
                 self.gui_frame_skip_frying_right = 0
 
-                vis = frame_snapshot.copy()
-                if self.frying_right_result is not None:
-                    result = self.frying_right_result
-                    try:
-                        if result.food_mask is not None:
-                            vis = self.gpu_post.overlay_mask(vis, result.food_mask, (0, 255, 0), 0.3)
-                    except Exception:
-                        pass
+                try:
+                    vis = frame_snapshot.copy()
+                    if self.frying_right_result is not None:
+                        result = self.frying_right_result
+                        try:
+                            if result.food_mask is not None:
+                                vis = self.gpu_post.overlay_mask(vis, result.food_mask, (0, 255, 0), 0.3)
+                        except Exception:
+                            pass
 
-                # Display
-                display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
-                display_frame = display_frame[:, :, ::-1].copy()
+                    # Display
+                    display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
+                    display_frame = display_frame[:, :, ::-1].copy()
 
-                img = Image.fromarray(display_frame)
-                imgtk = ImageTk.PhotoImage(image=img)
-                self.frying_right_label.imgtk = imgtk
-                self.frying_right_label.configure(image=imgtk)
+                    img = Image.fromarray(display_frame)
+                    imgtk = ImageTk.PhotoImage(image=img)
+                    self.frying_right_label.imgtk = imgtk
+                    self.frying_right_label.configure(image=imgtk)
+                except Exception as e:
+                    # GPU 작업 실패 시 루프는 계속 진행 (카메라 멈춤 방지)
+                    if DEBUG_PRINT:
+                        print(f"[Camera1] GUI update error: {e}")
 
             # Data collection timer (only if frying_left is not active)
             if self.data_collection_active and self.frying_left_cap is None:
@@ -2502,12 +2512,17 @@ class JetsonIntegratedApp:
             self.latest_observe_left_frame = frame_snapshot
 
             if should_display:
-                display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
-                display_frame = display_frame[:, :, ::-1].copy()
-                img = Image.fromarray(display_frame)
-                imgtk = ImageTk.PhotoImage(image=img)
-                self.observe_left_label.imgtk = imgtk
-                self.observe_left_label.configure(image=imgtk)
+                try:
+                    display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
+                    display_frame = display_frame[:, :, ::-1].copy()
+                    img = Image.fromarray(display_frame)
+                    imgtk = ImageTk.PhotoImage(image=img)
+                    self.observe_left_label.imgtk = imgtk
+                    self.observe_left_label.configure(image=imgtk)
+                except Exception as e:
+                    # GPU 작업 실패 시 루프는 계속 진행 (카메라 멈춤 방지)
+                    if DEBUG_PRINT:
+                        print(f"[Camera2] GUI update error: {e}")
 
         # LEGACY: Data collection timer (only if frying cameras are not active)
         if self.data_collection_active and self.frying_left_cap is None and self.frying_right_cap is None:
@@ -2648,12 +2663,17 @@ class JetsonIntegratedApp:
             self.latest_observe_right_frame = frame_snapshot
 
             if should_display:
-                display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
-                display_frame = display_frame[:, :, ::-1].copy()
-                img = Image.fromarray(display_frame)
-                imgtk = ImageTk.PhotoImage(image=img)
-                self.observe_right_label.imgtk = imgtk
-                self.observe_right_label.configure(image=imgtk)
+                try:
+                    display_frame = self.gpu_post.center_crop_resize(vis, (DISPLAY_WIDTH, DISPLAY_HEIGHT))
+                    display_frame = display_frame[:, :, ::-1].copy()
+                    img = Image.fromarray(display_frame)
+                    imgtk = ImageTk.PhotoImage(image=img)
+                    self.observe_right_label.imgtk = imgtk
+                    self.observe_right_label.configure(image=imgtk)
+                except Exception as e:
+                    # GPU 작업 실패 시 루프는 계속 진행 (카메라 멈춤 방지)
+                    if DEBUG_PRINT:
+                        print(f"[Camera3] GUI update error: {e}")
 
             # Data collection timer (last fallback - only if all other cameras are not active)
             if (self.data_collection_active and
@@ -3085,9 +3105,10 @@ class JetsonIntegratedApp:
             traceback.print_exc()
 
     def start_vibration_check(self):
-        """Start vibration sensor monitoring program"""
+        """Start vibration sensor monitoring program with analysis"""
         import subprocess
         import os
+        import threading
 
         if self.vibration_process is not None:
             print("[진동] 이미 실행 중입니다")
@@ -3096,34 +3117,137 @@ class JetsonIntegratedApp:
         # 상대 경로 (jetson-food-ai 기준)
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         vibration_script = os.path.join(base_dir, "test_vibration_pymodbus3_finalrev.py")
+        baseline_file = os.path.join(base_dir, "vibration_baseline_jetson2.json")
+        result_file = os.path.join(base_dir, "vibration_result.json")
 
         if not os.path.exists(vibration_script):
             print(f"[진동] 오류: {vibration_script} 파일이 없습니다")
+            self.vibration_status = "ERROR"
             return
 
-        try:
-            # 진동 센서 프로그램을 별도 프로세스로 실행
-            # stdout/stderr=None → 부모 프로세스(이 프로그램)의 출력으로 리다이렉트 (journalctl에서 보임)
-            env = os.environ.copy()
-            env["VIB_UNIT_IDS"] = "0x50,0x51,0x52"
-            self.vibration_process = subprocess.Popen(
-                ["python3", vibration_script],
-                cwd=base_dir,
-                stdout=None,  # 부모 프로세스의 stdout으로 출력 (journalctl에서 보임)
-                stderr=None,  # 부모 프로세스의 stderr로 출력 (journalctl에서 보임)
-                env=env
-            )
-            self.child_processes.append(self.vibration_process)
-            print(f"[진동] 프로세스 시작 (PID: {self.vibration_process.pid})")
-            print(f"[진동] 디버깅 메시지는 journalctl -u jetson2-ai -f 로 확인하세요")
+        if not os.path.exists(baseline_file):
+            print(f"[진동] 경고: {baseline_file} 베이스라인 파일이 없습니다")
+            # 베이스라인 없어도 측정은 진행 (데이터 수집용)
 
-            # Update status and button
-            self.vibration_status = "MEASURING"
-            self.vibration_check_btn.config(text="진동 중지", bg=COLOR_ERROR)
+        def run_vibration_check():
+            """별도 스레드에서 진동 측정 실행 및 결과 처리"""
+            try:
+                # 진동 센서 프로그램을 별도 프로세스로 실행
+                # --headless --check: GUI 없이 10초 측정 후 분석
+                env = os.environ.copy()
+                env["VIB_UNIT_IDS"] = "0x50,0x51,0x52"
+
+                cmd = ["python3", vibration_script, "--headless", "--check", "--duration", "10"]
+                if os.path.exists(baseline_file):
+                    cmd.extend(["--baseline", baseline_file])
+
+                print(f"[진동] 측정 시작: {' '.join(cmd)}")
+
+                self.vibration_process = subprocess.Popen(
+                    cmd,
+                    cwd=base_dir,
+                    stdout=subprocess.PIPE,  # 결과 캡처
+                    stderr=subprocess.STDOUT,  # stderr를 stdout으로 리다이렉트
+                    env=env,
+                    text=True
+                )
+                self.child_processes.append(self.vibration_process)
+                print(f"[진동] 프로세스 시작 (PID: {self.vibration_process.pid})")
+
+                # 프로세스 완료 대기 (최대 30초)
+                try:
+                    stdout, _ = self.vibration_process.communicate(timeout=30)
+                    exit_code = self.vibration_process.returncode
+
+                    # 출력 로그 (디버깅용)
+                    if stdout:
+                        print(f"[진동] 출력:\n{stdout}")
+
+                    print(f"[진동] 프로세스 종료 (exit code: {exit_code})")
+
+                    # result.json 읽기
+                    if os.path.exists(result_file):
+                        try:
+                            import json
+                            with open(result_file, 'r', encoding='utf-8') as f:
+                                result = json.load(f)
+
+                            status = result.get("status", "UNKNOWN")
+                            measurements = result.get("measurements", {})
+                            vel_mag_max = measurements.get("vel_magnitude_max", 0)
+                            threshold_info = result.get("threshold", {})
+                            threshold = threshold_info.get("vel_magnitude_p99", 0)
+
+                            print(f"[진동] 결과: {status}")
+                            print(f"  최대 진동: {vel_mag_max:.1f} mm/s")
+                            print(f"  임계값: {threshold:.1f} mm/s")
+
+                            self.vibration_status = status
+
+                            # GUI 업데이트 및 MQTT 전송 (메인 스레드에서)
+                            self.root.after(0, self._update_vibration_result, status, vel_mag_max, threshold)
+
+                        except Exception as e:
+                            print(f"[진동] 결과 파일 읽기 오류: {e}")
+                            self.vibration_status = "ERROR"
+                    else:
+                        print(f"[진동] 결과 파일 없음: {result_file}")
+                        self.vibration_status = "ERROR"
+
+                except subprocess.TimeoutExpired:
+                    print("[진동] 타임아웃 - 강제 종료")
+                    self.vibration_process.kill()
+                    self.vibration_process.wait()
+                    self.vibration_status = "ERROR"
+
+            except Exception as e:
+                print(f"[진동] 실행 오류: {e}")
+                import traceback
+                traceback.print_exc()
+                self.vibration_status = "ERROR"
+
+            finally:
+                # 프로세스 정리
+                if self.vibration_process in self.child_processes:
+                    self.child_processes.remove(self.vibration_process)
+                self.vibration_process = None
+
+                # 버튼 상태 복원 (메인 스레드에서)
+                self.root.after(0, self._restore_vibration_button)
+
+        # Update status and button
+        self.vibration_status = "MEASURING"
+        self.vibration_check_btn.config(text="측정 중...", bg=COLOR_WARNING, state='disabled')
+
+        # 별도 스레드에서 실행
+        vibration_thread = threading.Thread(target=run_vibration_check, daemon=True)
+        vibration_thread.start()
+
+    def _update_vibration_result(self, status, vel_mag_max, threshold):
+        """진동 측정 결과 GUI 업데이트 및 MQTT 전송 (메인 스레드에서 호출)"""
+        try:
+            # 토스트 메시지
+            if status == "NORMAL":
+                msg = f"진동 정상 ({vel_mag_max:.0f}/{threshold:.0f} mm/s)"
+                self.show_toast(msg)
+            elif status == "ABNORMAL":
+                msg = f"진동 이상! ({vel_mag_max:.0f}/{threshold:.0f} mm/s)"
+                self.show_toast(msg)
+            else:
+                self.show_toast(f"진동 측정 오류: {status}")
+
+            # MQTT 전송
+            self.publish_status()
+
         except Exception as e:
-            print(f"[진동] 실행 오류: {e}")
-            self.vibration_process = None
-            self.vibration_status = "IDLE"
+            print(f"[진동] 결과 업데이트 오류: {e}")
+
+    def _restore_vibration_button(self):
+        """진동 측정 버튼 복원 (메인 스레드에서 호출)"""
+        try:
+            self.vibration_check_btn.config(text="진동 시작", bg=COLOR_INFO, state='normal')
+        except Exception as e:
+            print(f"[진동] 버튼 복원 오류: {e}")
 
     def stop_vibration_check(self):
         """Stop vibration sensor monitoring program"""
