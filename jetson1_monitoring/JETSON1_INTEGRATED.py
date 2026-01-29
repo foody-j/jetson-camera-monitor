@@ -402,6 +402,7 @@ class IntegratedMonitorApp:
         self.last_snapshot_tick = None
         self.frame_idx = 0
         self.yolo_frame_skip = 0
+        self.preview_frame_skip = 0  # Frame skip counter for GUI preview updates
         self.auto_preview_visible = True
         self.stirfry_left_preview_visible = True
         self.stirfry_right_preview_visible = True
@@ -1832,8 +1833,11 @@ class IntegratedMonitorApp:
         # 주기적 OFF 펄스 체크 (야간 + 사람 미감지 시)
         self.check_periodic_off_pulse(now)
 
-        # Update preview
-        self.update_auto_preview(frame)
+        # Update preview (skip frames to reduce GUI load - update every 3 frames)
+        self.preview_frame_skip += 1
+        if self.preview_frame_skip >= 3:
+            self.preview_frame_skip = 0
+            self.update_auto_preview(frame)
 
         self.root.after(50, self.update_auto_system)  # 20 FPS (prevent freezing)
 
