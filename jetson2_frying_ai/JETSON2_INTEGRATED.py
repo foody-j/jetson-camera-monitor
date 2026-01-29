@@ -4285,8 +4285,9 @@ class JetsonIntegratedApp:
                 saver.save(save_path, frame)
                 self.pot1_frame_counter += 1
 
-        # 메타데이터 JSON 저장 (백그라운드 스레드로 이동 - GUI 블로킹 방지)
+        # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프)
         meta_path = os.path.join(self.pot1_session_dir, "meta", f"meta_{timestamp}.json")
+        os.makedirs(os.path.dirname(meta_path), exist_ok=True)
 
         meta_data = {
             "timestamp": full_timestamp,
@@ -4294,17 +4295,11 @@ class JetsonIntegratedApp:
             "pot": "pot1",
             **self.pot1_robot_status
         }
-
-        def save_metadata_bg():
-            try:
-                os.makedirs(os.path.dirname(meta_path), exist_ok=True)
-                with open(meta_path, 'w', encoding='utf-8') as f:
-                    json.dump(meta_data, f, ensure_ascii=False)
-            except Exception as e:
-                print(f"[POT1 메타] 저장 실패: {e}")
-
-        import threading
-        threading.Thread(target=save_metadata_bg, daemon=True).start()
+        try:
+            with open(meta_path, 'w', encoding='utf-8') as f:
+                json.dump(meta_data, f, ensure_ascii=False)
+        except Exception as e:
+            print(f"[POT1 메타] 저장 실패: {e}")
 
         if self.pot1_frame_counter % 10 == 0:
             print(f"[POT1 수집] {self.pot1_frame_counter}장 저장됨 (대기: {saver.get_queue_size()})")
@@ -4333,8 +4328,9 @@ class JetsonIntegratedApp:
                 saver.save(save_path, frame)
                 self.pot2_frame_counter += 1
 
-        # 메타데이터 JSON 저장 (백그라운드 스레드로 이동 - GUI 블로킹 방지)
+        # 메타데이터 JSON 저장 (로봇 상태 + 타임스탬프)
         meta_path = os.path.join(self.pot2_session_dir, "meta", f"meta_{timestamp}.json")
+        os.makedirs(os.path.dirname(meta_path), exist_ok=True)
 
         meta_data = {
             "timestamp": full_timestamp,
@@ -4342,17 +4338,11 @@ class JetsonIntegratedApp:
             "pot": "pot2",
             **self.pot2_robot_status
         }
-
-        def save_metadata_bg():
-            try:
-                os.makedirs(os.path.dirname(meta_path), exist_ok=True)
-                with open(meta_path, 'w', encoding='utf-8') as f:
-                    json.dump(meta_data, f, ensure_ascii=False)
-            except Exception as e:
-                print(f"[POT2 메타] 저장 실패: {e}")
-
-        import threading
-        threading.Thread(target=save_metadata_bg, daemon=True).start()
+        try:
+            with open(meta_path, 'w', encoding='utf-8') as f:
+                json.dump(meta_data, f, ensure_ascii=False)
+        except Exception as e:
+            print(f"[POT2 메타] 저장 실패: {e}")
 
         if self.pot2_frame_counter % 10 == 0:
             print(f"[POT2 수집] {self.pot2_frame_counter}장 저장됨 (대기: {saver.get_queue_size()})")
