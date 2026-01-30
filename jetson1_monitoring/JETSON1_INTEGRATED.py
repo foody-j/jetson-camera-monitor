@@ -410,6 +410,8 @@ class IntegratedMonitorApp:
         self.stirfry_right_preview_visible = True
         self.last_person_detected_time = None
         self.preview_hide_delay = config.get('preview_hide_delay', 30)
+        # NOTE: person_detected는 MQTT jetson1/status에서 야간 감시 모드의 결과를 string으로 로봇 제어 PC에 전송하는 용도로 재활용
+        # (새 변수 추가 귀찮아서 기존 필드 활용)
         self.person_detected = False
         self.motion_detected = False
 
@@ -1874,6 +1876,7 @@ class IntegratedMonitorApp:
 
         if detected:
             # Update detection state and time (for auto-hide feature)
+            # NOTE: person_detected는 MQTT로 야간 감시 모드 결과 전송 용도로 재활용 (원래는 boolean이었으나 string으로 변경 예정)
             self.person_detected = True
             self.last_person_detected_time = now
 
@@ -1915,6 +1918,7 @@ class IntegratedMonitorApp:
                     self.auto_detection_label.config(text="감지: ON 전송 완료", fg=COLOR_OK)
         else:
             # No person detected
+            # NOTE: person_detected는 MQTT로 야간 감시 모드 결과 전송 용도로 재활용 (원래는 boolean이었으나 string으로 변경 예정)
             self.person_detected = False
             self.det_hold_start = None
             if not self.on_triggered:
@@ -1942,6 +1946,7 @@ class IntegratedMonitorApp:
 
             if detected:
                 # Update detection state and time (for auto-hide feature)
+                # NOTE: person_detected는 MQTT로 야간 감시 모드 결과 전송 용도로 재활용 (원래는 boolean이었으나 string으로 변경 예정)
                 self.person_detected = True
                 self.last_person_detected_time = now
 
@@ -1950,6 +1955,7 @@ class IntegratedMonitorApp:
                 self.auto_detection_label.config(text="감지: 사람 있음 (리셋)", fg=COLOR_WARNING)
             else:
                 # No person detected
+                # NOTE: person_detected는 MQTT로 야간 감시 모드 결과 전송 용도로 재활용 (원래는 boolean이었으나 string으로 변경 예정)
                 self.person_detected = False
 
             # Check deadline
@@ -2399,6 +2405,7 @@ class IntegratedMonitorApp:
                 "ip_address": get_ip_address(),
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "ai_mode": AI_MODE_ENABLED,
+                # NOTE: person_detected는 야간 감시 모드 결과를 string으로 로봇 제어 PC에 전송 (기존 필드 재활용)
                 "person_detected": self.person_detected,
                 "relay_enabled": self.relay_enabled,
                 "recording": {
