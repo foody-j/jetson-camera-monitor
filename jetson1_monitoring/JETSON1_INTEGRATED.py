@@ -883,6 +883,11 @@ class IntegratedMonitorApp:
                  command=self.show_night_review, bg="#5C6BC0", fg="white",
                  relief=tk.FLAT, bd=0, activebackground="#3F51B5").pack(pady=10, padx=20, fill=tk.X)
 
+        # System log viewer button
+        tk.Button(scrollable_frame, text="📋 시스템 로그 보기", font=BUTTON_FONT,
+                 command=self.show_system_logs, bg="#00897B", fg="white",
+                 relief=tk.FLAT, bd=0, activebackground="#00695C").pack(pady=10, padx=20, fill=tk.X)
+
         # Enable mouse wheel scrolling
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
@@ -936,6 +941,90 @@ class IntegratedMonitorApp:
             self.night_review_manager.show_review()
         else:
             showwarning_topmost("오류", "야간 리뷰 모듈이 초기화되지 않았습니다.")
+
+    def show_system_logs(self):
+        """시스템 로그 뷰어 창 (journalctl 대체)"""
+        print("[개발자] 시스템 로그 뷰어 열기")
+
+        # Create new window
+        log_window = tk.Toplevel(self.root)
+        log_window.title("Jetson #1 시스템 로그")
+        log_window.geometry("900x700")
+        log_window.configure(bg=COLOR_BG)
+
+        # Always on top
+        log_window.attributes('-topmost', True)
+
+        # Title
+        tk.Label(log_window, text="📋 시스템 로그 (최근 200줄)", font=LARGE_FONT,
+                bg=COLOR_BG, fg=COLOR_TEXT).pack(pady=10)
+
+        # Button frame
+        btn_frame = tk.Frame(log_window, bg=COLOR_BG)
+        btn_frame.pack(pady=10, fill=tk.X, padx=20)
+
+        # Text widget with scrollbar
+        text_frame = tk.Frame(log_window, bg=COLOR_BG)
+        text_frame.pack(pady=10, fill=tk.BOTH, expand=True, padx=20)
+
+        scrollbar = tk.Scrollbar(text_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        log_text = tk.Text(text_frame, wrap=tk.NONE, font=("Courier", 10),
+                          bg="#1E1E1E", fg="#00FF00", yscrollcommand=scrollbar.set)
+        log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=log_text.yview)
+
+        # Horizontal scrollbar
+        h_scrollbar = tk.Scrollbar(log_window, orient=tk.HORIZONTAL)
+        h_scrollbar.pack(fill=tk.X, padx=20)
+        log_text.config(xscrollcommand=h_scrollbar.set)
+        h_scrollbar.config(command=log_text.xview)
+
+        def load_logs():
+            """journalctl로 로그 로드"""
+            log_text.delete(1.0, tk.END)
+            log_text.insert(tk.END, "로그 로딩 중...\n")
+            log_text.update()
+
+            try:
+                # journalctl 명령어 실행 (최근 200줄)
+                result = subprocess.run(
+                    ['journalctl', '-u', 'jetson1-monitor', '-n', '200', '--no-pager'],
+                    capture_output=True, text=True, timeout=5
+                )
+
+                log_text.delete(1.0, tk.END)
+                if result.returncode == 0:
+                    log_text.insert(tk.END, result.stdout)
+                    log_text.insert(tk.END, "\n\n--- 로그 끝 ---\n")
+                else:
+                    log_text.insert(tk.END, f"오류: {result.stderr}\n")
+                    log_text.insert(tk.END, "\nstdout:\n")
+                    log_text.insert(tk.END, result.stdout)
+
+                # 맨 아래로 스크롤
+                log_text.see(tk.END)
+
+            except subprocess.TimeoutExpired:
+                log_text.delete(1.0, tk.END)
+                log_text.insert(tk.END, "오류: journalctl 타임아웃 (5초 초과)\n")
+            except Exception as e:
+                log_text.delete(1.0, tk.END)
+                log_text.insert(tk.END, f"오류: {e}\n")
+
+        # Refresh button
+        tk.Button(btn_frame, text="🔄 새로고침", font=BUTTON_FONT,
+                 command=load_logs, bg=COLOR_OK, fg="white",
+                 relief=tk.FLAT, bd=0).pack(side=tk.LEFT, padx=5)
+
+        # Close button
+        tk.Button(btn_frame, text="✕ 닫기", font=BUTTON_FONT,
+                 command=log_window.destroy, bg=COLOR_ERROR, fg="white",
+                 relief=tk.FLAT, bd=0).pack(side=tk.RIGHT, padx=5)
+
+        # Load logs initially
+        load_logs()
 
     # =========================
     # Initialization
@@ -1331,9 +1420,13 @@ class IntegratedMonitorApp:
             # 사람 감지 카메라에서 프레임 읽기
             if self.auto_cap is None:
                 print("[사람수집] 카메라 없음 - 스킵")
+            elif not self.auto_cap.isOpened():
+                print(f"[사람수집] 카메라 닫힘 상태 - GstCamera.is_running={self.auto_cap.is_running}")
             else:
                 ret, frame = self.auto_cap.read()
-                if ret and frame is not None:
+                if not ret or frame is None:
+                    print(f"[사람수집] 프레임 읽기 실패 - ret={ret}, frame={'None' if frame is None else 'OK'}")
+                elif ret and frame is not None:
                     # 저장 경로 생성
                     base_dir = os.path.expanduser(f"~/{PERSON_COLLECTION_SAVE_DIR}")
                     save_dir = os.path.join(base_dir, self.person_collection_session_date)
@@ -1760,6 +1853,25 @@ class IntegratedMonitorApp:
         if not self.running:
             return
 
+        # 카메라 상태 디버깅: 30초마다 체크
+        if not hasattr(self, 'last_camera_health_check'):
+            self.last_camera_health_check = time.time()
+            self.camera_dead_count = 0
+
+        if time.time() - self.last_camera_health_check > 30:
+            self.last_camera_health_check = time.time()
+            if self.auto_cap is None:
+                self.camera_dead_count += 1
+                print(f"[카메라 상태] auto_cap = None (연속 {self.camera_dead_count}회)")
+            elif not self.auto_cap.isOpened():
+                self.camera_dead_count += 1
+                print(f"[카메라 상태] auto_cap.isOpened() = False (연속 {self.camera_dead_count}회)")
+                print(f"[카메라 상태] GstCamera.is_running = {self.auto_cap.is_running}")
+            else:
+                if self.camera_dead_count > 0:
+                    print(f"[카메라 상태] 정상 복구됨")
+                self.camera_dead_count = 0
+
         if self.auto_cap is None or not self.auto_cap.isOpened() or self.yolo_model is None:
             self.root.after(100, self.update_auto_system)
             return
@@ -1767,16 +1879,62 @@ class IntegratedMonitorApp:
         # Read frame directly from GstCamera (no locks needed!)
         try:
             ret, frame = self.auto_cap.read()
+
+            # 프레임 읽기 실패 카운트
+            if not hasattr(self, 'frame_read_fail_count'):
+                self.frame_read_fail_count = 0
+                self.last_frame_read_fail_log = time.time()
+
             if not ret or frame is None:
+                self.frame_read_fail_count += 1
+                # 10초마다 한 번씩 로그
+                if time.time() - self.last_frame_read_fail_log > 10:
+                    print(f"[프레임 실패] ret={ret}, frame={'None' if frame is None else 'OK'}, "
+                          f"연속실패={self.frame_read_fail_count}, "
+                          f"GstCamera.is_running={self.auto_cap.is_running}")
+                    self.last_frame_read_fail_log = time.time()
                 self.root.after(50, self.update_auto_system)
                 return
+            else:
+                if self.frame_read_fail_count > 10:
+                    print(f"[프레임 복구] 정상화됨 (이전 연속실패={self.frame_read_fail_count})")
+                self.frame_read_fail_count = 0
 
             # CRITICAL: GstCamera returns read-only buffer reference!
             # Must copy before any cv2 drawing operations to avoid corrupting buffer pool
             frame = frame.copy()
 
+            # 프레임 멈춤 감지: 평균 밝기 체크 (주간인데 너무 어두우면 카메라 멈춤 의심)
+            if not hasattr(self, 'last_frame_brightness_check'):
+                self.last_frame_brightness_check = time.time()
+                self.low_brightness_warning_shown = False
+                self.last_successful_frame_time = time.time()
+
+            # 프레임 성공 시각 업데이트
+            self.last_successful_frame_time = time.time()
+
+            # 60초마다 한 번씩 체크
+            if time.time() - self.last_frame_brightness_check > 60:
+                self.last_frame_brightness_check = time.time()
+                brightness = frame.mean()
+                now_temp = datetime.now()
+                is_daytime_temp = self.is_daytime_mode(now_temp)
+
+                print(f"[프레임 상태] 밝기={brightness:.1f}, 모드={'주간' if is_daytime_temp else '야간'}, "
+                      f"마지막 성공={int(time.time() - self.last_successful_frame_time)}초 전")
+
+                # 주간인데 평균 밝기가 30 미만이면 카메라 멈춤 의심
+                if is_daytime_temp and brightness < 30 and not self.low_brightness_warning_shown:
+                    print(f"[경고] 사람 감지 카메라 프레임 밝기 이상 (평균={brightness:.1f}, 주간 모드)")
+                    print(f"[경고] 카메라가 야간 프레임에서 멈춘 것으로 의심됩니다.")
+                    self.low_brightness_warning_shown = True
+                elif is_daytime_temp and brightness >= 30:
+                    self.low_brightness_warning_shown = False  # 정상 복귀 시 리셋
+
         except Exception as e:
             print(f"[Error] Auto camera read error: {e}")
+            import traceback
+            traceback.print_exc()
             self.root.after(50, self.update_auto_system)
             return
 
@@ -1937,6 +2095,15 @@ class IntegratedMonitorApp:
 
         if self.night_check_active:
             # Stage 1: YOLO check for no-person (GPU accelerated)
+            # Frame skip: 3프레임마다 한 번씩 처리 (주간 모드와 동일)
+            if not hasattr(self, 'night_yolo_frame_skip'):
+                self.night_yolo_frame_skip = 0
+
+            self.night_yolo_frame_skip += 1
+            if self.night_yolo_frame_skip < 3:
+                return  # 이전 감지 결과 재사용
+            self.night_yolo_frame_skip = 0
+
             results = self.yolo_model.predict(frame, conf=YOLO_CONF, imgsz=YOLO_IMGSZ, verbose=False, device=self.device)
             r = results[0]
 
@@ -1984,6 +2151,15 @@ class IntegratedMonitorApp:
                     self.auto_detection_label.config(text=f"감지: {remain}초 남음", fg=COLOR_INFO)
         else:
             # Stage 2: Motion detection
+            # Frame skip: 3프레임마다 한 번씩 처리 (카메라 버퍼 블록 방지)
+            if not hasattr(self, 'motion_frame_skip'):
+                self.motion_frame_skip = 0
+
+            self.motion_frame_skip += 1
+            if self.motion_frame_skip < 3:
+                return  # 프레임 스킵 (이전 모션 상태 유지)
+            self.motion_frame_skip = 0
+
             if self.frame_idx > WARMUP_FRAMES:
                 fg = self.bg.apply(frame)
                 _, thr = cv2.threshold(fg, BINARY_THRESH, 255, cv2.THRESH_BINARY)
