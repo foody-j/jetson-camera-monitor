@@ -364,9 +364,8 @@ class JetsonIntegratedApp:
             self.device = 'cpu'
 
         # Frying AI segmenter
-        # Use positional for model path to remain compatible with older FoodSegmenter signatures
         self.frying_segmenter = FoodSegmenter(
-            FRYING_SEG_MODEL,
+            model_path=FRYING_SEG_MODEL,
             mode="auto",
             device=self.device,
             imgsz=FRYING_SEG_IMG_SIZE,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 튀김 음식 분할 및 색상 특징 추출
-- 음식 영역과 배경(기름/그릇) 분리
+- YOLO Segmentation 기반 음식 영역 분리
 - HSV 기반 색상 특징 추출
 - 시각화 및 분석
 """
@@ -14,6 +14,14 @@ import json
 from pathlib import Path
 from typing import Tuple, Dict, List, Optional
 from dataclasses import dataclass, asdict
+
+# YOLO 모델
+try:
+    from ultralytics import YOLO
+    _YOLO_AVAILABLE = True
+except ImportError:
+    _YOLO_AVAILABLE = False
+    print("⚠ ultralytics not available, using fallback HSV mode")
 
 # Matplotlib은 시각화 함수에서만 사용 (조건부 import)
 _MATPLOTLIB_AVAILABLE = False
@@ -52,31 +60,107 @@ class SegmentationResult:
 
 
 class FoodSegmenter:
-    """음식 영역 분할기"""
+    """음식 영역 분할기 (YOLO Segmentation 기반)"""
 
-    def __init__(self, mode: str = "auto"):
+    def __init__(
+        self,
+        model_path: str = "frying_seg.pt",
+        mode: str = "auto",
+        device: str = "cuda",
+        imgsz: int = 640,
+        conf: float = 0.2,
+        mask_threshold: float = 0.3,
+        *args,
+        **kwargs
+    ):
         """
         Args:
-            mode: "auto" (자동), "brown" (갈색 음식), "light" (밝은 음식)
+            model_path: YOLO segmentation 모델 경로
+            mode: "auto" (자동) - 호환성을 위해 유지
+            device: 디바이스 ('cuda' or 'cpu')
         """
-        self.mode = mode
+        # Compatibility: support older call styles (positional or different kw names)
+        if args:
+            first = args[0]
+            if isinstance(first, str):
+                if first.endswith(".pt") or ("/" in first) or ("\\" in first):
+                    model_path = first
+                elif first in ("auto", "yolo", "hsv"):
+                    mode = first
+            if len(args) >= 2 and isinstance(args[1], str):
+                device = args[1]
 
-        # HSV 임계값 (튀김 음식 - 갈색~황금색 범위)
-        # 여러 범위를 사용하여 다양한 색상 포착
-        self.food_ranges = {
-            "golden": {  # 황금색 (완벽한 튀김)
-                "lower": np.array([15, 50, 80]),
-                "upper": np.array([35, 255, 255])
-            },
-            "brown": {  # 갈색 (익은 튀김)
-                "lower": np.array([5, 40, 40]),
-                "upper": np.array([25, 255, 200])
-            },
-            "light": {  # 밝은 색 (덜 익은 음식)
-                "lower": np.array([20, 30, 120]),
-                "upper": np.array([40, 200, 255])
+        if "model" in kwargs and "model_path" not in kwargs:
+            model_path = kwargs["model"]
+        if "model_path" in kwargs:
+            model_path = kwargs["model_path"]
+        if "mode" in kwargs:
+            mode = kwargs["mode"]
+        if "device" in kwargs:
+            device = kwargs["device"]
+        if "imgsz" in kwargs:
+            imgsz = kwargs["imgsz"]
+        if "conf" in kwargs:
+            conf = kwargs["conf"]
+        if "mask_threshold" in kwargs:
+            mask_threshold = kwargs["mask_threshold"]
+
+        self.mode = mode
+        self.model = None
+        self.use_yolo = False
+        self.device = device
+        self.imgsz = imgsz
+        self.conf = conf
+        self.mask_threshold = mask_threshold
+        self.last_yolo_stats = None
+
+        # YOLO 모델 로드
+        if _YOLO_AVAILABLE:
+            try:
+                # 모델 경로가 상대 경로면 절대 경로로 변환
+                if not os.path.isabs(model_path):
+                    script_dir = os.path.dirname(os.path.abspath(__file__))
+                    model_path = os.path.join(script_dir, model_path)
+
+                if os.path.exists(model_path):
+                    self.model = YOLO(model_path)
+                    # GPU로 모델 이동
+                    if device == 'cuda':
+                        try:
+                            import torch
+                            if torch.cuda.is_available():
+                                self.model.to('cuda')
+                                print(f"[FoodSegmenter] YOLO 모델 로드 완료 (GPU): {model_path}")
+                            else:
+                                print(f"[FoodSegmenter] ⚠ CUDA 사용 불가, CPU 모드: {model_path}")
+                                self.device = 'cpu'
+                        except Exception as e:
+                            print(f"[FoodSegmenter] ⚠ GPU 전환 실패, CPU 사용: {e}")
+                            self.device = 'cpu'
+                    else:
+                        print(f"[FoodSegmenter] YOLO 모델 로드 완료 (CPU): {model_path}")
+                    self.use_yolo = True
+                else:
+                    print(f"[FoodSegmenter] ⚠ 모델 파일 없음: {model_path}, HSV fallback 사용")
+            except Exception as e:
+                print(f"[FoodSegmenter] ⚠ YOLO 로드 실패: {e}, HSV fallback 사용")
+
+        # HSV fallback (YOLO 사용 불가 시)
+        if not self.use_yolo:
+            self.food_ranges = {
+                "golden": {
+                    "lower": np.array([15, 50, 80]),
+                    "upper": np.array([35, 255, 255])
+                },
+                "brown": {
+                    "lower": np.array([5, 40, 40]),
+                    "upper": np.array([25, 255, 200])
+                },
+                "light": {
+                    "lower": np.array([20, 30, 120]),
+                    "upper": np.array([40, 200, 255])
+                }
             }
-        }
 
     def segment(self, image: np.ndarray, visualize: bool = False,
                 save_path: Optional[str] = None) -> SegmentationResult:
@@ -94,27 +178,12 @@ class FoodSegmenter:
         if image is None or image.size == 0:
             raise ValueError("Invalid image")
 
-        # HSV 변환
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
-        # 여러 색상 범위로 마스크 생성
-        masks = []
-        for range_name, range_val in self.food_ranges.items():
-            mask = cv2.inRange(hsv, range_val["lower"], range_val["upper"])
-            masks.append(mask)
-
-        # 모든 마스크 합치기
-        food_mask = np.zeros_like(masks[0])
-        for mask in masks:
-            food_mask = cv2.bitwise_or(food_mask, mask)
-
-        # 노이즈 제거 (morphology)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        food_mask = cv2.morphologyEx(food_mask, cv2.MORPH_CLOSE, kernel)
-        food_mask = cv2.morphologyEx(food_mask, cv2.MORPH_OPEN, kernel)
-
-        # 작은 영역 제거 (연결된 컴포넌트)
-        food_mask = self._remove_small_regions(food_mask, min_area=500)
+        # YOLO segmentation
+        if self.use_yolo and self.model is not None:
+            food_mask = self._segment_yolo(image)
+        else:
+            # HSV fallback
+            food_mask = self._segment_hsv(image)
 
         # 색상 특징 추출
         color_features = self._extract_color_features(image, food_mask)
@@ -134,6 +203,86 @@ class FoodSegmenter:
             color_features=color_features,
             image_path=""
         )
+
+    def _segment_yolo(self, image: np.ndarray) -> np.ndarray:
+        """YOLO 기반 분할"""
+        try:
+            # YOLO inference (verbose=False로 출력 억제)
+            results = self.model.predict(
+                image,
+                imgsz=self.imgsz,
+                conf=self.conf,
+                verbose=False,
+                device=self.device
+            )
+
+            # Segmentation mask 추출
+            if len(results) > 0 and hasattr(results[0], 'masks') and results[0].masks is not None:
+                try:
+                    boxes = getattr(results[0], "boxes", None)
+                    if boxes is not None and getattr(boxes, "conf", None) is not None:
+                        confs = boxes.conf.detach().cpu().numpy().tolist()
+                        self.last_yolo_stats = {
+                            "num_masks": len(results[0].masks.data),
+                            "max_conf": max(confs) if confs else 0.0
+                        }
+                    else:
+                        self.last_yolo_stats = {
+                            "num_masks": len(results[0].masks.data),
+                            "max_conf": 0.0
+                        }
+                except Exception:
+                    self.last_yolo_stats = None
+                masks = results[0].masks.data.cpu().numpy()  # (N, H, W)
+
+                if len(masks) > 0:
+                    # 모든 마스크 합치기 (여러 개의 튀김 조각이 있을 수 있음)
+                    h, w = image.shape[:2]
+                    combined_mask = np.zeros((h, w), dtype=np.uint8)
+
+                    for mask in masks:
+                        # 원본 이미지 크기로 리사이즈
+                        mask_resized = cv2.resize(mask, (w, h), interpolation=cv2.INTER_LINEAR)
+                        # 이진화 (threshold configurable)
+                        mask_binary = (mask_resized > self.mask_threshold).astype(np.uint8) * 255
+                        combined_mask = cv2.bitwise_or(combined_mask, mask_binary)
+
+                    return combined_mask
+
+            # 마스크가 없으면 빈 마스크 반환
+            self.last_yolo_stats = {"num_masks": 0, "max_conf": 0.0}
+            return np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
+
+        except Exception as e:
+            print(f"[FoodSegmenter] YOLO segmentation 오류: {e}")
+            # 오류 시 HSV fallback
+            return self._segment_hsv(image)
+
+    def _segment_hsv(self, image: np.ndarray) -> np.ndarray:
+        """HSV 기반 분할 (fallback)"""
+        # HSV 변환
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+        # 여러 색상 범위로 마스크 생성
+        masks = []
+        for range_name, range_val in self.food_ranges.items():
+            mask = cv2.inRange(hsv, range_val["lower"], range_val["upper"])
+            masks.append(mask)
+
+        # 모든 마스크 합치기
+        food_mask = np.zeros_like(masks[0])
+        for mask in masks:
+            food_mask = cv2.bitwise_or(food_mask, mask)
+
+        # 노이즈 제거 (morphology)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        food_mask = cv2.morphologyEx(food_mask, cv2.MORPH_CLOSE, kernel)
+        food_mask = cv2.morphologyEx(food_mask, cv2.MORPH_OPEN, kernel)
+
+        # 작은 영역 제거
+        food_mask = self._remove_small_regions(food_mask, min_area=500)
+
+        return food_mask
 
     def _remove_small_regions(self, mask: np.ndarray, min_area: int = 500) -> np.ndarray:
         """작은 영역 제거"""
