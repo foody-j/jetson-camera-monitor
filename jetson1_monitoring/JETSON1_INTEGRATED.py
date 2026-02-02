@@ -883,10 +883,10 @@ class IntegratedMonitorApp:
                  command=self.show_night_review, bg="#5C6BC0", fg="white",
                  relief=tk.FLAT, bd=0, activebackground="#3F51B5").pack(pady=10, padx=20, fill=tk.X)
 
-        # System log viewer button
-        tk.Button(scrollable_frame, text="📋 시스템 로그 보기", font=BUTTON_FONT,
-                 command=self.show_system_logs, bg="#00897B", fg="white",
-                 relief=tk.FLAT, bd=0, activebackground="#00695C").pack(pady=10, padx=20, fill=tk.X)
+        # System log viewer button (DISABLED - causes stack smashing)
+        # tk.Button(scrollable_frame, text="📋 시스템 로그 보기", font=BUTTON_FONT,
+        #          command=self.show_system_logs, bg="#00897B", fg="white",
+        #          relief=tk.FLAT, bd=0, activebackground="#00695C").pack(pady=10, padx=20, fill=tk.X)
 
         # Enable mouse wheel scrolling
         def _on_mousewheel(event):
