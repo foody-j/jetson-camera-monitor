@@ -54,7 +54,7 @@
   "camera_fps": 30,
   "display_width": 374,
   "display_height": 300,
-  "gui_update_interval_ms": 100,
+  "gui_update_interval_ms": 200,
   "frying_infer_fps": 5,
   "simulation_autostart_delay_sec": 1.5,
   "frying_frame_skip": 15,
