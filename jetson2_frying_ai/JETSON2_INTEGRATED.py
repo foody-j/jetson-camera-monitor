@@ -30,6 +30,7 @@ import glob
 from collections import deque
 from queue import Queue, Empty
 import socket
+import re
 
 # Script directory (for relative path checks)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1351,10 +1352,46 @@ class JetsonIntegratedApp:
         try:
             # Parse time strings to seconds
             def parse_time(time_str):
-                parts = time_str.split(':')
-                if len(parts) == 3:
-                    h, m, s = int(parts[0]), int(parts[1]), int(parts[2])
-                    return h * 3600 + m * 60 + s
+                if time_str is None:
+                    return 0
+                s = str(time_str).strip()
+                if not s or s in ("-", "--"):
+                    return 0
+
+                # Korean format: "10분 15초", "1시간 2분 3초"
+                if ("분" in s) or ("초" in s) or ("시간" in s):
+                    h = 0
+                    m = 0
+                    sec = 0
+                    m_h = re.search(r"(\\d+)\\s*시간", s)
+                    m_m = re.search(r"(\\d+)\\s*분", s)
+                    m_s = re.search(r"(\\d+)\\s*초", s)
+                    if m_h:
+                        h = int(m_h.group(1))
+                    if m_m:
+                        m = int(m_m.group(1))
+                    if m_s:
+                        sec = int(m_s.group(1))
+                    return h * 3600 + m * 60 + sec
+
+                # Colon format: HH:MM:SS or MM:SS
+                if ":" in s:
+                    parts = [p for p in s.split(":") if p != ""]
+                    try:
+                        if len(parts) == 3:
+                            h, m, sec = int(parts[0]), int(parts[1]), int(parts[2])
+                            return h * 3600 + m * 60 + sec
+                        if len(parts) == 2:
+                            m, sec = int(parts[0]), int(parts[1])
+                            return m * 60 + sec
+                        if len(parts) == 1:
+                            return int(parts[0])
+                    except ValueError:
+                        return 0
+
+                # Plain seconds
+                if s.isdigit():
+                    return int(s)
                 return 0
 
             running_sec = parse_time(running_time)
