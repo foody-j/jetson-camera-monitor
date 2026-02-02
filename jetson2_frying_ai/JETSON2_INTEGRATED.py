@@ -48,9 +48,11 @@ from image_saver_mp import get_image_saver, stop_image_saver
 # Import Frying AI segmenter
 from frying_segmenter import FoodSegmenter
 
+# Import Lift Event Tracker
+from lift_event_tracker import LiftEventTracker
+
 # Import GPU post-processor
 from gpu_postprocess import GPUPostProcessor
-from simple_checker.robot_detector import RobotDetector, PotType
 
 # Import GPIO for Relay control
 import Jetson.GPIO as GPIO
@@ -81,31 +83,6 @@ def _path_exists(path):
     if os.path.isabs(path):
         return os.path.exists(path)
     return os.path.exists(path) or os.path.exists(os.path.join(SCRIPT_DIR, path))
-
-class SimulatedCamera:
-    """Camera shim that returns frames from disk."""
-    def __init__(self, image_paths, name="camera"):
-        self.image_paths = image_paths
-        self.index = 0
-        self.name = name
-
-    def start(self):
-        return True
-
-    def stop(self):
-        return True
-
-    def read(self):
-        if not self.image_paths:
-            return False, None
-        if self.index >= len(self.image_paths):
-            self.index = 0
-        path = self.image_paths[self.index]
-        self.index += 1
-        frame = cv2.imread(path)
-        if frame is None:
-            return False, None
-        return True, frame
 
 def get_ip_address():
     """Get local IP address"""
@@ -163,6 +140,7 @@ FRYING_RIGHT_CAMERA_INDEX = config.get('frying_right_camera_index', 1)
 FRYING_SEG_MODEL = config.get('frying_seg_model', 'frying_seg.pt')
 FRYING_CLS_MODEL = config.get('frying_cls_model', 'frying_cls.pt')
 DYNAMIC_CAMERA_ENABLED = config.get('dynamic_camera_enabled', True)  # 동적 카메라 ON/OFF (3-of-4 전략)
+FRYING_INFER_FPS = config.get('frying_infer_fps', 5)
 
 # Observe_add Configuration (video2, video3)
 OBSERVE_ENABLED = config.get('observe_enabled', True)
@@ -196,6 +174,9 @@ IMG_SIZE_CLS = config.get('img_size_cls', 224)
 CONF_SEG = config.get('conf_seg', 0.5)
 VOTE_N = config.get('vote_n', 7)  # Majority voting window
 POSITIVE_LABEL = config.get('positive_label', 'filled')
+FRYING_SEG_CONF = config.get('frying_seg_conf', 0.2)
+FRYING_SEG_IMG_SIZE = config.get('frying_seg_imgsz', IMG_SIZE_SEG)
+FRYING_SEG_MASK_THRESH = config.get('frying_seg_mask_thresh', 0.3)
 
 # Device Identification
 DEVICE_ID = config.get('device_id', 'jetson2')
@@ -314,12 +295,10 @@ TEXT_ONLY_MODE = config.get('text_only_mode', False)
 # Main Application Class
 # =========================
 class JetsonIntegratedApp:
-    def __init__(self, root, simulate_config=None):
+    def __init__(self, root):
         self.root = root
         self.root.title("Jetson #2 - AI Monitoring System")
         self.root.configure(bg=COLOR_BG)  # WHITE MODE
-        self.simulate_mode = bool(simulate_config)
-        self.simulate_config = simulate_config or {}
         self._process = psutil.Process(os.getpid()) if psutil else None
         self.gui_image_enabled = not (HEADLESS_MODE or TEXT_ONLY_MODE)
 
@@ -384,15 +363,23 @@ class JetsonIntegratedApp:
             self.device = 'cpu'
 
         # Frying AI segmenter
-        self.frying_segmenter = FoodSegmenter(mode="auto")
+        self.frying_segmenter = FoodSegmenter(
+            model_path=FRYING_SEG_MODEL,
+            mode="auto",
+            device=self.device,
+            imgsz=FRYING_SEG_IMG_SIZE,
+            conf=FRYING_SEG_CONF,
+            mask_threshold=FRYING_SEG_MASK_THRESH
+        )
         print(f"[모델] Frying segmenter 로드 완료")
 
         # GPU post-processor
         self.gpu_post = GPUPostProcessor(device=self.device)
 
-        # Robot detector (로봇 암 진입 감지)
-        self.robot_detector_pot1 = RobotDetector(pot_type=PotType.POT1)  # 우측 상단 감지
-        self.robot_detector_pot2 = RobotDetector(pot_type=PotType.POT2)  # 좌측 상단 감지
+        # Lift Event Tracker (탈탈 이벤트 추적 및 완료 판단)
+        self.lift_tracker_pot1 = LiftEventTracker("POT1", config)
+        self.lift_tracker_pot2 = LiftEventTracker("POT2", config)
+        print("[Lift Tracker] POT1/POT2 초기화 완료")
 
         # 탈탈 캡처 상태
         self.pot1_taltal_pending = False  # 탈탈 캡처 대기 중
@@ -446,8 +433,6 @@ class JetsonIntegratedApp:
         print(f"[DEBUG] 모델 로딩 완료, Queue 초기화 시작...")
 
         # AI processing queues (백그라운드 스레드)
-        self.frying_left_queue = Queue(maxsize=1)
-        self.frying_right_queue = Queue(maxsize=1)
         self.observe_left_queue = Queue(maxsize=1)
         self.observe_right_queue = Queue(maxsize=1)
 
@@ -456,6 +441,18 @@ class JetsonIntegratedApp:
         self.frying_right_result = None
         self.observe_left_result = None
         self.observe_right_result = None
+
+        # Latest frames for data collection (must exist before worker threads)
+        self.latest_frying_left_frame = None
+        self.latest_frying_right_frame = None
+        self.latest_observe_left_frame = None
+        self.latest_observe_right_frame = None
+        self.frying_left_frame_id = 0
+        self.frying_right_frame_id = 0
+
+        # Collection flags (must exist before worker threads)
+        self.pot1_collecting = False
+        self.pot2_collecting = False
 
         # Running flags (MUST be set before starting worker threads!)
         self.running = True
@@ -466,6 +463,7 @@ class JetsonIntegratedApp:
         self.ai_threads = []
         self.frying_ai_lock = threading.Lock()
         self.observe_ai_lock = threading.Lock()
+        self.frame_lock = threading.Lock()
         self._start_ai_workers()
 
         # Subprocess tracking (진동센서 등)
@@ -476,6 +474,8 @@ class JetsonIntegratedApp:
         # Frame skip counters (CPU 절약)
         self.frying_frame_skip = 0
         self.observe_frame_skip = 0
+        self.last_lift_debug_ts_pot1 = 0.0
+        self.last_lift_debug_ts_pot2 = 0.0
         # GUI 표시 프레임 스킵 (각 카메라별)
         self.gui_frame_skip_frying_left = 0
         self.gui_frame_skip_frying_right = 0
@@ -558,12 +558,6 @@ class JetsonIntegratedApp:
         # POT2 배출 후 지연 종료 타이머
         self.pot2_discharge_timer_id = None
 
-        # Latest frames for data collection
-        self.latest_frying_left_frame = None
-        self.latest_frying_right_frame = None
-        self.latest_observe_left_frame = None
-        self.latest_observe_right_frame = None
-
         # Initialize MQTT (모든 상태 변수 초기화 완료 후)
         if MQTT_ENABLED:
             self.init_mqtt()
@@ -581,6 +575,9 @@ class JetsonIntegratedApp:
         print(f"[DEBUG] 카메라 초기화 시작...")
         self.init_cameras()
         print(f"[DEBUG] 카메라 초기화 완료")
+
+        # Start camera capture workers (decoupled from GUI)
+        self._start_capture_workers()
 
         # Start update loops
         self.update_frying_left()
@@ -921,9 +918,6 @@ class JetsonIntegratedApp:
             self.pot1_pot_status = "COOKING"
             print(f"[POT1] 상태 변경: COOKING")
 
-            # 로봇 감지기 리셋
-            self.robot_detector_pot1.reset()
-
             # Cancel previous timeout timer
             if self.pot1_timeout_id is not None:
                 self.root.after_cancel(self.pot1_timeout_id)
@@ -989,9 +983,6 @@ class JetsonIntegratedApp:
             # Pot status: IDLE → COOKING
             self.pot2_pot_status = "COOKING"
             print(f"[POT2] 상태 변경: COOKING")
-
-            # 로봇 감지기 리셋
-            self.robot_detector_pot2.reset()
 
             # Cancel previous timeout timer
             if self.pot2_timeout_id is not None:
@@ -1756,10 +1747,6 @@ class JetsonIntegratedApp:
         # 카메라 초기화 딜레이 (드라이버 안정화)
         CAMERA_INIT_DELAY = 4.0  # 초 (현장 IVC 채널 과부하 방지)
 
-        if self.simulate_mode:
-            self._init_simulated_cameras()
-            return
-
         # ==============================================
         # 3-of-4 카메라 전략: video0,1,2 항상 ON, video3(바켓 오른쪽) OFF
         # ==============================================
@@ -1845,79 +1832,17 @@ class JetsonIntegratedApp:
         if self.observe_right_cap: active_cams.append("video3(바켓R)")
         print(f"[카메라] 초기화 완료! 활성: {', '.join(active_cams) if active_cams else '없음'}")
 
-    def _init_simulated_cameras(self):
-        """Initialize simulated cameras from recorded frames."""
-        print("[카메라] 시뮬레이션 모드 - 녹화 이미지 로드")
-
-        def _load_images(folder):
-            if not folder or not os.path.isdir(folder):
-                return []
-            return sorted(glob.glob(os.path.join(folder, "*.jpg")))
-
-        def _resolve_camera_root(base_dir, cam_dirs):
-            """Resolve to a folder that contains camera_* directories."""
-            if not base_dir or not os.path.isdir(base_dir):
-                return None
-
-            candidates = []
-
-            def _has_cam_dirs(path):
-                return any(os.path.isdir(os.path.join(path, cam)) for cam in cam_dirs)
-
-            # base_dir itself
-            if _has_cam_dirs(base_dir):
-                candidates.append(base_dir)
-
-            # one-level subdirs (session or food_type)
-            for child in sorted(glob.glob(os.path.join(base_dir, "*"))):
-                if os.path.isdir(child) and _has_cam_dirs(child):
-                    candidates.append(child)
-
-            # two-level subdirs (session/food_type)
-            for child in sorted(glob.glob(os.path.join(base_dir, "*", "*"))):
-                if os.path.isdir(child) and _has_cam_dirs(child):
-                    candidates.append(child)
-
-            if not candidates:
-                return None
-
-            # pick most recent folder to match latest auto-collection
-            return max(candidates, key=lambda p: os.path.getmtime(p))
-
-        pot1_dir = _resolve_camera_root(self.simulate_config.get("pot1"), ["camera_0", "camera_2"])
-        pot2_dir = _resolve_camera_root(self.simulate_config.get("pot2"), ["camera_1", "camera_3"])
-
-        pot1_cam0 = _load_images(os.path.join(pot1_dir, "camera_0")) if pot1_dir else []
-        pot1_cam2 = _load_images(os.path.join(pot1_dir, "camera_2")) if pot1_dir else []
-        pot2_cam1 = _load_images(os.path.join(pot2_dir, "camera_1")) if pot2_dir else []
-        pot2_cam3 = _load_images(os.path.join(pot2_dir, "camera_3")) if pot2_dir else []
-
-        self.frying_left_cap = SimulatedCamera(pot1_cam0, name="camera_0") if pot1_cam0 else None
-        self.observe_left_cap = SimulatedCamera(pot1_cam2, name="camera_2") if pot1_cam2 else None
-        self.frying_right_cap = SimulatedCamera(pot2_cam1, name="camera_1") if pot2_cam1 else None
-        self.observe_right_cap = SimulatedCamera(pot2_cam3, name="camera_3") if pot2_cam3 else None
-
-        self.frying_left_streaming = self.frying_left_cap is not None
-        self.frying_right_streaming = self.frying_right_cap is not None
-
-        active = []
-        if self.frying_left_cap: active.append("sim:camera_0")
-        if self.frying_right_cap: active.append("sim:camera_1")
-        if self.observe_left_cap: active.append("sim:camera_2")
-        if self.observe_right_cap: active.append("sim:camera_3")
-        print(f"[카메라] 시뮬레이션 초기화 완료! 활성: {', '.join(active) if active else '없음'}")
-
     def _start_ai_workers(self):
         """Start AI inference workers (single-threaded per model)."""
         self.ai_threads = [
             threading.Thread(
-                target=self._frying_worker,
-                args=(self.frying_left_queue, "frying_left_result", "왼쪽"),
+                target=self._frying_poll_worker,
+                args=("frying_left_result", "왼쪽", "left"),
                 daemon=True
             ),
             threading.Thread(
-                target=self._frying_worker,
-                args=(self.frying_right_queue, "frying_right_result", "오른쪽"),
+                target=self._frying_poll_worker,
+                args=("frying_right_result", "오른쪽", "right"),
                 daemon=True
             ),
             threading.Thread(
@@ -1934,25 +1859,50 @@ class JetsonIntegratedApp:
         for t in self.ai_threads:
             t.start()
 
-    def _frying_worker(self, queue, result_attr, label):
+    def _should_run_frying_infer(self, side):
+        pot1_collecting = getattr(self, "pot1_collecting", False)
+        pot2_collecting = getattr(self, "pot2_collecting", False)
+        if side == "left":
+            return self.frying_running or pot1_collecting
+        if side == "right":
+            return self.frying_running or pot2_collecting
+        return False
+
+    def _frying_poll_worker(self, result_attr, label, side):
+        min_interval = 1.0 / max(FRYING_INFER_FPS, 1)
+        last_id = -1
+        last_run = 0.0
         while self.running:
-            try:
-                frame = queue.get(timeout=0.2)
-            except Empty:
+            if not self._should_run_frying_infer(side):
+                time.sleep(0.05)
                 continue
-            if not self.frying_running:
+
+            now = time.time()
+            if now - last_run < min_interval:
+                time.sleep(0.005)
                 continue
+
+            with self.frame_lock:
+                if side == "left":
+                    frame = getattr(self, "latest_frying_left_frame", None)
+                    frame_id = getattr(self, "frying_left_frame_id", 0)
+                else:
+                    frame = getattr(self, "latest_frying_right_frame", None)
+                    frame_id = getattr(self, "frying_right_frame_id", 0)
+                frame_copy = frame.copy() if frame is not None else None
+
+            if frame_copy is None or frame_id == last_id:
+                time.sleep(0.01)
+                continue
+
             try:
                 with self.frying_ai_lock:
-                    result = self.frying_segmenter.segment(frame, visualize=False)
+                    result = self.frying_segmenter.segment(frame_copy, visualize=False)
                 setattr(self, result_attr, result)
+                last_id = frame_id
+                last_run = time.time()
             except Exception as e:
                 print(f"[튀김 {label}] Segmentation 오류: {e}")
-            finally:
-                try:
-                    queue.task_done()
-                except Exception:
-                    pass
 
     def _observe_worker(self, queue, result_attr, label, seg_model):
         while self.running:
@@ -1975,6 +1925,43 @@ class JetsonIntegratedApp:
                     queue.task_done()
                 except Exception:
                     pass
+
+    def _start_capture_workers(self):
+        self.capture_threads = []
+        if self.frying_left_cap:
+            self.capture_threads.append(
+                threading.Thread(
+                    target=self._capture_worker,
+                    args=(self.frying_left_cap, "frying_left"),
+                    daemon=True
+                )
+            )
+        if self.frying_right_cap:
+            self.capture_threads.append(
+                threading.Thread(
+                    target=self._capture_worker,
+                    args=(self.frying_right_cap, "frying_right"),
+                    daemon=True
+                )
+            )
+        for t in self.capture_threads:
+            t.start()
+
+    def _capture_worker(self, cap, side):
+        while self.running:
+            ret, frame = cap.read()
+            if not ret:
+                time.sleep(0.05)
+                continue
+            with self.frame_lock:
+                if side == "frying_left":
+                    self.latest_frying_left_frame = frame
+                    self.frying_left_frame_id += 1
+                else:
+                    self.latest_frying_right_frame = frame
+                    self.frying_right_frame_id += 1
+            if sleep_on_success > 0:
+                time.sleep(sleep_on_success)
     def start_frying_camera(self, pot_num):
         """튀김솥 카메라 - 항상 ON 모드에서는 사용하지 않음"""
         pass
@@ -2113,35 +2100,12 @@ class JetsonIntegratedApp:
             self.root.after(GUI_UPDATE_INTERVAL, self.update_frying_left)
             return
 
-        ret, frame = self.frying_left_cap.read()
-        if ret:
-            frame_snapshot = frame.copy()
+        with self.frame_lock:
+            frame_snapshot = self.latest_frying_left_frame.copy() if self.latest_frying_left_frame is not None else None
+        if frame_snapshot is not None:
             color_result = None
 
             if self.frying_running or self.pot1_collecting:
-                # 로봇 감지 (색상 체크 전에 실행)
-                robot_result = self.robot_detector_pot1.detect(frame_snapshot)
-
-                if robot_result["state_changed"] and robot_result["robot_detected"]:
-                    print(f"[POT1] 로봇 진입 감지! metal_ratio={robot_result['metal_ratio']:.4f}")
-                    baseline_result = self.color_checker_left.set_baseline(frame_snapshot)
-                    if baseline_result.get("baseline_set"):
-                        print(f"[POT1] 색상 baseline 설정 완료: {baseline_result['color']}")
-                    self.schedule_taltal_capture(pot=1, delay_sec=2.0)
-
-                if robot_result["state_changed"] and not robot_result["robot_detected"]:
-                    print(f"[POT1] 로봇 퇴장")
-
-                # Frame skip: AI 처리는 N프레임마다 (CPU 절약)
-                self.frying_frame_skip += 1
-                if self.frying_frame_skip >= FRYING_FRAME_SKIP:
-                    self.frying_frame_skip = 0
-
-                    try:
-                        self.frying_left_queue.put_nowait(frame_snapshot)
-                    except Exception:
-                        pass
-
                 # DISCHARGE 조건 체크: running_time >= target_time
                 running_time = self.pot1_robot_status.get("running_time", "00:00:00")
                 target_time = self.pot1_robot_status.get("target_time", "00:00:00")
@@ -2178,6 +2142,36 @@ class JetsonIntegratedApp:
 
             # Store latest frame for data collection (매 프레임 저장)
             self.latest_frying_left_frame = frame_snapshot
+
+            # Lift event tracking (POT1 수집 중)
+            if self.pot1_collecting and self.frying_left_result is not None:
+                try:
+                    lift_status = self.lift_tracker_pot1.process_frame(self.frying_left_result)
+                    now_ts = time.time()
+                    if now_ts - self.last_lift_debug_ts_pot1 >= 1.0:
+                        self.last_lift_debug_ts_pot1 = now_ts
+                        cf = getattr(self.frying_left_result, "color_features", None)
+                        brown_ratio = getattr(cf, "brown_ratio", 0.0) if cf else 0.0
+                        golden_ratio = getattr(cf, "golden_ratio", 0.0) if cf else 0.0
+                        print(
+                            f"[POT1][DEBUG] area={self.frying_left_result.food_area_ratio:.3f} "
+                            f"brown={brown_ratio:.3f} golden={golden_ratio:.3f} "
+                            f"lift_count={lift_status.get('lift_count', 0)}"
+                        )
+                        ystats = getattr(self.frying_segmenter, "last_yolo_stats", None)
+                        if ystats is not None:
+                            print(
+                                f"[POT1][DEBUG] yolo_masks={ystats.get('num_masks', 0)} "
+                                f"yolo_max_conf={ystats.get('max_conf', 0.0):.3f}"
+                            )
+
+                    # 완료 감지 시 MQTT 알림
+                    if lift_status['completion_detected'] and not self.pot1_completion_marked:
+                        self.pot1_completion_marked = True
+                        print(f"[POT1] ✅ 튀김 완료 감지! (탈탈 {lift_status['lift_count']}회, 색변화={lift_status['color_delta']:.1f})")
+                        # TODO: MQTT 완료 알림 전송
+                except Exception as e:
+                    print(f"[POT1] Lift tracker 오류: {e}")
 
             # GUI 표시는 N프레임마다 (부하 감소)
             self.gui_frame_skip_frying_left += 1
@@ -2231,29 +2225,12 @@ class JetsonIntegratedApp:
             self.root.after(GUI_UPDATE_INTERVAL, self.update_frying_right)
             return
 
-        ret, frame = self.frying_right_cap.read()
-        if ret:
-            frame_snapshot = frame.copy()
+        with self.frame_lock:
+            frame_snapshot = self.latest_frying_right_frame.copy() if self.latest_frying_right_frame is not None else None
+        if frame_snapshot is not None:
             color_result = None
 
             if self.frying_running or self.pot2_collecting:
-                # 로봇 감지 (색상 체크 전에 실행)
-                robot_result = self.robot_detector_pot2.detect(frame_snapshot)
-
-                if robot_result["state_changed"] and robot_result["robot_detected"]:
-                    print(f"[POT2] 로봇 진입 감지! metal_ratio={robot_result['metal_ratio']:.4f}")
-                    self.schedule_taltal_capture(pot=2, delay_sec=2.0)
-
-                if robot_result["state_changed"] and not robot_result["robot_detected"]:
-                    print(f"[POT2] 로봇 퇴장")
-
-                # Frame skip은 왼쪽과 공유 (같은 카운터)
-                if self.frying_frame_skip == 0:  # 왼쪽에서 리셋된 경우
-                    try:
-                        self.frying_right_queue.put_nowait(frame_snapshot)
-                    except Exception:
-                        pass
-
                 # DISCHARGE 조건 체크: running_time >= target_time
                 running_time = self.pot2_robot_status.get("running_time", "00:00:00")
                 target_time = self.pot2_robot_status.get("target_time", "00:00:00")
@@ -2290,6 +2267,36 @@ class JetsonIntegratedApp:
 
             # Store latest frame for data collection (매 프레임 저장)
             self.latest_frying_right_frame = frame_snapshot
+
+            # Lift event tracking (POT2 수집 중)
+            if self.pot2_collecting and self.frying_right_result is not None:
+                try:
+                    lift_status = self.lift_tracker_pot2.process_frame(self.frying_right_result)
+                    now_ts = time.time()
+                    if now_ts - self.last_lift_debug_ts_pot2 >= 1.0:
+                        self.last_lift_debug_ts_pot2 = now_ts
+                        cf = getattr(self.frying_right_result, "color_features", None)
+                        brown_ratio = getattr(cf, "brown_ratio", 0.0) if cf else 0.0
+                        golden_ratio = getattr(cf, "golden_ratio", 0.0) if cf else 0.0
+                        print(
+                            f"[POT2][DEBUG] area={self.frying_right_result.food_area_ratio:.3f} "
+                            f"brown={brown_ratio:.3f} golden={golden_ratio:.3f} "
+                            f"lift_count={lift_status.get('lift_count', 0)}"
+                        )
+                        ystats = getattr(self.frying_segmenter, "last_yolo_stats", None)
+                        if ystats is not None:
+                            print(
+                                f"[POT2][DEBUG] yolo_masks={ystats.get('num_masks', 0)} "
+                                f"yolo_max_conf={ystats.get('max_conf', 0.0):.3f}"
+                            )
+
+                    # 완료 감지 시 MQTT 알림
+                    if lift_status['completion_detected'] and not self.pot2_completion_marked:
+                        self.pot2_completion_marked = True
+                        print(f"[POT2] ✅ 튀김 완료 감지! (탈탈 {lift_status['lift_count']}회, 색변화={lift_status['color_delta']:.1f})")
+                        # TODO: MQTT 완료 알림 전송
+                except Exception as e:
+                    print(f"[POT2] Lift tracker 오류: {e}")
 
             # GUI 표시는 N프레임마다 (부하 감소)
             self.gui_frame_skip_frying_right += 1
@@ -4092,6 +4099,10 @@ class JetsonIntegratedApp:
         self.pot1_collecting = True
         self.pot1_metadata = []  # Reset metadata
 
+        # Start lift event tracking
+        target_time = 180  # 기본값 180초 (3분), 추후 음식별 설정 가능
+        self.lift_tracker_pot1.start_session(self.pot1_session_id, self.pot1_food_type, target_time)
+
         print(f"[POT1 수집] 시작: {self.pot1_session_id}")
         print(f"[POT1 수집] 음식 종류: {self.pot1_food_type}")
         print(f"[POT1 수집] 저장 경로: {self.pot1_session_dir}")
@@ -4109,6 +4120,13 @@ class JetsonIntegratedApp:
 
         self.pot1_collecting = False
         duration = (datetime.now() - self.pot1_start_time).total_seconds()
+
+        # Stop lift event tracking and save data
+        self.lift_tracker_pot1.stop_session()
+        try:
+            lift_data_path = self.lift_tracker_pot1.save_session_data(self.pot1_session_dir)
+        except Exception as e:
+            print(f"[POT1 수집] Lift data 저장 오류: {e}")
 
         # Save session info (백그라운드 스레드에서 저장 - GUI 프리징 방지)
         session_info = {
@@ -4152,7 +4170,6 @@ class JetsonIntegratedApp:
             self.pot1_taltal_timer.cancel()
             self.pot1_taltal_timer = None
         self.pot1_taltal_pending = False
-        self.robot_detector_pot1.reset()
 
     def start_pot2_collection(self):
         """Start POT2 data collection (cameras 1, 3)"""
@@ -4181,6 +4198,10 @@ class JetsonIntegratedApp:
         self.pot2_collecting = True
         self.pot2_metadata = []  # Reset metadata
 
+        # Start lift event tracking
+        target_time = 180  # 기본값 180초 (3분), 추후 음식별 설정 가능
+        self.lift_tracker_pot2.start_session(self.pot2_session_id, self.pot2_food_type, target_time)
+
         print(f"[POT2 수집] 시작: {self.pot2_session_id}")
         print(f"[POT2 수집] 음식 종류: {self.pot2_food_type}")
         print(f"[POT2 수집] 저장 경로: {self.pot2_session_dir}")
@@ -4198,6 +4219,13 @@ class JetsonIntegratedApp:
 
         self.pot2_collecting = False
         duration = (datetime.now() - self.pot2_start_time).total_seconds()
+
+        # Stop lift event tracking and save data
+        self.lift_tracker_pot2.stop_session()
+        try:
+            lift_data_path = self.lift_tracker_pot2.save_session_data(self.pot2_session_dir)
+        except Exception as e:
+            print(f"[POT2 수집] Lift data 저장 오류: {e}")
 
         # Save session info (백그라운드 스레드에서 저장 - GUI 프리징 방지)
         session_info = {
@@ -4241,7 +4269,6 @@ class JetsonIntegratedApp:
             self.pot2_taltal_timer.cancel()
             self.pot2_taltal_timer = None
         self.pot2_taltal_pending = False
-        self.robot_detector_pot2.reset()
 
     def _delayed_stop_pot1_collection(self):
         """배출 후 지연 종료 (타이머 콜백)"""
@@ -4526,43 +4553,6 @@ if __name__ == "__main__":
     print("Jetson #2 - AI Monitoring System")
     print("=" * 50)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--simulate", help="pot1/pot2 세션 디렉토리 (camera_0/2 또는 camera_1/3 포함)")
-    parser.add_argument("--simulate-pot2", help="pot2 세션 디렉토리 (옵션)")
-    args = parser.parse_args()
-
-    simulate_config = None
-    if args.simulate or args.simulate_pot2:
-        def _has_cam(path, cam_name):
-            return path and os.path.isdir(os.path.join(path, cam_name))
-
-        pot1_dir = None
-        pot2_dir = None
-
-        if args.simulate:
-            if _has_cam(args.simulate, "camera_0") or _has_cam(args.simulate, "camera_2"):
-                pot1_dir = args.simulate
-            if _has_cam(args.simulate, "camera_1") or _has_cam(args.simulate, "camera_3"):
-                pot2_dir = args.simulate
-
-        if args.simulate_pot2:
-            if _has_cam(args.simulate_pot2, "camera_0") or _has_cam(args.simulate_pot2, "camera_2"):
-                pot1_dir = args.simulate_pot2
-            if _has_cam(args.simulate_pot2, "camera_1") or _has_cam(args.simulate_pot2, "camera_3"):
-                pot2_dir = args.simulate_pot2
-
-        if pot1_dir and not pot2_dir and "/pot1/" in pot1_dir:
-            guess = pot1_dir.replace("/pot1/", "/pot2/")
-            if os.path.isdir(guess):
-                pot2_dir = guess
-        if pot2_dir and not pot1_dir and "/pot2/" in pot2_dir:
-            guess = pot2_dir.replace("/pot2/", "/pot1/")
-            if os.path.isdir(guess):
-                pot1_dir = guess
-
-        simulate_config = {"pot1": pot1_dir, "pot2": pot2_dir}
-        print(f"[SIM] pot1={pot1_dir or 'None'} pot2={pot2_dir or 'None'}")
-
     root = tk.Tk()
-    app = JetsonIntegratedApp(root, simulate_config=simulate_config)
+    app = JetsonIntegratedApp(root)
     root.mainloop()
