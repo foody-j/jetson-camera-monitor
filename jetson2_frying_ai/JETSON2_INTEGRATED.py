@@ -1985,6 +1985,7 @@ class JetsonIntegratedApp:
             t.start()
 
     def _capture_worker(self, cap, side):
+        sleep_on_success = 0.0
         while self.running:
             ret, frame = cap.read()
             if not ret:
