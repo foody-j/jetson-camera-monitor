@@ -74,7 +74,7 @@
   "mqtt_qos": 1,
   "mqtt_publish_interval": 2,
   "mqtt_topic_status": "jetson2/status",
-  "mqtt_topic_robot_status": "HR/Status",
+  "mqtt_topic_robot_status": "HR/Status_TEST",
   "mqtt_topic_pot1_oil_temp": "frying/pot1/oil_temp",
   "mqtt_topic_pot1_probe_temp": "frying/pot1/probe_temp",
   "mqtt_topic_pot2_oil_temp": "frying/pot2/oil_temp",
