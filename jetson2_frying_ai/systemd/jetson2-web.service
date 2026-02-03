@@ -1,0 +1,20 @@
+[Unit]
+Description=Jetson2 Web Dashboard (Headless)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hr_dku_002
+WorkingDirectory=/home/hr_dku_002/jetson-food-ai/jetson2_frying_ai
+ExecStart=/usr/bin/python3 /home/hr_dku_002/jetson-food-ai/jetson2_frying_ai/JETSON2_web.py
+Restart=always
+RestartSec=5
+
+Environment="PYTHONUNBUFFERED=1"
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
