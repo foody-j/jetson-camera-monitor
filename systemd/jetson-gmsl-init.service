@@ -1,0 +1,11 @@
+[Unit]
+Description=Jetson GMSL Camera Init
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/yjk/jetson-food-ai/init_gmsl_cameras.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -204,27 +204,14 @@ class CameraWorker(threading.Thread):
 
         self.running = False
         self._last_web_update = 0.0
+        self._recover_event = threading.Event()
+        self._recover_lock = threading.Lock()
+        self._recovering = False
 
     def run(self):
         self.running = True
 
-        start_delay = float(self.config.get("camera_start_delay_sec", 0.0))
-        if start_delay > 0:
-            time.sleep(start_delay)
-
-        retry_count = int(self.config.get("camera_retry_count", 3))
-        retry_interval = float(self.config.get("camera_retry_interval_sec", 1.0))
-
-        started = False
-        for attempt in range(1, retry_count + 1):
-            if self.camera.start():
-                started = True
-                break
-            print(f"[CAM{self.cam_id}] Start failed (attempt {attempt}/{retry_count})")
-            time.sleep(retry_interval)
-
-        if not started:
-            print(f"[CAM{self.cam_id}] Failed to start after {retry_count} attempts")
+        if not self._start_camera():
             self.running = False
             return
 
@@ -232,6 +219,12 @@ class CameraWorker(threading.Thread):
         fps_frame_count = 0
 
         while self.running:
+            if self._recover_event.is_set():
+                self._recover_event.clear()
+                self._recover_camera()
+                fps_calc_time = time.time()
+                fps_frame_count = 0
+
             ret, frame = self.camera.read()
             if not ret or frame is None:
                 time.sleep(0.01)
@@ -256,6 +249,71 @@ class CameraWorker(threading.Thread):
             self.stats["last_frame_ts"] = now
 
         self.camera.stop()
+
+    def _start_camera(self) -> bool:
+        start_delay = float(self.config.get("camera_start_delay_sec", 0.0))
+        if start_delay > 0:
+            time.sleep(start_delay)
+
+        retry_count = int(self.config.get("camera_retry_count", 3))
+        retry_interval = float(self.config.get("camera_retry_interval_sec", 1.0))
+
+        started = False
+        for attempt in range(1, retry_count + 1):
+            if self.camera.start():
+                started = True
+                break
+            print(f"[CAM{self.cam_id}] Start failed (attempt {attempt}/{retry_count})")
+            time.sleep(retry_interval)
+
+        if not started:
+            print(f"[CAM{self.cam_id}] Failed to start after {retry_count} attempts")
+            return False
+        return True
+
+    def _recover_camera(self) -> None:
+        with self._recover_lock:
+            if self._recovering:
+                return
+            self._recovering = True
+        try:
+            print(f"[CAM{self.cam_id}] Recovering camera...")
+            try:
+                self.camera.stop()
+            except Exception:
+                pass
+
+            self.frame_queue.clear()
+            with self.latest_frame_lock:
+                self.latest_frame = None
+            with self.web_frame_lock:
+                self.web_frame = None
+            with self.overlay_lock:
+                self.overlay_frame = None
+            self.stats["fps"] = 0
+            self.stats["last_frame_ts"] = 0
+
+            self.camera = GstCamera(
+                self.cam_index,
+                width=self.config.get("camera_width", 1920),
+                height=self.config.get("camera_height", 1536),
+                fps=self.config.get("camera_fps", 30),
+            )
+
+            if not self._start_camera():
+                print(f"[CAM{self.cam_id}] Recover failed (start error)")
+            else:
+                print(f"[CAM{self.cam_id}] Recover success")
+        finally:
+            with self._recover_lock:
+                self._recovering = False
+
+    def request_recover(self) -> None:
+        self._recover_event.set()
+
+    def is_recovering(self) -> bool:
+        with self._recover_lock:
+            return self._recovering
 
     def _update_web_frame(self, frame: np.ndarray) -> None:
         now = time.time()
@@ -744,6 +802,10 @@ class Jetson2Web:
         self.web_thread: Optional[threading.Thread] = None
         self.collection_thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
+        self.camera_watchdog_thread: Optional[threading.Thread] = None
+        self.camera_watchdog_stop = threading.Event()
+        self.camera_watchdog_start_ts = time.time()
+        self.camera_fail_counts = {}
 
         self.pot1_food_type = None
         self.pot2_food_type = None
@@ -2107,6 +2169,10 @@ class Jetson2Web:
             print(f"[IP] Tailscale: {tailscale_ip}")
 
         self.running = True
+        self.camera_watchdog_start_ts = time.time()
+        self.camera_watchdog_stop.clear()
+        self.camera_watchdog_thread = threading.Thread(target=self._camera_watchdog_loop, daemon=True)
+        self.camera_watchdog_thread.start()
         self.collection_thread = threading.Thread(target=self._collection_loop, daemon=True)
         self.collection_thread.start()
         self._main_loop()
@@ -2137,12 +2203,45 @@ class Jetson2Web:
         finally:
             self.stop()
 
+    def _camera_watchdog_loop(self) -> None:
+        grace = float(self.config.get("camera_watch_grace_sec", 10))
+        stall_sec = float(self.config.get("camera_stall_sec", 3))
+        check_interval = float(self.config.get("camera_watch_interval_sec", 1.0))
+        gmsl_reinit = bool(self.config.get("gmsl_reinit_on_recover", True))
+        gmsl_after = int(self.config.get("gmsl_reinit_after_failures", 2))
+        gmsl_cooldown = float(self.config.get("gmsl_reinit_cooldown_sec", 20))
+        last_gmsl = 0.0
+
+        while not self.camera_watchdog_stop.is_set():
+            now = time.time()
+            if now - self.camera_watchdog_start_ts < grace:
+                time.sleep(check_interval)
+                continue
+            for cam_id, cam in self.cameras.items():
+                if cam is None or not cam.running:
+                    continue
+                last_ts = cam.stats.get("last_frame_ts", 0) or 0
+                if last_ts == 0:
+                    continue
+                if now - last_ts > stall_sec and not cam.is_recovering():
+                    self.camera_fail_counts[cam_id] = self.camera_fail_counts.get(cam_id, 0) + 1
+                    print(f"[CAM{cam_id}] Stall detected ({now - last_ts:.1f}s), recovering...")
+                    if gmsl_reinit and self.camera_fail_counts[cam_id] >= gmsl_after:
+                        if now - last_gmsl >= gmsl_cooldown:
+                            print("[GMSL] Re-init before camera recover")
+                            run_gmsl_init_script(self.config)
+                            last_gmsl = now
+                            self.camera_fail_counts[cam_id] = 0
+                    cam.request_recover()
+            time.sleep(check_interval)
+
     def stop(self) -> None:
         if not self.running:
             return
         print("[Main] Shutting down...")
         self.running = False
         self.stop_event.set()
+        self.camera_watchdog_stop.set()
 
         for cam in self.cameras.values():
             if cam is not None:
