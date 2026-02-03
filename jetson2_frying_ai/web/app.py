@@ -130,6 +130,34 @@ def create_app(
                 state.stop_vibration_check()
             return {"ok": True, "action": action}
 
+        @app.post("/api/control/vibration/status")
+        async def vibration_status(payload: dict = Body(...)):
+            status = str(payload.get("status", "")).upper()
+            if status:
+                state.vibration_status = status
+            return {"ok": True, "status": status}
+
+        @app.post("/api/control/collection")
+        async def collection_control(payload: dict = Body(...)):
+            target = str(payload.get("target", "")).lower()
+            action = str(payload.get("action", "")).lower()
+            if target == "legacy":
+                if action == "start":
+                    state.start_data_collection()
+                elif action == "stop":
+                    state.stop_data_collection()
+            elif target == "pot1":
+                if action == "start":
+                    state.start_pot1_collection()
+                elif action == "stop":
+                    state.stop_pot1_collection()
+            elif target == "pot2":
+                if action == "start":
+                    state.start_pot2_collection()
+                elif action == "stop":
+                    state.stop_pot2_collection()
+            return {"ok": True, "target": target, "action": action}
+
         @app.post("/api/control/observe")
         async def observe_control(payload: dict = Body(...)):
             side = str(payload.get("side", "")).lower()

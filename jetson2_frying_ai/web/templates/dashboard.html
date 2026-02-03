@@ -22,6 +22,9 @@
             <div class="control-title">Vibration</div>
             <button class="btn" onclick="vibrationControl('start')">START</button>
             <button class="btn" onclick="vibrationControl('stop')">STOP</button>
+            <button class="btn" onclick="vibrationStatus('NORMAL')">NORMAL</button>
+            <button class="btn" onclick="vibrationStatus('ABNORMAL')">ABNORMAL</button>
+            <button class="btn" onclick="vibrationStatus('IDLE')">IDLE</button>
         </div>
         <div class="control-group">
             <div class="control-title">Observe</div>
@@ -29,6 +32,15 @@
             <button class="btn" onclick="observeControl('left','EMPTY')">L EMPTY</button>
             <button class="btn" onclick="observeControl('right','FILLED')">R FILLED</button>
             <button class="btn" onclick="observeControl('right','EMPTY')">R EMPTY</button>
+        </div>
+        <div class="control-group">
+            <div class="control-title">Collect</div>
+            <button class="btn" onclick="collectionControl('pot1','start')">P1 START</button>
+            <button class="btn" onclick="collectionControl('pot1','stop')">P1 STOP</button>
+            <button class="btn" onclick="collectionControl('pot2','start')">P2 START</button>
+            <button class="btn" onclick="collectionControl('pot2','stop')">P2 STOP</button>
+            <button class="btn" onclick="collectionControl('legacy','start')">ALL START</button>
+            <button class="btn" onclick="collectionControl('legacy','stop')">ALL STOP</button>
         </div>
         <div class="control-group">
             <div class="control-title">MQTT</div>
@@ -89,8 +101,16 @@
             postJSON('/api/control/vibration', { action });
         }
 
+        function vibrationStatus(status) {
+            postJSON('/api/control/vibration/status', { status });
+        }
+
         function observeControl(side, status) {
             postJSON('/api/control/observe', { side, status });
+        }
+
+        function collectionControl(target, action) {
+            postJSON('/api/control/collection', { target, action });
         }
 
         function publishNow() {
