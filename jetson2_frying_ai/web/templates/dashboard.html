@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Jetson2 Dashboard</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="header">
+        <h1>Jetson2 Headless Dashboard</h1>
+        <div id="status-bar">Loading...</div>
+    </div>
+
+    <div class="grid">
+        <div class="camera-box">
+            <div class="cam-header">Frying Left (POT0)</div>
+            <img src="/mjpeg/cam0" alt="Frying Left">
+            <div class="cam-status" id="status-0">-</div>
+        </div>
+
+        <div class="camera-box">
+            <div class="cam-header">Frying Right (POT1)</div>
+            <img src="/mjpeg/cam1" alt="Frying Right">
+            <div class="cam-status" id="status-1">-</div>
+        </div>
+
+        <div class="camera-box">
+            <div class="cam-header">Bucket Left</div>
+            <img src="/mjpeg/cam2" alt="Bucket Left">
+            <div class="cam-status" id="status-2">-</div>
+        </div>
+
+        <div class="camera-box">
+            <div class="cam-header">Bucket Right</div>
+            <img src="/mjpeg/cam3" alt="Bucket Right">
+            <div class="cam-status" id="status-3">-</div>
+        </div>
+    </div>
+
+    <script>
+        async function updateStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+
+                for (let i = 0; i < 4; i++) {
+                    const cam = data.cameras[`cam${i}`];
+                    const elem = document.getElementById(`status-${i}`);
+                    if (!cam) {
+                        elem.textContent = 'Camera disabled';
+                        continue;
+                    }
+                    elem.textContent = `FPS: ${cam.fps} | Frames: ${cam.frame_count} | Drops: ${cam.drop_count}`;
+                }
+
+                if (data.frying.pot0) {
+                    document.getElementById('status-0').textContent +=
+                        ` | Lift: ${data.frying.pot0.lift_count || 0}`;
+                }
+                if (data.frying.pot1) {
+                    document.getElementById('status-1').textContent +=
+                        ` | Lift: ${data.frying.pot1.lift_count || 0}`;
+                }
+
+                if (data.observe.cam2) {
+                    document.getElementById('status-2').textContent +=
+                        ` | ${data.observe.cam2.status || 'UNKNOWN'}`;
+                }
+                if (data.observe.cam3) {
+                    document.getElementById('status-3').textContent +=
+                        ` | ${data.observe.cam3.status || 'UNKNOWN'}`;
+                }
+
+                document.getElementById('status-bar').textContent =
+                    `MQTT: ${data.mqtt.connected ? 'Connected' : 'Disconnected'} | ` +
+                    `Updated: ${new Date(data.timestamp * 1000).toLocaleTimeString()}`;
+
+            } catch (e) {
+                console.error('Status update failed:', e);
+            }
+        }
+
+        setInterval(updateStatus, 2000);
+        updateStatus();
+    </script>
+</body>
+</html>
