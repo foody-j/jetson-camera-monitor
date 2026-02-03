@@ -84,6 +84,7 @@ def create_app(
                         "pot1_session": state.pot1_session_id,
                         "pot2_session": state.pot2_session_id,
                     },
+                    "system": state.system_info.get_dynamic_info() if state.system_info else {},
                 }
             except Exception:
                 extra = {}

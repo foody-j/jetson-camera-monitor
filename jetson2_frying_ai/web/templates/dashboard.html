@@ -186,6 +186,12 @@
                 let header = `MQTT: ${data.mqtt.connected ? 'Connected' : 'Disconnected'} | ` +
                     `Updated: ${new Date(data.timestamp * 1000).toLocaleTimeString()}`;
 
+                if (data.system && data.system.disk) {
+                    const disk = data.system.disk;
+                    const free = (disk.total_gb - disk.used_gb).toFixed(1);
+                    header += ` | Disk: ${disk.used_gb} / ${disk.total_gb} GB (Free ${free} GB)`;
+                }
+
                 if (data.collection) {
                     const p1 = data.collection.pot1 ? 'ON' : 'OFF';
                     const p2 = data.collection.pot2 ? 'ON' : 'OFF';

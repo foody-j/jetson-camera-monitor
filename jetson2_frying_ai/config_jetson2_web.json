@@ -88,6 +88,7 @@
   "mqtt_topic_ai_mode": "jetson2/system/ai_mode",
   "mqtt_topic_jetson1_relay": "jetson1/relay/status",
   "mqtt_topic_vibration_control": "calibration/vibration/control",
+  "mqtt_log_maxlen": 200,
 
   "// Data Collection": "",
   "recording_delay_after_discharge": 50,

@@ -779,6 +779,7 @@ class Jetson2Web:
         self.robot_status = {}
 
         self.mqtt_message_log = deque(maxlen=int(config.get("mqtt_log_maxlen", 200)))
+        self.mqtt_log_dir = os.path.join(SCRIPT_DIR, "mqtt_logs")
 
     def _init_cameras(self) -> None:
         cam_width = self.config.get("camera_width", 1920)
@@ -1871,13 +1872,24 @@ class Jetson2Web:
             raw = payload.decode("utf-8") if isinstance(payload, (bytes, bytearray)) else str(payload)
         except Exception:
             raw = str(payload)
+        timestamp = datetime.now()
         self.mqtt_message_log.appendleft(
             {
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                 "topic": topic,
                 "payload": raw,
             }
         )
+
+        try:
+            os.makedirs(self.mqtt_log_dir, exist_ok=True)
+            date_str = timestamp.strftime("%Y-%m-%d")
+            log_file = os.path.join(self.mqtt_log_dir, f"mqtt_{date_str}.log")
+            full_ts = timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(f"[{full_ts}] {topic}\n{raw}\n\n")
+        except Exception as e:
+            print(f"[MQTT 로그] 파일 저장 실패: {e}")
 
     def _publish_mqtt_status(self) -> None:
         if not self.mqtt_client:
