@@ -79,6 +79,10 @@ def create_app(
                         "pot1": state.pot1_collecting,
                         "pot2": state.pot2_collecting,
                         "legacy": state.data_collection_active,
+                        "pot1_frames": state.pot1_frame_counter,
+                        "pot2_frames": state.pot2_frame_counter,
+                        "pot1_session": state.pot1_session_id,
+                        "pot2_session": state.pot2_session_id,
                     },
                 }
             except Exception:

@@ -154,9 +154,24 @@
                         ` | ${data.observe.cam3.status || 'UNKNOWN'}`;
                 }
 
-                document.getElementById('status-bar').textContent =
-                    `MQTT: ${data.mqtt.connected ? 'Connected' : 'Disconnected'} | ` +
+                let header = `MQTT: ${data.mqtt.connected ? 'Connected' : 'Disconnected'} | ` +
                     `Updated: ${new Date(data.timestamp * 1000).toLocaleTimeString()}`;
+
+                if (data.collection) {
+                    const p1 = data.collection.pot1 ? 'ON' : 'OFF';
+                    const p2 = data.collection.pot2 ? 'ON' : 'OFF';
+                    const p1f = data.collection.pot1_frames || 0;
+                    const p2f = data.collection.pot2_frames || 0;
+                    const p1s = data.collection.pot1_session || '-';
+                    const p2s = data.collection.pot2_session || '-';
+                    document.getElementById('status-0').textContent +=
+                        ` | COLLECT:${p1} (${p1f})`;
+                    document.getElementById('status-1').textContent +=
+                        ` | COLLECT:${p2} (${p2f})`;
+                    header += ` | S1:${p1s} S2:${p2s}`;
+                }
+
+                document.getElementById('status-bar').textContent = header;
 
             } catch (e) {
                 console.error('Status update failed:', e);
