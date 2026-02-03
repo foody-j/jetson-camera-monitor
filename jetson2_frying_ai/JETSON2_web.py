@@ -685,6 +685,8 @@ class Jetson2Web:
         }
         self.robot_status = {}
 
+        self.mqtt_message_log = deque(maxlen=int(config.get("mqtt_log_maxlen", 200)))
+
     def _init_cameras(self) -> None:
         cam_width = self.config.get("camera_width", 1920)
         cam_height = self.config.get("camera_height", 1536)
@@ -812,6 +814,7 @@ class Jetson2Web:
             print(f"[GPIO] Relay OFF 실패: {e}")
 
     def on_pot1_food_type(self, client, userdata, message):
+        self._log_mqtt_message(message.topic, message.payload)
         food_type = message.payload.decode().strip()
         self.pot1_food_type = food_type
         self.pot1_status = "COOKING"
@@ -849,6 +852,7 @@ class Jetson2Web:
             print(f"[MQTT] POT1 food_type={food_type}, target={target_time}")
 
     def on_pot2_food_type(self, client, userdata, message):
+        self._log_mqtt_message(message.topic, message.payload)
         food_type = message.payload.decode().strip()
         self.pot2_food_type = food_type
         self.pot2_status = "COOKING"
@@ -886,6 +890,7 @@ class Jetson2Web:
             print(f"[MQTT] POT2 food_type={food_type}, target={target_time}")
 
     def on_pot1_control(self, client, userdata, message):
+        self._log_mqtt_message(message.topic, message.payload)
         command = message.payload.decode().strip().lower()
         if command == "stop":
             if self.pot1_timeout_timer:
@@ -902,6 +907,7 @@ class Jetson2Web:
                 worker.stop_session()
 
     def on_pot2_control(self, client, userdata, message):
+        self._log_mqtt_message(message.topic, message.payload)
         command = message.payload.decode().strip().lower()
         if command == "stop":
             if self.pot2_timeout_timer:
@@ -918,6 +924,7 @@ class Jetson2Web:
                 worker.stop_session()
 
     def on_pot1_oil_temp(self, client, userdata, message):
+        self._log_mqtt_message(message.topic, message.payload)
         try:
             self.temps["pot1_oil"] = float(message.payload.decode())
         except Exception:
@@ -944,6 +951,7 @@ class Jetson2Web:
             )
 
     def on_pot1_probe_temp(self, client, userdata, message):
+        self._log_mqtt_message(message.topic, message.payload)
         try:
             self.temps["pot1_probe"] = float(message.payload.decode())
         except Exception:
@@ -984,6 +992,7 @@ class Jetson2Web:
                 self.mark_completion_auto("left", self.temps["pot1_probe"])
 
     def on_pot2_oil_temp(self, client, userdata, message):
+        self._log_mqtt_message(message.topic, message.payload)
         try:
             self.temps["pot2_oil"] = float(message.payload.decode())
         except Exception:
@@ -1010,6 +1019,7 @@ class Jetson2Web:
             )
 
     def on_pot2_probe_temp(self, client, userdata, message):
+        self._log_mqtt_message(message.topic, message.payload)
         try:
             self.temps["pot2_probe"] = float(message.payload.decode())
         except Exception:
@@ -1050,6 +1060,7 @@ class Jetson2Web:
                 self.mark_completion_auto("right", self.temps["pot2_probe"])
 
     def on_robot_status(self, client, userdata, message):
+        self._log_mqtt_message(message.topic, message.payload)
         try:
             payload = message.payload.decode()
             data = json.loads(payload)
@@ -1657,6 +1668,7 @@ class Jetson2Web:
             time.sleep(0.05)
 
     def on_jetson1_relay_status(self, client, userdata, message):
+        self._log_mqtt_message(message.topic, message.payload)
         try:
             raw_message = message.payload.decode("utf-8")
             data = json.loads(raw_message)
@@ -1669,6 +1681,7 @@ class Jetson2Web:
             print(f"[릴레이 동기화] 오류: {e}")
 
     def on_vibration_control(self, client, userdata, message):
+        self._log_mqtt_message(message.topic, message.payload)
         try:
             raw_message = message.payload.decode("utf-8")
             command = None
@@ -1753,6 +1766,19 @@ class Jetson2Web:
             self.child_processes.remove(self.vibration_process)
         self.vibration_process = None
         self.vibration_status = "IDLE"
+
+    def _log_mqtt_message(self, topic: str, payload) -> None:
+        try:
+            raw = payload.decode("utf-8") if isinstance(payload, (bytes, bytearray)) else str(payload)
+        except Exception:
+            raw = str(payload)
+        self.mqtt_message_log.appendleft(
+            {
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                "topic": topic,
+                "payload": raw,
+            }
+        )
 
     def _publish_mqtt_status(self) -> None:
         if not self.mqtt_client:

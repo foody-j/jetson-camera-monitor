@@ -100,6 +100,14 @@ def create_app(
         return JSONResponse(config)
 
     if state is not None:
+        @app.get("/api/mqtt/log")
+        async def mqtt_log():
+            try:
+                return JSONResponse(list(state.mqtt_message_log))
+            except Exception:
+                return JSONResponse([])
+
+    if state is not None:
         @app.post("/api/control/relay")
         async def relay_control(payload: dict = Body(...)):
             action = str(payload.get("action", "")).lower()

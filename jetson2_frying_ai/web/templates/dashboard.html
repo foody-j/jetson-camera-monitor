@@ -33,7 +33,13 @@
         <div class="control-group">
             <div class="control-title">MQTT</div>
             <button class="btn" onclick="publishNow()">Publish</button>
+            <button class="btn" onclick="toggleMqttLog()">Log</button>
         </div>
+    </div>
+
+    <div class="mqtt-log" id="mqtt-log" style="display:none;">
+        <div class="mqtt-log-title">MQTT 최근 메시지</div>
+        <div class="mqtt-log-list" id="mqtt-log-list">-</div>
     </div>
 
     <div class="grid">
@@ -89,6 +95,30 @@
 
         function publishNow() {
             postJSON('/api/control/publish', {});
+        }
+
+        async function toggleMqttLog() {
+            const box = document.getElementById('mqtt-log');
+            if (box.style.display === 'none') {
+                box.style.display = 'block';
+                await refreshMqttLog();
+            } else {
+                box.style.display = 'none';
+            }
+        }
+
+        async function refreshMqttLog() {
+            try {
+                const res = await fetch('/api/mqtt/log');
+                const data = await res.json();
+                const list = document.getElementById('mqtt-log-list');
+                list.innerHTML = data.slice(0, 20).map(item => {
+                    const payload = (item.payload || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    return `<div class="mqtt-log-item">[${item.timestamp}] <b>${item.topic}</b> ${payload}</div>`;
+                }).join('') || '-';
+            } catch (e) {
+                console.error('MQTT log failed:', e);
+            }
         }
 
         async function updateStatus() {

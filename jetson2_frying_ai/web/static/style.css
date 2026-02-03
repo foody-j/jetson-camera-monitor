@@ -59,12 +59,38 @@ body {
     background: #3d566e;
 }
 
+.mqtt-log {
+    padding: 10px 15px;
+    background: #111820;
+    border-bottom: 1px solid #2c3e50;
+    font-family: monospace;
+    font-size: 12px;
+}
+
+.mqtt-log-title {
+    color: #bdc3c7;
+    margin-bottom: 6px;
+}
+
+.mqtt-log-list {
+    max-height: 180px;
+    overflow-y: auto;
+    background: #0b0f14;
+    border: 1px solid #2c3e50;
+    padding: 6px;
+}
+
+.mqtt-log-item {
+    padding: 2px 0;
+    border-bottom: 1px dashed #233041;
+}
+
 .grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 15px;
     padding: 15px;
-    height: calc(100vh - 190px);
+    height: calc(100vh - 260px);
     box-sizing: border-box;
 }
 
