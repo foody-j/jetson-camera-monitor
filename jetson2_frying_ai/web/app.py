@@ -168,6 +168,20 @@ def create_app(
                 pass
             return {"ok": True, "enabled": enabled}
 
+        @app.get("/api/ai/snapshot")
+        async def ai_snapshot(set: int = 1):  # noqa: A002
+            try:
+                data = state.build_ai_snapshot(set)
+            except Exception:
+                data = {}
+            return JSONResponse(
+                {
+                    "timestamp": time.time(),
+                    "set": set,
+                    "cams": data,
+                }
+            )
+
         @app.post("/api/control/observe")
         async def observe_control(payload: dict = Body(...)):
             side = str(payload.get("side", "")).lower()

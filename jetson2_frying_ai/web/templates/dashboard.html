@@ -52,11 +52,30 @@
             <button class="btn" onclick="overlayControl(true)">ON</button>
             <button class="btn" onclick="overlayControl(false)">OFF</button>
         </div>
+        <div class="control-group">
+            <div class="control-title">AI Snapshot</div>
+            <button class="btn" onclick="aiSnapshot(1)">SET 1 (0+2)</button>
+            <button class="btn" onclick="aiSnapshot(2)">SET 2 (1+3)</button>
+        </div>
     </div>
 
     <div class="mqtt-log" id="mqtt-log" style="display:none;">
         <div class="mqtt-log-title">MQTT 최근 메시지</div>
         <div class="mqtt-log-list" id="mqtt-log-list">-</div>
+    </div>
+
+    <div class="snapshot-panel" id="snapshot-panel" style="display:none;">
+        <div class="snapshot-title">AI Snapshot</div>
+        <div class="snapshot-grid">
+            <div class="snapshot-box">
+                <img id="snap-0" alt="snap-0">
+                <div class="snapshot-metrics" id="snap-0-metrics">-</div>
+            </div>
+            <div class="snapshot-box">
+                <img id="snap-1" alt="snap-1">
+                <div class="snapshot-metrics" id="snap-1-metrics">-</div>
+            </div>
+        </div>
     </div>
 
     <div class="grid">
@@ -124,6 +143,30 @@
 
         function overlayControl(enabled) {
             postJSON('/api/control/overlay', { enabled });
+        }
+
+        async function aiSnapshot(setId) {
+            try {
+                const res = await fetch(`/api/ai/snapshot?set=${setId}`);
+                const data = await res.json();
+                const panel = document.getElementById('snapshot-panel');
+                panel.style.display = 'block';
+                const camIds = setId === 1 ? ['0', '2'] : ['1', '3'];
+                camIds.forEach((cid, idx) => {
+                    const img = document.getElementById(`snap-${idx}`);
+                    const metrics = document.getElementById(`snap-${idx}-metrics`);
+                    const cam = data.cams[cid];
+                    if (!cam || !cam.image) {
+                        img.removeAttribute('src');
+                        metrics.textContent = 'NO DATA';
+                        return;
+                    }
+                    img.src = `data:image/jpeg;base64,${cam.image}`;
+                    metrics.textContent = JSON.stringify(cam.metrics);
+                });
+            } catch (e) {
+                console.error('Snapshot failed:', e);
+            }
         }
 
         async function toggleMqttLog() {

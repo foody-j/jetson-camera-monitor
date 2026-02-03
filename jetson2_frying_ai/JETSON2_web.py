@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import time
+import base64
 from collections import deque
 from datetime import datetime
 from typing import Dict, Optional
@@ -347,6 +348,10 @@ class FryingAIWorker(threading.Thread):
         self.running = False
         self.enabled = True
         self._last_overlay_ts = 0.0
+        self._snapshot_lock = threading.Lock()
+        self._last_frame = None
+        self._last_mask = None
+        self._last_metrics = {}
 
     def start_session(self, food_type: str, target_time: int) -> None:
         session_id = f"pot{self.pot_id}_{int(time.time())}"
@@ -403,6 +408,7 @@ class FryingAIWorker(threading.Thread):
                     )
                 last_infer = now
                 self._update_overlay(frame, seg_result)
+                self._update_snapshot(frame, seg_result)
             except Exception as e:
                 print(f"[Frying AI] pot{self.pot_id} error: {e}")
 
@@ -448,6 +454,33 @@ class FryingAIWorker(threading.Thread):
         if ret:
             self.camera.set_overlay_frame(jpg.tobytes())
             self._last_overlay_ts = now
+
+    def _update_snapshot(self, frame: np.ndarray, seg_result) -> None:
+        try:
+            metrics = {
+                "area_ratio": float(seg_result.food_area_ratio),
+                "brown_ratio": float(seg_result.color_features.brown_ratio),
+                "golden_ratio": float(seg_result.color_features.golden_ratio),
+                "mean_hsv": [float(x) for x in seg_result.color_features.mean_hsv],
+                "std_hsv": [float(x) for x in seg_result.color_features.std_hsv],
+                "mean_lab": [float(x) for x in seg_result.color_features.mean_lab],
+            }
+            mask = seg_result.food_mask.copy() if seg_result.food_mask is not None else None
+            with self._snapshot_lock:
+                self._last_frame = frame.copy()
+                self._last_mask = mask
+                self._last_metrics = metrics
+        except Exception:
+            pass
+
+    def get_snapshot(self):
+        with self._snapshot_lock:
+            if self._last_frame is None:
+                return None, None, {}
+            frame = self._last_frame.copy()
+            mask = None if self._last_mask is None else self._last_mask.copy()
+            metrics = dict(self._last_metrics)
+            return frame, mask, metrics
 
 
 def _largest_contour(mask: np.ndarray) -> Optional[np.ndarray]:
@@ -502,6 +535,10 @@ class ObserveAIWorker(threading.Thread):
         self.running = False
         self.enabled = True
         self._last_overlay_ts = 0.0
+        self._snapshot_lock = threading.Lock()
+        self._last_frame = None
+        self._last_mask = None
+        self._last_metrics = {}
 
     def _resolve_model_path(self, path: str) -> str:
         if os.path.isabs(path):
@@ -604,6 +641,7 @@ class ObserveAIWorker(threading.Thread):
                     )
                 last_infer = now
                 self._update_overlay(frame, basket_mask)
+                self._update_snapshot(frame, basket_mask, status, prob, top1_name)
             except Exception as e:
                 print(f"[Observe AI] cam{self.cam_id} error: {e}")
 
@@ -651,6 +689,29 @@ class ObserveAIWorker(threading.Thread):
         if ret:
             self.camera.set_overlay_frame(jpg.tobytes())
             self._last_overlay_ts = now
+
+    def _update_snapshot(self, frame, mask, status, prob, top1_name) -> None:
+        try:
+            metrics = {
+                "status": status,
+                "top1": top1_name,
+                "prob": float(prob),
+            }
+            with self._snapshot_lock:
+                self._last_frame = frame.copy()
+                self._last_mask = mask.copy() if mask is not None else None
+                self._last_metrics = metrics
+        except Exception:
+            pass
+
+    def get_snapshot(self):
+        with self._snapshot_lock:
+            if self._last_frame is None:
+                return None, None, {}
+            frame = self._last_frame.copy()
+            mask = None if self._last_mask is None else self._last_mask.copy()
+            metrics = dict(self._last_metrics)
+            return frame, mask, metrics
 
 
 class Jetson2Web:
@@ -1329,6 +1390,55 @@ class Jetson2Web:
         for cam in self.cameras.values():
             if cam is not None:
                 cam.set_overlay_enabled(enabled)
+
+    def build_ai_snapshot(self, set_id: int):
+        if set_id == 1:
+            cam_ids = [0, 2]
+        else:
+            cam_ids = [1, 3]
+
+        results = {}
+        for cam_id in cam_ids:
+            if cam_id in (0, 1):
+                worker = self.frying_workers.get(0 if cam_id == 0 else 1)
+            else:
+                worker = self.observe_workers.get(cam_id)
+            if not worker:
+                results[str(cam_id)] = {"image": None, "metrics": {"status": "NO_WORKER"}}
+                continue
+            frame, mask, metrics = worker.get_snapshot()
+            if frame is None:
+                results[str(cam_id)] = {"image": None, "metrics": {"status": "NO_FRAME"}}
+                continue
+
+            target_w = int(self.config.get("web_preview_width", 640))
+            h, w = frame.shape[:2]
+            target_h = int(h * target_w / max(w, 1))
+            small = cv2.resize(frame, (target_w, target_h))
+
+            if mask is not None and mask.any():
+                mask_small = cv2.resize(mask, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+                color = np.zeros_like(small)
+                color[:, :, 1] = 255
+                alpha = 0.35
+                mask_bool = mask_small > 0
+                overlay = small.copy()
+                overlay[mask_bool] = cv2.addWeighted(small[mask_bool], 1 - alpha, color[mask_bool], alpha, 0)
+            else:
+                overlay = small
+
+            ret, jpg = cv2.imencode(
+                ".jpg",
+                overlay,
+                [cv2.IMWRITE_JPEG_QUALITY, int(self.config.get("web_preview_quality", 70))],
+            )
+            if not ret:
+                results[str(cam_id)] = {"image": None, "metrics": metrics}
+                continue
+            b64 = base64.b64encode(jpg.tobytes()).decode("ascii")
+            results[str(cam_id)] = {"image": b64, "metrics": metrics}
+
+        return results
 
     def schedule_taltal_capture(self, pot: int, delay_sec: float = 2.0):
         def do_capture():
