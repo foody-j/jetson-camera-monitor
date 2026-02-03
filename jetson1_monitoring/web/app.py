@@ -41,7 +41,7 @@ def create_app(cameras: Dict[int, object], state: object, config: dict) -> FastA
         base = state.build_status()
         return JSONResponse(
             {
-                "timestamp": time.time(),
+                "api_timestamp": time.time(),
                 "cameras": cameras_status,
                 **base,
             }

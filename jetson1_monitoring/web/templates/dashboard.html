@@ -159,10 +159,11 @@
                 const personLine = ` | Mode:${data.mode} | Person:${data.person_detected ? 'YES' : 'NO'} | Conf:${(data.yolo_confidence || 0).toFixed(2)}`;
                 document.getElementById('status-0').textContent += personLine;
 
+                const ts = data.api_timestamp ? new Date(data.api_timestamp * 1000) : new Date();
                 let header = `MQTT: ${data.mqtt && data.mqtt.connected ? 'Connected' : 'Disconnected'} | ` +
                     `Mode: ${data.mode} | Person: ${data.person_detected ? 'YES' : 'NO'} | Motion: ${data.motion_detected ? 'YES' : 'NO'} | ` +
                     `Relay: ${data.relay_enabled ? 'ON' : 'OFF'} | Vibration: ${data.vibration ? data.vibration.status : 'N/A'} | ` +
-                    `Updated: ${new Date(data.timestamp * 1000).toLocaleTimeString()}`;
+                    `Updated: ${ts.toLocaleTimeString()}`;
 
                 if (data.person_collection) {
                     const pc = data.person_collection;
