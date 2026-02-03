@@ -1759,7 +1759,7 @@ class IntegratedMonitorApp:
     # =========================
     # Toast Message (투입 시 레시피 표시)
     # =========================
-    def show_toast(self, message, duration_ms=1500):
+    def show_toast(self, message, duration_ms=5000):
         """화면 중앙에 토스트 메시지 표시 후 자동 사라짐"""
         try:
             # 기존 토스트가 있으면 제거
