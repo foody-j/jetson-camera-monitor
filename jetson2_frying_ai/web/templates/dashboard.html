@@ -12,6 +12,30 @@
         <div id="status-bar">Loading...</div>
     </div>
 
+    <div class="control-panel">
+        <div class="control-group">
+            <div class="control-title">Relay</div>
+            <button class="btn" onclick="relayControl('on')">ON</button>
+            <button class="btn" onclick="relayControl('off')">OFF</button>
+        </div>
+        <div class="control-group">
+            <div class="control-title">Vibration</div>
+            <button class="btn" onclick="vibrationControl('start')">START</button>
+            <button class="btn" onclick="vibrationControl('stop')">STOP</button>
+        </div>
+        <div class="control-group">
+            <div class="control-title">Observe</div>
+            <button class="btn" onclick="observeControl('left','FILLED')">L FILLED</button>
+            <button class="btn" onclick="observeControl('left','EMPTY')">L EMPTY</button>
+            <button class="btn" onclick="observeControl('right','FILLED')">R FILLED</button>
+            <button class="btn" onclick="observeControl('right','EMPTY')">R EMPTY</button>
+        </div>
+        <div class="control-group">
+            <div class="control-title">MQTT</div>
+            <button class="btn" onclick="publishNow()">Publish</button>
+        </div>
+    </div>
+
     <div class="grid">
         <div class="camera-box">
             <div class="cam-header">Frying Left (POT0)</div>
@@ -39,6 +63,34 @@
     </div>
 
     <script>
+        async function postJSON(url, data) {
+            try {
+                await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data || {})
+                });
+            } catch (e) {
+                console.error('Request failed:', e);
+            }
+        }
+
+        function relayControl(action) {
+            postJSON('/api/control/relay', { action });
+        }
+
+        function vibrationControl(action) {
+            postJSON('/api/control/vibration', { action });
+        }
+
+        function observeControl(side, status) {
+            postJSON('/api/control/observe', { side, status });
+        }
+
+        function publishNow() {
+            postJSON('/api/control/publish', {});
+        }
+
         async function updateStatus() {
             try {
                 const res = await fetch('/api/status');
