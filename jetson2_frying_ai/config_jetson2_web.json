@@ -110,6 +110,8 @@
   "dynamic_camera_enabled": false,
 
   "// 최적화": "",
+  "overlay_enabled": false,
+  "overlay_fps": 1,
   "headless_mode": true,
   "debug_print_enabled": false
 }

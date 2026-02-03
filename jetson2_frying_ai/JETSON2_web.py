@@ -190,6 +190,9 @@ class CameraWorker(threading.Thread):
         self.latest_frame_lock = threading.Lock()
         self.web_frame: Optional[bytes] = None
         self.web_frame_lock = threading.Lock()
+        self.overlay_frame: Optional[bytes] = None
+        self.overlay_lock = threading.Lock()
+        self.overlay_enabled = bool(self.config.get("overlay_enabled", False))
 
         self.stats = {
             "fps": 0,
@@ -284,6 +287,20 @@ class CameraWorker(threading.Thread):
         with self.web_frame_lock:
             return self.web_frame
 
+    def set_overlay_frame(self, jpg_bytes: bytes) -> None:
+        with self.overlay_lock:
+            self.overlay_frame = jpg_bytes
+
+    def set_overlay_enabled(self, enabled: bool) -> None:
+        self.overlay_enabled = enabled
+
+    def get_stream_frame(self) -> Optional[bytes]:
+        if self.overlay_enabled:
+            with self.overlay_lock:
+                if self.overlay_frame:
+                    return self.overlay_frame
+        return self.get_web_frame()
+
     def get_latest_frame(self) -> Optional[np.ndarray]:
         with self.latest_frame_lock:
             return None if self.latest_frame is None else self.latest_frame.copy()
@@ -329,6 +346,7 @@ class FryingAIWorker(threading.Thread):
 
         self.running = False
         self.enabled = True
+        self._last_overlay_ts = 0.0
 
     def start_session(self, food_type: str, target_time: int) -> None:
         session_id = f"pot{self.pot_id}_{int(time.time())}"
@@ -384,6 +402,7 @@ class FryingAIWorker(threading.Thread):
                         }
                     )
                 last_infer = now
+                self._update_overlay(frame, seg_result)
             except Exception as e:
                 print(f"[Frying AI] pot{self.pot_id} error: {e}")
 
@@ -393,6 +412,42 @@ class FryingAIWorker(threading.Thread):
 
     def stop(self) -> None:
         self.running = False
+
+    def _update_overlay(self, frame: np.ndarray, seg_result) -> None:
+        if not self.camera or not self.camera.overlay_enabled:
+            return
+        overlay_fps = float(self.config.get("overlay_fps", 1))
+        if overlay_fps <= 0:
+            return
+        now = time.time()
+        if now - self._last_overlay_ts < 1.0 / overlay_fps:
+            return
+
+        mask = getattr(seg_result, "food_mask", None)
+        if mask is None:
+            return
+
+        target_w = int(self.config.get("web_preview_width", 640))
+        h, w = frame.shape[:2]
+        target_h = int(h * target_w / max(w, 1))
+        small = cv2.resize(frame, (target_w, target_h))
+        mask_small = cv2.resize(mask, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+
+        color = np.zeros_like(small)
+        color[:, :, 1] = 255  # green
+        alpha = 0.35
+        mask_bool = mask_small > 0
+        overlay = small.copy()
+        overlay[mask_bool] = cv2.addWeighted(small[mask_bool], 1 - alpha, color[mask_bool], alpha, 0)
+
+        ret, jpg = cv2.imencode(
+            ".jpg",
+            overlay,
+            [cv2.IMWRITE_JPEG_QUALITY, int(self.config.get("web_preview_quality", 70))],
+        )
+        if ret:
+            self.camera.set_overlay_frame(jpg.tobytes())
+            self._last_overlay_ts = now
 
 
 def _largest_contour(mask: np.ndarray) -> Optional[np.ndarray]:
@@ -446,6 +501,7 @@ class ObserveAIWorker(threading.Thread):
         self.result_lock = threading.Lock()
         self.running = False
         self.enabled = True
+        self._last_overlay_ts = 0.0
 
     def _resolve_model_path(self, path: str) -> str:
         if os.path.isabs(path):
@@ -547,6 +603,7 @@ class ObserveAIWorker(threading.Thread):
                         }
                     )
                 last_infer = now
+                self._update_overlay(frame, basket_mask)
             except Exception as e:
                 print(f"[Observe AI] cam{self.cam_id} error: {e}")
 
@@ -559,6 +616,41 @@ class ObserveAIWorker(threading.Thread):
 
     def set_enabled(self, enabled: bool) -> None:
         self.enabled = enabled
+
+    def _update_overlay(self, frame: np.ndarray, basket_mask: np.ndarray) -> None:
+        if not self.camera or not self.camera.overlay_enabled:
+            return
+        overlay_fps = float(self.config.get("overlay_fps", 1))
+        if overlay_fps <= 0:
+            return
+        now = time.time()
+        if now - self._last_overlay_ts < 1.0 / overlay_fps:
+            return
+
+        if basket_mask is None or not basket_mask.any():
+            return
+
+        target_w = int(self.config.get("web_preview_width", 640))
+        h, w = frame.shape[:2]
+        target_h = int(h * target_w / max(w, 1))
+        small = cv2.resize(frame, (target_w, target_h))
+        mask_small = cv2.resize(basket_mask, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+
+        color = np.zeros_like(small)
+        color[:, :, 1] = 255
+        alpha = 0.35
+        mask_bool = mask_small > 0
+        overlay = small.copy()
+        overlay[mask_bool] = cv2.addWeighted(small[mask_bool], 1 - alpha, color[mask_bool], alpha, 0)
+
+        ret, jpg = cv2.imencode(
+            ".jpg",
+            overlay,
+            [cv2.IMWRITE_JPEG_QUALITY, int(self.config.get("web_preview_quality", 70))],
+        )
+        if ret:
+            self.camera.set_overlay_frame(jpg.tobytes())
+            self._last_overlay_ts = now
 
 
 class Jetson2Web:
@@ -677,6 +769,7 @@ class Jetson2Web:
         self.food_types = config.get("food_types", [])
         self.vibration_test_mode = bool(config.get("vibration_test_mode", False))
         self.dynamic_camera_enabled = bool(config.get("dynamic_camera_enabled", False))
+        self.overlay_enabled = bool(config.get("overlay_enabled", False))
         self.temps = {
             "pot1_oil": None,
             "pot1_probe": None,
@@ -1229,6 +1322,12 @@ class Jetson2Web:
         self.observe_running = enabled
         for worker in self.observe_workers.values():
             worker.set_enabled(enabled)
+
+    def set_overlay_enabled(self, enabled: bool) -> None:
+        self.overlay_enabled = enabled
+        for cam in self.cameras.values():
+            if cam is not None:
+                cam.set_overlay_enabled(enabled)
 
     def schedule_taltal_capture(self, pot: int, delay_sec: float = 2.0):
         def do_capture():
@@ -1852,6 +1951,7 @@ class Jetson2Web:
         for cam_id, cam in self.cameras.items():
             if cam is None:
                 continue
+            cam.set_overlay_enabled(self.overlay_enabled)
             cam.start()
             time.sleep(0.3)
 

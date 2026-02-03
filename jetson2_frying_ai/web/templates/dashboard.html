@@ -47,6 +47,11 @@
             <button class="btn" onclick="publishNow()">Publish</button>
             <button class="btn" onclick="toggleMqttLog()">Log</button>
         </div>
+        <div class="control-group">
+            <div class="control-title">Overlay</div>
+            <button class="btn" onclick="overlayControl(true)">ON</button>
+            <button class="btn" onclick="overlayControl(false)">OFF</button>
+        </div>
     </div>
 
     <div class="mqtt-log" id="mqtt-log" style="display:none;">
@@ -115,6 +120,10 @@
 
         function publishNow() {
             postJSON('/api/control/publish', {});
+        }
+
+        function overlayControl(enabled) {
+            postJSON('/api/control/overlay', { enabled });
         }
 
         async function toggleMqttLog() {

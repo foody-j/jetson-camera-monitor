@@ -25,7 +25,10 @@ async def mjpeg_stream(camera, fps: int = 5, boundary: str = "frame") -> AsyncGe
 
     interval = 1.0 / max(fps, 1)
     while True:
-        jpg: Optional[bytes] = camera.get_web_frame()
+        if hasattr(camera, "get_stream_frame"):
+            jpg: Optional[bytes] = camera.get_stream_frame()
+        else:
+            jpg = camera.get_web_frame()
         if jpg:
             yield _frame_chunk(jpg, boundary)
         await asyncio.sleep(interval)

@@ -158,6 +158,15 @@ def create_app(
                     state.stop_pot2_collection()
             return {"ok": True, "target": target, "action": action}
 
+        @app.post("/api/control/overlay")
+        async def overlay_control(payload: dict = Body(...)):
+            enabled = bool(payload.get("enabled", False))
+            try:
+                state.set_overlay_enabled(enabled)
+            except Exception:
+                pass
+            return {"ok": True, "enabled": enabled}
+
         @app.post("/api/control/observe")
         async def observe_control(payload: dict = Body(...)):
             side = str(payload.get("side", "")).lower()
