@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Jetson1 Dashboard</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="header">
+        <h1>Jetson1 Headless Dashboard</h1>
+        <div id="status-bar">Loading...</div>
+    </div>
+
+    <div class="control-panel">
+        <div class="control-group">
+            <div class="control-title">Relay</div>
+            <button class="btn" onclick="relayControl('on')">ON</button>
+            <button class="btn" onclick="relayControl('off')">OFF</button>
+        </div>
+        <div class="control-group">
+            <div class="control-title">Vibration</div>
+            <button class="btn" onclick="vibrationControl('start')">START</button>
+            <button class="btn" onclick="vibrationControl('stop')">STOP</button>
+            <button class="btn" onclick="vibrationStatus('NORMAL')">NORMAL</button>
+            <button class="btn" onclick="vibrationStatus('ABNORMAL')">ABNORMAL</button>
+            <button class="btn" onclick="vibrationStatus('IDLE')">IDLE</button>
+        </div>
+        <div class="control-group">
+            <div class="control-title">Recording</div>
+            <button class="btn" onclick="recordingControl('pot1','start')">POT1 START</button>
+            <button class="btn" onclick="recordingControl('pot1','stop')">POT1 STOP</button>
+            <button class="btn" onclick="recordingControl('pot2','start')">POT2 START</button>
+            <button class="btn" onclick="recordingControl('pot2','stop')">POT2 STOP</button>
+        </div>
+        <div class="control-group">
+            <div class="control-title">Mode</div>
+            <button class="btn" onclick="modeControl('day')">DAY</button>
+            <button class="btn" onclick="modeControl('night')">NIGHT</button>
+            <button class="btn" onclick="modeControl('auto')">AUTO</button>
+        </div>
+        <div class="control-group">
+            <div class="control-title">MQTT</div>
+            <button class="btn" onclick="publishNow()">Publish</button>
+            <button class="btn" onclick="toggleMqttLog()">Log</button>
+        </div>
+    </div>
+
+    <div class="mqtt-log" id="mqtt-log" style="display:none;">
+        <div class="mqtt-log-title">MQTT Recent Messages</div>
+        <div class="mqtt-log-list" id="mqtt-log-list">-</div>
+    </div>
+
+    <div class="grid">
+        <div class="camera-box">
+            <div class="cam-header">Person Camera (GMSL2)</div>
+            <img src="/mjpeg/cam0" alt="Person Camera">
+            <div class="cam-status" id="status-0">-</div>
+        </div>
+
+        <div class="camera-box">
+            <div class="cam-header">StirFry Left (POT0)</div>
+            <img src="/mjpeg/cam1" alt="StirFry Left">
+            <div class="cam-status" id="status-1">-</div>
+        </div>
+
+        <div class="camera-box">
+            <div class="cam-header">StirFry Right (POT1)</div>
+            <img src="/mjpeg/cam2" alt="StirFry Right">
+            <div class="cam-status" id="status-2">-</div>
+        </div>
+    </div>
+
+    <script>
+        async function postJSON(url, data) {
+            try {
+                await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data || {})
+                });
+            } catch (e) {
+                console.error('Request failed:', e);
+            }
+        }
+
+        function relayControl(action) {
+            postJSON('/api/control/relay', { action });
+        }
+
+        function vibrationControl(action) {
+            postJSON('/api/control/vibration', { action });
+        }
+
+        function vibrationStatus(status) {
+            postJSON('/api/control/vibration/status', { status });
+        }
+
+        function recordingControl(pot, action) {
+            postJSON('/api/control/recording', { pot, action });
+        }
+
+        function modeControl(mode) {
+            postJSON('/api/control/mode', { mode });
+        }
+
+        function publishNow() {
+            postJSON('/api/control/publish', {});
+        }
+
+        async function toggleMqttLog() {
+            const box = document.getElementById('mqtt-log');
+            if (box.style.display === 'none') {
+                box.style.display = 'block';
+                await refreshMqttLog();
+            } else {
+                box.style.display = 'none';
+            }
+        }
+
+        async function refreshMqttLog() {
+            try {
+                const res = await fetch('/api/mqtt/log');
+                const data = await res.json();
+                const list = document.getElementById('mqtt-log-list');
+                list.innerHTML = data.slice(0, 20).map(item => {
+                    const payload = (item.payload || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    return `<div class="mqtt-log-item">[${item.timestamp}] <b>${item.topic}</b> ${payload}</div>`;
+                }).join('') || '-';
+            } catch (e) {
+                console.error('MQTT log failed:', e);
+            }
+        }
+
+        async function updateStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+
+                for (let i = 0; i < 3; i++) {
+                    const cam = data.cameras[`cam${i}`];
+                    const elem = document.getElementById(`status-${i}`);
+                    if (!cam) {
+                        elem.textContent = 'Camera disabled';
+                        continue;
+                    }
+                    elem.textContent = `FPS: ${cam.fps} | Frames: ${cam.frame_count} | Drops: ${cam.drop_count}`;
+                }
+
+                if (data.recording) {
+                    const p1 = data.recording.pot1 ? 'ON' : 'OFF';
+                    const p2 = data.recording.pot2 ? 'ON' : 'OFF';
+                    const p1f = data.recording.pot1_frames || 0;
+                    const p2f = data.recording.pot2_frames || 0;
+                    document.getElementById('status-1').textContent += ` | REC:${p1} (${p1f})`;
+                    document.getElementById('status-2').textContent += ` | REC:${p2} (${p2f})`;
+                }
+
+                const personLine = ` | Mode:${data.mode} | Person:${data.person_detected ? 'YES' : 'NO'} | Conf:${(data.yolo_confidence || 0).toFixed(2)}`;
+                document.getElementById('status-0').textContent += personLine;
+
+                let header = `MQTT: ${data.mqtt && data.mqtt.connected ? 'Connected' : 'Disconnected'} | ` +
+                    `Mode: ${data.mode} | Person: ${data.person_detected ? 'YES' : 'NO'} | Motion: ${data.motion_detected ? 'YES' : 'NO'} | ` +
+                    `Relay: ${data.relay_enabled ? 'ON' : 'OFF'} | Vibration: ${data.vibration ? data.vibration.status : 'N/A'} | ` +
+                    `Updated: ${new Date(data.timestamp * 1000).toLocaleTimeString()}`;
+
+                if (data.person_collection) {
+                    const pc = data.person_collection;
+                    header += ` | PersonCollect: ${pc.enabled ? 'ON' : 'OFF'} (${pc.count || 0})`;
+                }
+
+                if (data.system && data.system.disk) {
+                    const disk = data.system.disk;
+                    const free = (disk.total_gb - disk.used_gb).toFixed(1);
+                    header += ` | Disk: ${disk.used_gb} / ${disk.total_gb} GB (Free ${free} GB)`;
+                }
+
+                document.getElementById('status-bar').textContent = header;
+            } catch (e) {
+                console.error('Status update failed:', e);
+            }
+        }
+
+        setInterval(updateStatus, 2000);
+        updateStatus();
+    </script>
+</body>
+</html>

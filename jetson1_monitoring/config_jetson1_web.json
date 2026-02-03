@@ -1,0 +1,82 @@
+{
+  "device_id": "jetson1",
+  "device_name": "Jetson1_Web",
+  "device_location": "kitchen_stirfry",
+
+  "mode": "auto",
+  "day_start": "04:00",
+  "day_end": "21:00",
+
+  "camera_width": 1920,
+  "camera_height": 1536,
+  "camera_fps": 30,
+
+  "person_detection_enabled": true,
+  "person_camera_index": 2,
+  "yolo_model": "yolo12n.pt",
+  "yolo_confidence": 0.7,
+  "yolo_imgsz": 416,
+  "detection_hold_sec": 2,
+  "night_check_minutes": 0,
+  "motion_min_area": 2500,
+  "mog2_varthresh": 24,
+  "binary_thresh": 220,
+
+  "camera_person_enabled": true,
+  "stirfry_left_enabled": true,
+  "stirfry_right_enabled": true,
+  "stirfry_left_camera_index": 0,
+  "stirfry_right_camera_index": 1,
+
+  "gmsl_init_enabled": true,
+  "gmsl_init_use_sudo": false,
+
+  "web_enabled": true,
+  "web_host": "0.0.0.0",
+  "web_port": 7000,
+  "web_preview_fps": 5,
+  "web_preview_width": 640,
+  "web_preview_quality": 70,
+
+  "mqtt_enabled": true,
+  "mqtt_broker": "192.168.0.100",
+  "mqtt_port": 1883,
+  "mqtt_client_id": "jetson1_web",
+  "mqtt_qos": 1,
+  "mqtt_publish_interval": 2,
+  "mqtt_log_maxlen": 200,
+
+  "mqtt_topic": "robot/control",
+  "mqtt_topic_jetson1_status": "jetson1/status",
+  "mqtt_topic_jetson1_relay": "jetson1/relay/status",
+  "mqtt_topic_stirfry_pot1_food_type": "stirfry/pot1/food_type",
+  "mqtt_topic_stirfry_pot1_control": "stirfry/pot1/control",
+  "mqtt_topic_stirfry_pot2_food_type": "stirfry/pot2/food_type",
+  "mqtt_topic_stirfry_pot2_control": "stirfry/pot2/control",
+  "mqtt_topic_robot_status": "HR/Status",
+  "mqtt_topic_vibration_control": "calibration/vibration/control",
+
+  "relay_mode": "pulse",
+  "auto_relay_enabled": true,
+  "startup_on_pulse_enabled": false,
+  "periodic_off_pulse_enabled": true,
+  "periodic_off_pulse_interval_min": 0.05,
+  "periodic_off_test_mode": false,
+
+  "stirfry_save_enabled": false,
+  "stirfry_save_dir": "AI_Data/StirFryData",
+  "stirfry_save_resolution": { "width": 1920, "height": 1536 },
+  "stirfry_jpeg_quality": 100,
+  "stirfry_frame_skip": 90,
+  "recording_delay_after_discharge": 20,
+
+  "vibration_test_mode": false,
+
+  "person_data_collection_enabled": true,
+  "person_collection_start_time": "08:30",
+  "person_collection_end_time": "12:00",
+  "person_collection_interval_sec": 5,
+  "person_collection_save_dir": "AI_Data/PersonData",
+  "person_collection_save_resolution": { "width": 640, "height": 512 },
+  "person_collection_jpeg_quality": 50
+}
