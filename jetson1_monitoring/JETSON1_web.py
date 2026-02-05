@@ -95,6 +95,7 @@ class CameraWorker(threading.Thread):
         self.latest_lock = threading.Lock()
         self.web_frame = None
         self.web_lock = threading.Lock()
+        self.ready_event = threading.Event()
 
         self.stats = {
             "fps": 0,
@@ -116,6 +117,7 @@ class CameraWorker(threading.Thread):
             print(f"[CAM{self.cam_id}] Failed to start")
             self.running = False
             return
+        self.ready_event.set()
         self.stats["start_ts"] = time.time()
 
         fps_calc_time = time.time()
@@ -186,6 +188,7 @@ class CameraWorker(threading.Thread):
             self.stats["fps"] = 0
             self.stats["last_frame_ts"] = 0
             self.stats["start_ts"] = 0
+            self.ready_event.clear()
 
             self.camera = GstCamera(
                 self.cam_index,
@@ -199,6 +202,7 @@ class CameraWorker(threading.Thread):
             else:
                 print(f"[CAM{self.cam_id}] Recover success")
                 self.stats["start_ts"] = time.time()
+                self.ready_event.set()
         finally:
             with self._recover_lock:
                 self._recovering = False
@@ -247,6 +251,9 @@ class CameraWorker(threading.Thread):
 
     def stop(self):
         self.running = False
+
+    def wait_ready(self, timeout: float) -> bool:
+        return self.ready_event.wait(timeout=timeout)
 
 
 class PersonDetectionWorker(threading.Thread):
@@ -312,9 +319,9 @@ class PersonDetectionWorker(threading.Thread):
     def run(self):
         self.running = True
         while self.running:
-            frame = self.camera.get_latest_frame()
+            frame = self.camera.get_frame_for_ai()
             if frame is None:
-                time.sleep(0.05)
+                time.sleep(0.01)
                 continue
             now = datetime.now()
             self._update_mode(now)
@@ -559,7 +566,9 @@ class Jetson1Web:
         self.camera_watchdog_stop = threading.Event()
         self.camera_watchdog_start_ts = time.time()
         self.camera_fail_counts = {}
-        self.camera_recover_ts = {}
+        self.camera_watch_enabled = bool(self.config.get("camera_watch_enabled", False))
+        self.camera_init_delay_sec = float(self.config.get("camera_init_delay_sec", 4.0))
+        self.camera_init_timeout_sec = float(self.config.get("camera_init_timeout_sec", 8.0))
 
         # Stirfry recording state
         self.stirfry_save_enabled = bool(config.get("stirfry_save_enabled", False))
@@ -1101,10 +1110,15 @@ class Jetson1Web:
         self.init_gpio()
         ensure_gmsl_initialized(self.config)
 
-        for cam in self.cameras.values():
+        # Sequential camera init (Jetson2 style, with delay)
+        for cam_id in sorted(self.cameras.keys()):
+            cam = self.cameras[cam_id]
             if cam is not None:
+                print(f"[CAM{cam_id}] Starting...")
                 cam.start()
-                time.sleep(0.3)
+                if not cam.wait_ready(self.camera_init_timeout_sec):
+                    print(f"[CAM{cam_id}] Start timeout")
+                time.sleep(self.camera_init_delay_sec)
 
         if self.person_worker:
             self.person_worker.start()
@@ -1122,10 +1136,11 @@ class Jetson1Web:
         self.collection_thread = threading.Thread(target=self._collection_loop, daemon=True)
         self.collection_thread.start()
 
-        self.camera_watchdog_start_ts = time.time()
-        self.camera_watchdog_stop.clear()
-        self.camera_watchdog_thread = threading.Thread(target=self._camera_watchdog_loop, daemon=True)
-        self.camera_watchdog_thread.start()
+        if self.camera_watch_enabled:
+            self.camera_watchdog_start_ts = time.time()
+            self.camera_watchdog_stop.clear()
+            self.camera_watchdog_thread = threading.Thread(target=self._camera_watchdog_loop, daemon=True)
+            self.camera_watchdog_thread.start()
 
         self.running = True
         self._main_loop()
@@ -1156,7 +1171,6 @@ class Jetson1Web:
         grace = float(self.config.get("camera_watch_grace_sec", 10))
         stall_sec = float(self.config.get("camera_stall_sec", 3))
         check_interval = float(self.config.get("camera_watch_interval_sec", 1.0))
-        recover_min = float(self.config.get("camera_recover_min_interval_sec", 10))
         gmsl_reinit = bool(self.config.get("gmsl_reinit_on_recover", True))
         gmsl_after = int(self.config.get("gmsl_reinit_after_failures", 2))
         gmsl_cooldown = float(self.config.get("gmsl_reinit_cooldown_sec", 20))
@@ -1170,23 +1184,8 @@ class Jetson1Web:
             for cam_id, cam in self.cameras.items():
                 if cam is None or not cam.running:
                     continue
-                last_recover = self.camera_recover_ts.get(cam_id, 0.0)
-                if now - last_recover < recover_min:
-                    continue
                 last_ts = cam.stats.get("last_frame_ts", 0) or 0
                 if last_ts == 0:
-                    start_ts = cam.stats.get("start_ts", 0) or 0
-                    if start_ts and now - start_ts > stall_sec and not cam.is_recovering():
-                        self.camera_fail_counts[cam_id] = self.camera_fail_counts.get(cam_id, 0) + 1
-                        print(f"[CAM{cam_id}] No frames since start ({now - start_ts:.1f}s), recovering...")
-                        if gmsl_reinit and self.camera_fail_counts[cam_id] >= gmsl_after:
-                            if now - last_gmsl >= gmsl_cooldown:
-                                print("[GMSL] Re-init before camera recover")
-                                ensure_gmsl_initialized(self.config)
-                                last_gmsl = now
-                                self.camera_fail_counts[cam_id] = 0
-                        self.camera_recover_ts[cam_id] = now
-                        cam.request_recover()
                     continue
                 if now - last_ts > stall_sec and not cam.is_recovering():
                     self.camera_fail_counts[cam_id] = self.camera_fail_counts.get(cam_id, 0) + 1
@@ -1197,7 +1196,6 @@ class Jetson1Web:
                             ensure_gmsl_initialized(self.config)
                             last_gmsl = now
                             self.camera_fail_counts[cam_id] = 0
-                    self.camera_recover_ts[cam_id] = now
                     cam.request_recover()
             time.sleep(check_interval)
 

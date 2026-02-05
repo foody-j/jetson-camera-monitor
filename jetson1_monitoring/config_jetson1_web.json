@@ -12,6 +12,7 @@
   "camera_fps": 30,
   "camera_retry_count": 3,
   "camera_retry_interval_sec": 1.0,
+  "camera_watch_enabled": false,
   "camera_watch_grace_sec": 10,
   "camera_watch_interval_sec": 1.0,
   "camera_stall_sec": 3,
@@ -19,6 +20,8 @@
   "gmsl_reinit_on_recover": true,
   "gmsl_reinit_after_failures": 2,
   "gmsl_reinit_cooldown_sec": 20,
+  "camera_init_delay_sec": 4.0,
+  "camera_init_timeout_sec": 8.0,
 
   "person_detection_enabled": true,
   "person_camera_index": 2,
