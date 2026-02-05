@@ -45,3 +45,7 @@ frying_dataset/*/images/
 SG4A_NONX_G2Y_A1_ORIN_NANO_YUV_JP6.2_L4TR36.4.3/boot/Image
 SG4A_NONX_G2Y_A1_ORIN_NANO_YUV_JP6.2_L4TR36.4.3/ko/*.ko
 SG4A_NONX_G2Y_A1_ORIN_NANO_YUV_JP6.2_L4TR36.4.3/dtb/**/*.dtbo
+
+# AI Model files
+*.pt
+!yolo*.pt
