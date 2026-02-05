@@ -19,11 +19,15 @@ import base64
 from collections import deque
 from datetime import datetime
 from typing import Dict, Optional
+import atexit
+import errno
+import fcntl
 
 import cv2
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_LOCK_FD = None
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -63,6 +67,35 @@ def _path_exists(path: str) -> bool:
     if os.path.isabs(path):
         return os.path.exists(path)
     return os.path.exists(path) or os.path.exists(os.path.join(SCRIPT_DIR, path))
+
+
+def _acquire_single_instance(lock_name: str) -> None:
+    global _LOCK_FD
+    lock_path = os.path.join("/tmp", lock_name)
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as e:
+        if e.errno in (errno.EACCES, errno.EAGAIN):
+            print(f"[Main] Already running (lock: {lock_path}). Exiting.")
+            sys.exit(1)
+        raise
+    os.ftruncate(fd, 0)
+    os.write(fd, str(os.getpid()).encode("utf-8"))
+    os.fsync(fd)
+    _LOCK_FD = fd
+
+    def _release_lock():
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except Exception:
+            pass
+        try:
+            os.close(fd)
+        except Exception:
+            pass
+
+    atexit.register(_release_lock)
 
 
 def get_ip_address() -> str:
@@ -2320,6 +2353,7 @@ class Jetson2Web:
 
 
 def main() -> None:
+    _acquire_single_instance("jetson2_web.lock")
     config = load_config()
     app = Jetson2Web(config)
 

@@ -12,12 +12,16 @@ import time
 from collections import deque
 from datetime import datetime, time as dtime, timedelta
 from typing import Dict, Optional
+import atexit
+import errno
+import fcntl
 
 import cv2
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
+_LOCK_FD = None
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -44,6 +48,35 @@ except Exception:
 def load_config(config_path: str = "config_jetson1_web.json") -> dict:
     with open(os.path.join(SCRIPT_DIR, config_path), "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _acquire_single_instance(lock_name: str) -> None:
+    global _LOCK_FD
+    lock_path = os.path.join("/tmp", lock_name)
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as e:
+        if e.errno in (errno.EACCES, errno.EAGAIN):
+            print(f"[Main] Already running (lock: {lock_path}). Exiting.")
+            sys.exit(1)
+        raise
+    os.ftruncate(fd, 0)
+    os.write(fd, str(os.getpid()).encode("utf-8"))
+    os.fsync(fd)
+    _LOCK_FD = fd
+
+    def _release_lock():
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except Exception:
+            pass
+        try:
+            os.close(fd)
+        except Exception:
+            pass
+
+    atexit.register(_release_lock)
 
 
 def ensure_gmsl_initialized(config: dict) -> bool:
@@ -1231,6 +1264,7 @@ class Jetson1Web:
 
 
 def main():
+    _acquire_single_instance("jetson1_web.lock")
     config = load_config()
     app = Jetson1Web(config)
 
