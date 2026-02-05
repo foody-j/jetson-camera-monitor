@@ -607,15 +607,17 @@ class ObserveAIWorker(threading.Thread):
                 self.seg_model = YOLO(self._resolve_model_path(seg_model_path))
                 if self.device == "cuda":
                     self.seg_model.to("cuda")
+                print(f"[Observe AI] cam{self.cam_id} seg model loaded: {seg_model_path}")
             except Exception as e:
-                print(f"[Observe AI] seg model load failed: {e}")
+                print(f"[Observe AI] cam{self.cam_id} seg model load failed: {e}")
 
             try:
                 self.cls_model = YOLO(self._resolve_model_path(cls_model_path))
                 if self.device == "cuda":
                     self.cls_model.to("cuda")
+                print(f"[Observe AI] cam{self.cam_id} cls model loaded: {cls_model_path}")
             except Exception as e:
-                print(f"[Observe AI] cls model load failed: {e}")
+                print(f"[Observe AI] cam{self.cam_id} cls model load failed: {e}")
 
         self.votes = deque(maxlen=int(config.get("vote_n", 7)))
         self.latest_result = {
@@ -635,6 +637,7 @@ class ObserveAIWorker(threading.Thread):
         self._last_frame = None
         self._last_mask = None
         self._last_metrics = {}
+        self._last_status = None
 
     def _resolve_model_path(self, path: str) -> str:
         if os.path.isabs(path):
@@ -762,6 +765,12 @@ class ObserveAIWorker(threading.Thread):
                             "last_update": now,
                         }
                     )
+                if status != self._last_status:
+                    if top1_name is None:
+                        print(f"[Observe AI] cam{self.cam_id} status -> {status}")
+                    else:
+                        print(f"[Observe AI] cam{self.cam_id} status -> {status} (top1={top1_name}, prob={prob:.2f})")
+                    self._last_status = status
                 last_infer = now
                 self._update_overlay(frame, in_mask)
                 self._update_snapshot(frame, in_mask, status, prob, top1_name)
