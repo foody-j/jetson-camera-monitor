@@ -438,6 +438,7 @@ class FryingAIWorker(threading.Thread):
         self.running = False
         self.enabled = True
         self._last_overlay_ts = 0.0
+        self._last_log_ts = 0.0
         self._snapshot_lock = threading.Lock()
         self._last_frame = None
         self._last_mask = None
@@ -482,6 +483,16 @@ class FryingAIWorker(threading.Thread):
             try:
                 seg_result = self.segmenter.segment(frame)
                 tracker_result = self.tracker.process_frame(seg_result)
+                log_interval = _safe_float(self.config.get("frying_log_interval_sec", 5), 5.0)
+                if log_interval > 0 and now - self._last_log_ts >= log_interval:
+                    print(
+                        f"[Frying AI] pot{self.pot_id} "
+                        f"area={seg_result.food_area_ratio:.3f} "
+                        f"brown={seg_result.color_features.brown_ratio:.3f} "
+                        f"golden={seg_result.color_features.golden_ratio:.3f} "
+                        f"lift={tracker_result.get('lift_count', 0)}"
+                    )
+                    self._last_log_ts = now
 
                 with self.result_lock:
                     self.latest_result.update(

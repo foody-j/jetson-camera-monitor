@@ -29,6 +29,7 @@
   "frying_seg_conf": 0.05,
   "frying_seg_mask_thresh": 0.2,
   "frying_infer_fps": 5,
+  "frying_log_interval_sec": 5,
 
   "// Observe AI": "",
   "observe_enabled": true,
