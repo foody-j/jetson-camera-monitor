@@ -354,14 +354,14 @@ class CameraWorker(threading.Thread):
             return
 
         h, w = frame.shape[:2]
-        target_w = int(self.config.get("web_preview_width", 640))
+        target_w = _safe_int(self.config.get("web_preview_width", 640), 640)
         target_h = int(h * target_w / max(w, 1))
         small = cv2.resize(frame, (target_w, target_h))
 
         ret, jpg = cv2.imencode(
             ".jpg",
             small,
-            [cv2.IMWRITE_JPEG_QUALITY, int(self.config.get("web_preview_quality", 70))],
+            [cv2.IMWRITE_JPEG_QUALITY, _safe_int(self.config.get("web_preview_quality", 70), 70)],
         )
         if ret:
             with self.web_frame_lock:
@@ -512,7 +512,7 @@ class FryingAIWorker(threading.Thread):
     def _update_overlay(self, frame: np.ndarray, seg_result) -> None:
         if not self.camera or not self.camera.overlay_enabled:
             return
-        overlay_fps = float(self.config.get("overlay_fps", 1))
+        overlay_fps = _safe_float(self.config.get("overlay_fps", 1), 1.0)
         if overlay_fps <= 0:
             return
         now = time.time()
@@ -523,7 +523,7 @@ class FryingAIWorker(threading.Thread):
         if mask is None:
             return
 
-        target_w = int(self.config.get("web_preview_width", 640))
+        target_w = _safe_int(self.config.get("web_preview_width", 640), 640)
         h, w = frame.shape[:2]
         target_h = int(h * target_w / max(w, 1))
         small = cv2.resize(frame, (target_w, target_h))
@@ -539,7 +539,7 @@ class FryingAIWorker(threading.Thread):
         ret, jpg = cv2.imencode(
             ".jpg",
             overlay,
-            [cv2.IMWRITE_JPEG_QUALITY, int(self.config.get("web_preview_quality", 70))],
+            [cv2.IMWRITE_JPEG_QUALITY, _safe_int(self.config.get("web_preview_quality", 70), 70)],
         )
         if ret:
             self.camera.set_overlay_frame(jpg.tobytes())
@@ -571,6 +571,24 @@ class FryingAIWorker(threading.Thread):
             mask = None if self._last_mask is None else self._last_mask.copy()
             metrics = dict(self._last_metrics)
             return frame, mask, metrics
+
+
+def _safe_int(value, default: int) -> int:
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except Exception:
+        return default
+
+
+def _safe_float(value, default: float) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
 
 
 def _clamp_int(value: float, lo: int, hi: int) -> int:
@@ -790,7 +808,7 @@ class ObserveAIWorker(threading.Thread):
     def _update_overlay(self, frame: np.ndarray, basket_mask: np.ndarray) -> None:
         if not self.camera or not self.camera.overlay_enabled:
             return
-        overlay_fps = float(self.config.get("overlay_fps", 1))
+        overlay_fps = _safe_float(self.config.get("overlay_fps", 1), 1.0)
         if overlay_fps <= 0:
             return
         now = time.time()
@@ -800,7 +818,7 @@ class ObserveAIWorker(threading.Thread):
         if basket_mask is None or not basket_mask.any():
             return
 
-        target_w = int(self.config.get("web_preview_width", 640))
+        target_w = _safe_int(self.config.get("web_preview_width", 640), 640)
         h, w = frame.shape[:2]
         target_h = int(h * target_w / max(w, 1))
         small = cv2.resize(frame, (target_w, target_h))
@@ -816,7 +834,7 @@ class ObserveAIWorker(threading.Thread):
         ret, jpg = cv2.imencode(
             ".jpg",
             overlay,
-            [cv2.IMWRITE_JPEG_QUALITY, int(self.config.get("web_preview_quality", 70))],
+            [cv2.IMWRITE_JPEG_QUALITY, _safe_int(self.config.get("web_preview_quality", 70), 70)],
         )
         if ret:
             self.camera.set_overlay_frame(jpg.tobytes())
@@ -1547,7 +1565,7 @@ class Jetson2Web:
                 results[str(cam_id)] = {"image": None, "metrics": {"status": "NO_FRAME"}}
                 continue
 
-            target_w = int(self.config.get("web_preview_width", 640))
+            target_w = _safe_int(self.config.get("web_preview_width", 640), 640)
             h, w = frame.shape[:2]
             target_h = int(h * target_w / max(w, 1))
             small = cv2.resize(frame, (target_w, target_h))
@@ -1566,7 +1584,7 @@ class Jetson2Web:
             ret, jpg = cv2.imencode(
                 ".jpg",
                 overlay,
-                [cv2.IMWRITE_JPEG_QUALITY, int(self.config.get("web_preview_quality", 70))],
+                [cv2.IMWRITE_JPEG_QUALITY, _safe_int(self.config.get("web_preview_quality", 70), 70)],
             )
             if not ret:
                 results[str(cam_id)] = {"image": None, "metrics": metrics}
