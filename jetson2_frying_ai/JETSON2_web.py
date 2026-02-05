@@ -2235,9 +2235,12 @@ class Jetson2Web:
             worker.start()
             worker.set_enabled(False)
 
+        observe_autostart = bool(self.config.get("observe_autostart", False))
         for worker in self.observe_workers.values():
             worker.start()
-            worker.set_enabled(False)
+            worker.set_enabled(observe_autostart)
+        if observe_autostart:
+            self.observe_running = True
 
         if self.config.get("web_enabled", True):
             host = self.config.get("web_host", "0.0.0.0")

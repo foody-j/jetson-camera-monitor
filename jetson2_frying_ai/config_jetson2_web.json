@@ -41,6 +41,7 @@
   "observe_left_cls_model": "observe_ai/pt_left_final/best_fe_l.pt",
   "observe_right_cls_model": "observe_ai/pt_right_final/best_fe_r.pt",
   "observe_infer_fps": 2,
+  "observe_autostart": true,
   "observe_img_size_seg": 640,
   "observe_img_size_cls": 224,
   "observe_conf_seg": 0.25,
