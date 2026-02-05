@@ -38,7 +38,6 @@ from web.app import create_app
 
 try:
     import torch
-    import torch.nn.functional as F
     from ultralytics import YOLO
     _YOLO_AVAILABLE = True
 except Exception:
@@ -541,11 +540,17 @@ class FryingAIWorker(threading.Thread):
             return frame, mask, metrics
 
 
-def _largest_contour(mask: np.ndarray) -> Optional[np.ndarray]:
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None
-    return max(contours, key=cv2.contourArea)
+def _clamp_int(value: float, lo: int, hi: int) -> int:
+    return max(lo, min(int(value), hi))
+
+
+def _square_crop(img: np.ndarray) -> np.ndarray:
+    """Center-crop to square while preserving aspect ratio."""
+    h, w = img.shape[:2]
+    side = min(h, w)
+    x1 = (w - side) // 2
+    y1 = (h - side) // 2
+    return img[y1:y1 + side, x1:x1 + side].copy()
 
 
 class ObserveAIWorker(threading.Thread):
@@ -626,48 +631,66 @@ class ObserveAIWorker(threading.Thread):
                 continue
 
             try:
+                seg_imgsz = self.config.get("observe_img_size_seg", self.config.get("img_size_seg", 640))
+                cls_imgsz = self.config.get("observe_img_size_cls", self.config.get("img_size_cls", 224))
+                seg_conf = float(self.config.get("observe_conf_seg", self.config.get("conf_seg", 0.5)))
+                inner_margin = float(self.config.get("observe_inner_margin", 0.15))
+                bbox_pad = int(self.config.get("observe_bbox_pad", 10))
+
                 seg_res = self.seg_model.predict(
                     frame,
-                    imgsz=self.config.get("img_size_seg", 640),
-                    conf=self.config.get("conf_seg", 0.5),
+                    imgsz=seg_imgsz,
+                    conf=seg_conf,
                     verbose=False,
                     device=self.device,
                 )[0]
 
                 H, W = frame.shape[:2]
-                basket_mask = np.zeros((H, W), np.uint8)
-
-                if seg_res.masks is not None:
-                    for i, cls_idx in enumerate(seg_res.boxes.cls.cpu().numpy().astype(int)):
-                        if seg_res.names[cls_idx] == "basket":
-                            m = seg_res.masks.data[i][None, None, ...].float()
-                            m = F.interpolate(m, size=(H, W), mode="nearest")
-                            m = (m.squeeze(0).squeeze(0) > 0.5).byte().mul(255).cpu().numpy()
-                            basket_mask = np.maximum(basket_mask, m)
+                in_mask = None
 
                 detected = False
                 is_filled = False
                 top1_name = None
                 prob = 0.0
+                has_dets = False
 
-                if basket_mask.any():
-                    basket_mask = cv2.morphologyEx(
-                        basket_mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=1
-                    )
-                    cnt = _largest_contour(basket_mask)
-                    if cnt is not None:
-                        detected = True
-                        x, y, w, h = cv2.boundingRect(cnt)
-                        x2, y2 = x + w, y + h
-                        x, y = max(0, x), max(0, y)
-                        x2, y2 = min(W, x2), min(H, y2)
-                        roi = frame[y:y2, x:x2]
-                        if roi.size == 0:
-                            detected = False
-                        else:
+                if seg_res.boxes is not None and len(seg_res.boxes) > 0:
+                    has_dets = True
+                    boxes_xyxy = seg_res.boxes.xyxy.cpu().numpy()
+                    confs = seg_res.boxes.conf.cpu().numpy()
+                    cls_ids = seg_res.boxes.cls.cpu().numpy().astype(int)
+                    names = seg_res.names
+
+                    def _is_in_class(name: str) -> bool:
+                        name_lower = (name or "").lower()
+                        return name_lower == "in" or "in" in name_lower
+
+                    in_indices = [i for i in range(len(cls_ids)) if _is_in_class(names[int(cls_ids[i])])]
+                    if in_indices:
+                        best_in = max(in_indices, key=lambda i: confs[i])
+                        x1, y1, x2, y2 = boxes_xyxy[best_in]
+
+                        x1 = _clamp_int(x1 - bbox_pad, 0, W - 1)
+                        y1 = _clamp_int(y1 - bbox_pad, 0, H - 1)
+                        x2 = _clamp_int(x2 + bbox_pad, 0, W - 1)
+                        y2 = _clamp_int(y2 + bbox_pad, 0, H - 1)
+
+                        bw = x2 - x1
+                        bh = y2 - y1
+                        mx = int(bw * inner_margin)
+                        my = int(bh * inner_margin)
+                        ix1 = _clamp_int(x1 + mx, 0, W - 1)
+                        iy1 = _clamp_int(y1 + my, 0, H - 1)
+                        ix2 = _clamp_int(x2 - mx, 0, W - 1)
+                        iy2 = _clamp_int(y2 - my, 0, H - 1)
+
+                        if ix2 > ix1 and iy2 > iy1:
+                            inner = frame[iy1:iy2, ix1:ix2].copy()
+                            inner_sq = _square_crop(inner)
+                            inner_sq = cv2.resize(inner_sq, (cls_imgsz, cls_imgsz), interpolation=cv2.INTER_AREA)
                             cls_res = self.cls_model.predict(
-                                roi,
-                                imgsz=self.config.get("img_size_cls", 224),
+                                inner_sq,
+                                imgsz=cls_imgsz,
                                 conf=0.0,
                                 verbose=False,
                                 device=self.device,
@@ -676,6 +699,13 @@ class ObserveAIWorker(threading.Thread):
                             top1_name = cls_res.names[top1_idx]
                             prob = float(cls_res.probs.top1conf)
                             is_filled = top1_name.lower() == self.config.get("positive_label", "filled").lower()
+                            detected = True
+
+                            if seg_res.masks is not None and len(seg_res.masks.data) > best_in:
+                                m = seg_res.masks.data[best_in].cpu().numpy().astype(np.uint8)
+                                if m.max() <= 1:
+                                    m = m * 255
+                                in_mask = cv2.resize(m, (W, H), interpolation=cv2.INTER_NEAREST)
 
                 status = "NO_BASKET"
                 filled_stable = False
@@ -685,6 +715,8 @@ class ObserveAIWorker(threading.Thread):
                     status = "FILLED" if filled_stable else "EMPTY"
                 else:
                     self.votes.clear()
+                    if has_dets:
+                        status = "NO_IN"
 
                 with self.result_lock:
                     self.latest_result.update(
@@ -698,8 +730,8 @@ class ObserveAIWorker(threading.Thread):
                         }
                     )
                 last_infer = now
-                self._update_overlay(frame, basket_mask)
-                self._update_snapshot(frame, basket_mask, status, prob, top1_name)
+                self._update_overlay(frame, in_mask)
+                self._update_snapshot(frame, in_mask, status, prob, top1_name)
             except Exception as e:
                 print(f"[Observe AI] cam{self.cam_id} error: {e}")
 
