@@ -105,6 +105,14 @@ class FoodSegmenter:
         if "mask_threshold" in kwargs:
             mask_threshold = kwargs["mask_threshold"]
 
+        # Defensive defaults in case config provides None
+        if imgsz is None:
+            imgsz = 640
+        if conf is None:
+            conf = 0.2
+        if mask_threshold is None:
+            mask_threshold = 0.3
+
         self.mode = mode
         self.model = None
         self.use_yolo = False
