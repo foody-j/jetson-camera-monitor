@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 import base64
+import traceback
 from collections import deque
 from datetime import datetime
 from typing import Dict, Optional
@@ -522,6 +523,7 @@ class FryingAIWorker(threading.Thread):
                 self._update_snapshot(frame, seg_result)
             except Exception as e:
                 print(f"[Frying AI] pot{self.pot_id} error: {e}")
+                traceback.print_exc()
 
     def get_result(self) -> dict:
         with self.result_lock:
