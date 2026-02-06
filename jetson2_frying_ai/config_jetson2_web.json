@@ -126,7 +126,7 @@
 
   "// 최적화": "",
   "overlay_enabled": true,
-  "overlay_fps": 1,
+  "overlay_fps": 3,
   "headless_mode": true,
   "debug_print_enabled": false
 }
