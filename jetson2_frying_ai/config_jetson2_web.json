@@ -7,7 +7,7 @@
   "// 카메라": "",
   "camera_width": 1920,
   "camera_height": 1536,
-  "camera_fps": 15,
+  "camera_fps": 30,
   "camera_start_delay_sec": 0.5,
   "camera_retry_count": 5,
   "camera_retry_interval_sec": 1.0,
