@@ -549,15 +549,26 @@ class FryingAIWorker(threading.Thread):
         target_w = _safe_int(self.config.get("web_preview_width", 640), 640)
         h, w = frame.shape[:2]
         target_h = int(h * target_w / max(w, 1))
+        if target_w <= 1 or target_h <= 1:
+            return
         small = cv2.resize(frame, (target_w, target_h))
+        if small is None or small.size == 0:
+            return
         mask_small = cv2.resize(mask, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+        if mask_small is None or mask_small.size == 0:
+            return
 
         color = np.zeros_like(small)
         color[:, :, 1] = 255  # green
         alpha = 0.35
         mask_bool = mask_small > 0
+        if not np.any(mask_bool):
+            return
         overlay = small.copy()
-        overlay[mask_bool] = cv2.addWeighted(small[mask_bool], 1 - alpha, color[mask_bool], alpha, 0)
+        try:
+            overlay[mask_bool] = cv2.addWeighted(small[mask_bool], 1 - alpha, color[mask_bool], alpha, 0)
+        except Exception:
+            return
 
         ret, jpg = cv2.imencode(
             ".jpg",
@@ -844,15 +855,26 @@ class ObserveAIWorker(threading.Thread):
         target_w = _safe_int(self.config.get("web_preview_width", 640), 640)
         h, w = frame.shape[:2]
         target_h = int(h * target_w / max(w, 1))
+        if target_w <= 1 or target_h <= 1:
+            return
         small = cv2.resize(frame, (target_w, target_h))
+        if small is None or small.size == 0:
+            return
         mask_small = cv2.resize(basket_mask, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+        if mask_small is None or mask_small.size == 0:
+            return
 
         color = np.zeros_like(small)
         color[:, :, 1] = 255
         alpha = 0.35
         mask_bool = mask_small > 0
+        if not np.any(mask_bool):
+            return
         overlay = small.copy()
-        overlay[mask_bool] = cv2.addWeighted(small[mask_bool], 1 - alpha, color[mask_bool], alpha, 0)
+        try:
+            overlay[mask_bool] = cv2.addWeighted(small[mask_bool], 1 - alpha, color[mask_bool], alpha, 0)
+        except Exception:
+            return
 
         ret, jpg = cv2.imencode(
             ".jpg",
