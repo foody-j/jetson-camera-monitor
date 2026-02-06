@@ -34,7 +34,7 @@
 
   "// Observe AI": "",
   "observe_enabled": true,
-  "observe_left_enabled": false,
+  "observe_left_enabled": true,
   "observe_right_enabled": true,
   "observe_left_camera_index": 2,
   "observe_right_camera_index": 3,
@@ -106,10 +106,10 @@
 
   "// Data Collection": "",
   "recording_delay_after_discharge": 50,
-  "data_collection_interval_normal": 2,
+  "data_collection_interval_normal": 1,
   "data_collection_interval_fast": 0.5,
   "save_resolution": { "width": 1920, "height": 1536 },
-  "jpeg_quality": 85,
+  "jpeg_quality": 100,
   "target_probe_temp": 75.0,
   "food_types": ["chicken", "shrimp", "potato", "dumpling", "pork_cutlet", "fish"],
   "pot1_timeout_seconds": 5,
