@@ -32,6 +32,7 @@ class GstCamera:
         self.frame_lock = threading.Lock()
         self.is_running = False
         self.thread = None
+        self.last_frame_ts = 0.0
 
         # BGR frame size
         self.frame_size = width * height * 3
@@ -151,6 +152,7 @@ class GstCamera:
 
                     with self.frame_lock:
                         self.latest_frame = frame.copy()
+                        self.last_frame_ts = time.time()
 
         except Exception as e:
             if self.is_running:

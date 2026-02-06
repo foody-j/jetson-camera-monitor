@@ -47,6 +47,7 @@ class GstCamera:
         self.frame_lock = threading.Lock()
         self.is_running = False
         self.thread = None
+        self.last_frame_ts = 0.0
 
         print(f"[GstCamera] Creating camera for {self.device_path}")
         print(f"  Input: {width}x{height}@{fps}fps → Output: {self.output_width}x{self.output_height}@{self.output_fps}fps")
@@ -203,6 +204,7 @@ class GstCamera:
             with self.frame_lock:
                 self.read_index = self.write_index
                 self.write_index = next_write_idx
+                self.last_frame_ts = time.time()
 
             buf.unmap(map_info)
 

@@ -143,6 +143,8 @@ class CameraWorker(threading.Thread):
         self._recover_event = threading.Event()
         self._recover_lock = threading.Lock()
         self._recovering = False
+        self._last_camera_frame_ts = 0.0
+        self._last_stale_log_ts = 0.0
 
     def run(self):
         self.running = True
@@ -163,6 +165,16 @@ class CameraWorker(threading.Thread):
                 fps_calc_time = time.time()
                 fps_frame_count = 0
 
+            now = time.time()
+            stale_sec = float(self.config.get("camera_stale_log_sec", 5.0))
+            cam_ts = getattr(self.camera, "last_frame_ts", 0.0) or 0.0
+            if cam_ts > 0:
+                if cam_ts > self._last_camera_frame_ts:
+                    self._last_camera_frame_ts = cam_ts
+                elif stale_sec > 0 and now - cam_ts >= stale_sec and now - self._last_stale_log_ts >= stale_sec:
+                    print(f"[CAM{self.cam_id}] Frame stalled ({now - cam_ts:.1f}s since last new frame)")
+                    self._last_stale_log_ts = now
+
             ret, frame = self.camera.read()
             if not ret or frame is None:
                 time.sleep(0.01)
@@ -178,7 +190,6 @@ class CameraWorker(threading.Thread):
             self._update_web_frame(frame)
 
             fps_frame_count += 1
-            now = time.time()
             if now - fps_calc_time >= 1.0:
                 self.stats["fps"] = fps_frame_count
                 fps_frame_count = 0
