@@ -364,10 +364,17 @@ class CameraWorker(threading.Thread):
         if now - self._last_web_update < interval:
             return
 
-        h, w = frame.shape[:2]
+        roi = None
+        if self.cam_id == self.config.get("observe_left_camera_index", 2):
+            roi = self.config.get("observe_roi_cam2")
+        elif self.cam_id == self.config.get("observe_right_camera_index", 3):
+            roi = self.config.get("observe_roi_cam3")
+        frame_for_preview = _apply_roi(frame, roi)
+
+        h, w = frame_for_preview.shape[:2]
         target_w = _safe_int(self.config.get("web_preview_width", 640), 640)
         target_h = int(h * target_w / max(w, 1))
-        small = cv2.resize(frame, (target_w, target_h))
+        small = cv2.resize(frame_for_preview, (target_w, target_h))
 
         ret, jpg = cv2.imencode(
             ".jpg",
@@ -638,6 +645,25 @@ def _square_crop(img: np.ndarray) -> np.ndarray:
     return img[y1:y1 + side, x1:x1 + side].copy()
 
 
+def _apply_roi(frame: np.ndarray, roi) -> np.ndarray:
+    if frame is None or roi is None:
+        return frame
+    try:
+        x, y, w, h = roi
+    except Exception:
+        return frame
+    if w <= 1 or h <= 1:
+        return frame
+    fh, fw = frame.shape[:2]
+    x1 = max(0, min(int(x), fw - 1))
+    y1 = max(0, min(int(y), fh - 1))
+    x2 = max(0, min(int(x + w), fw))
+    y2 = max(0, min(int(y + h), fh))
+    if x2 <= x1 or y2 <= y1:
+        return frame
+    return frame[y1:y2, x1:x2].copy()
+
+
 class ObserveAIWorker(threading.Thread):
     """Observe (bucket) AI inference worker."""
 
@@ -649,6 +675,12 @@ class ObserveAIWorker(threading.Thread):
 
         self.seg_model_path = seg_model_path
         self.cls_model_path = cls_model_path
+        if cam_id == config.get("observe_left_camera_index", 2):
+            self.roi = config.get("observe_roi_cam2")
+        elif cam_id == config.get("observe_right_camera_index", 3):
+            self.roi = config.get("observe_roi_cam3")
+        else:
+            self.roi = None
 
         self.device = "cuda" if _YOLO_AVAILABLE and torch.cuda.is_available() else "cpu"
 
@@ -717,6 +749,7 @@ class ObserveAIWorker(threading.Thread):
             if frame is None:
                 time.sleep(0.01)
                 continue
+            frame = _apply_roi(frame, self.roi)
 
             try:
                 seg_imgsz = self.config.get("observe_img_size_seg", self.config.get("img_size_seg", 640))
