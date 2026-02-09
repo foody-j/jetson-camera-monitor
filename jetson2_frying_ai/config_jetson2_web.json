@@ -30,7 +30,7 @@
   "frying_seg_conf": 0.05,
   "frying_seg_mask_thresh": 0.2,
   "frying_infer_fps": 2,
-  "frying_log_interval_sec": 5,
+  "frying_log_interval_sec": 10,
 
   "// Observe AI": "",
   "observe_enabled": true,
@@ -66,8 +66,8 @@
   "web_enabled": true,
   "web_host": "0.0.0.0",
   "web_port": 8000,
-  "web_preview_fps": 2,
-  "web_preview_quality": 50,
+  "web_preview_fps": 1,
+  "web_preview_quality": 40,
   "web_preview_width": 480,
 
   "// Quick bring-up": "",
@@ -128,7 +128,7 @@
 
   "// 최적화": "",
   "overlay_enabled": true,
-  "overlay_fps": 1,
+  "overlay_fps": 0.5,
   "headless_mode": true,
   "debug_print_enabled": false
 }
