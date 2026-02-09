@@ -4,13 +4,12 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=oneshot
+RemainAfterExit=yes
 User=hr_dku_001
 WorkingDirectory=/home/hr_dku_001/jetson-food-ai/jetson1_monitoring
 ExecStart=/usr/bin/tmux new-session -d -s jetson1_web /home/hr_dku_001/jetson-food-ai/jetson1_monitoring/run_jetson1_web_tmux.sh
 ExecStop=/usr/bin/tmux kill-session -t jetson1_web
-Restart=always
-RestartSec=5
 
 Environment="PYTHONUNBUFFERED=1"
 
