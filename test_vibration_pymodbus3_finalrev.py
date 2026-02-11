@@ -34,7 +34,11 @@ except Exception:
 # =========================
 # 사용자 설정
 # =========================
-PORT = os.getenv("VIB_PORT", "/dev/ttyUSB0")
+DEFAULT_VIB_PORT_BY_ID = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A9NF7ROC-if00-port0"
+PORT = os.getenv(
+    "VIB_PORT",
+    DEFAULT_VIB_PORT_BY_ID if os.path.exists(DEFAULT_VIB_PORT_BY_ID) else "/dev/ttyUSB0",
+)
 BAUD = int(os.getenv("VIB_BAUD", "115200"))
 
 def _parse_unit_ids(env_val: str):
