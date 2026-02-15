@@ -15,31 +15,47 @@ sleep 2
 
 # 2단계: 릴레이 OFF (카메라 어댑터 전원 차단)
 echo "[2/6] 카메라 전원 OFF (10초 대기)..."
-# GPIO 핀 설정 (Pin 29 = GPIO07, Pin 31 = GPIO416)
-echo 416 > /sys/class/gpio/export 2>/dev/null || true
-echo 7 > /sys/class/gpio/export 2>/dev/null || true
-echo out > /sys/class/gpio/gpio416/direction
-echo out > /sys/class/gpio/gpio7/direction
+# Jetson.GPIO를 사용한 릴레이 제어 (Python 스크립트 호출)
+python3 - <<'PYTHON_RELAY_OFF'
+import Jetson.GPIO as GPIO
+import time
+
+RELAY_PIN_1 = 29  # Pin 29 (GPIO07)
+RELAY_PIN_2 = 31  # Pin 31 (GPIO416)
+
+GPIO.setmode(GPIO.BOARD)
+GPIO.setup(RELAY_PIN_1, GPIO.OUT)
+GPIO.setup(RELAY_PIN_2, GPIO.OUT)
 
 # 릴레이 OFF (LOW)
-echo 0 > /sys/class/gpio/gpio416/value
-echo 0 > /sys/class/gpio/gpio7/value
-sleep 10  # 커패시터 완전 방전 대기
+GPIO.output(RELAY_PIN_1, GPIO.LOW)
+GPIO.output(RELAY_PIN_2, GPIO.LOW)
+time.sleep(10)  # 커패시터 완전 방전 대기
 
-# 3단계: 릴레이 ON (Pulse 방식)
-echo "[3/6] 카메라 전원 ON (5초 대기)..."
-echo 1 > /sys/class/gpio/gpio416/value
-echo 1 > /sys/class/gpio/gpio7/value
-sleep 0.2
-echo 0 > /sys/class/gpio/gpio416/value
-echo 0 > /sys/class/gpio/gpio7/value
+# 릴레이 ON (Pulse)
+GPIO.output(RELAY_PIN_1, GPIO.HIGH)
+GPIO.output(RELAY_PIN_2, GPIO.HIGH)
+time.sleep(0.2)
+GPIO.output(RELAY_PIN_1, GPIO.LOW)
+GPIO.output(RELAY_PIN_2, GPIO.LOW)
+
+GPIO.cleanup()
+PYTHON_RELAY_OFF
+
+echo "[3/6] 카메라 전원 ON 완료 (5초 대기)..."
 sleep 5  # 전원 안정화 대기
 
 # 4단계: 드라이버 재로드
 echo "[4/6] 드라이버 재로드 (quick_bring_up.sh)..."
-cd "$DRIVER_DIR"
-sudo ./quick_bring_up.sh
-sleep 3
+DRIVER_DIR_EXPANDED="${DRIVER_DIR/#\~/$HOME}"
+if [ -d "$DRIVER_DIR_EXPANDED" ]; then
+    cd "$DRIVER_DIR_EXPANDED"
+    ./quick_bring_up.sh
+    sleep 3
+else
+    echo "⚠️ 드라이버 디렉토리를 찾을 수 없습니다: $DRIVER_DIR"
+    echo "   수동으로 quick_bring_up.sh를 실행하세요."
+fi
 
 # 5단계: 링크 상태 확인
 echo "[5/6] 링크 상태 확인..."
