@@ -2,9 +2,7 @@
 # GMSL 멀티채널 링크 복구 스크립트
 # 사용법: sudo ./recover_gmsl_links.sh
 
-set -e
-
-DRIVER_DIR="$HOME/jetson-food-ai/SG4A-NONX-G2Y-A1_ORIN_NANO_YUV_JP6.2_L4TR36.4.3"
+DRIVER_DIR="/home/hr_dku_002/jetson-food-ai/SG4A-NONX-G2Y-A1_ORIN_NANO_YUV_JP6.2_L4TR36.4.3"
 
 echo "🔧 GMSL 링크 복구 시작..."
 echo "⚠️  카메라 전원 OFF/ON은 수동으로 먼저 진행하세요!"
@@ -17,9 +15,8 @@ sleep 2
 
 # 2단계: 드라이버 재로드
 echo "[2/4] 드라이버 재로드 (quick_bring_up.sh)..."
-DRIVER_DIR_EXPANDED="${DRIVER_DIR/#\~/$HOME}"
-if [ -d "$DRIVER_DIR_EXPANDED" ]; then
-    cd "$DRIVER_DIR_EXPANDED"
+if [ -d "$DRIVER_DIR" ]; then
+    cd "$DRIVER_DIR"
     ./quick_bring_up.sh
     sleep 3
 else
