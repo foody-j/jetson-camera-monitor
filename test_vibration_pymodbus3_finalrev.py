@@ -9,7 +9,7 @@ WitMotion WT-VB02-485 멀티센서 수집 + 그래프 + CSV (Ubuntu 22.04 / Jets
   pip3 install pymodbus==3.6.9 pyserial matplotlib numpy
 """
 
-import os, time, threading, csv
+import os, time, threading, csv, json, argparse
 from datetime import datetime
 from collections import deque
 
@@ -18,10 +18,28 @@ from pymodbus.client import ModbusSerialClient  # pymodbus 3.x
 from pymodbus.exceptions import ModbusIOException
 from serial import SerialException
 
+
+# =========================
+# 인수 파싱 (matplotlib 임포트 전에 먼저)
+# =========================
+parser = argparse.ArgumentParser(description="WitMotion 진동센서 수집기")
+parser.add_argument("--headless", action="store_true",
+                    help="GUI 없이 실행 (서버/systemctl 환경)")
+parser.add_argument("--check", action="store_true",
+                    help="측정 후 베이스라인과 비교하여 result JSON 저장")
+parser.add_argument("--duration", type=float, default=10.0,
+                    help="headless 모드 수집 시간(초), 기본 10")
+parser.add_argument("--baseline", type=str, default=None,
+                    help="베이스라인 JSON 파일 경로")
+parser.add_argument("--result", type=str, default=None,
+                    help="결과 JSON 저장 경로 (기본: 실행 디렉토리/vibration_result.json)")
+args = parser.parse_args()
+
 import matplotlib
+if args.headless:
+    matplotlib.use('Agg')  # 디스플레이 없이 렌더링
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-
 
 # ---------- 한글 폰트 ----------
 try:
@@ -145,11 +163,14 @@ for uid in UNIT_IDS:
 # =========================
 # 버퍼(센서별)
 # =========================
-buf_time = {uid: deque(maxlen=maxlen) for uid in UNIT_IDS}
-buf_acc  = {uid: [deque(maxlen=maxlen) for _ in range(3)] for uid in UNIT_IDS}
-buf_vel  = {uid: [deque(maxlen=maxlen) for _ in range(3)] for uid in UNIT_IDS}
-buf_disp = {uid: [deque(maxlen=maxlen) for _ in range(3)] for uid in UNIT_IDS}
-buf_freq = {uid: [deque(maxlen=maxlen) for _ in range(3)] for uid in UNIT_IDS}
+# headless check 모드에서는 전체 수집 샘플을 쌓기 위해 maxlen 무제한
+_buf_maxlen = None if (args.headless and args.check) else maxlen
+
+buf_time = {uid: deque(maxlen=_buf_maxlen) for uid in UNIT_IDS}
+buf_acc  = {uid: [deque(maxlen=_buf_maxlen) for _ in range(3)] for uid in UNIT_IDS}
+buf_vel  = {uid: [deque(maxlen=_buf_maxlen) for _ in range(3)] for uid in UNIT_IDS}
+buf_disp = {uid: [deque(maxlen=_buf_maxlen) for _ in range(3)] for uid in UNIT_IDS}
+buf_freq = {uid: [deque(maxlen=_buf_maxlen) for _ in range(3)] for uid in UNIT_IDS}
 
 last_ok = {uid: time.time() for uid in UNIT_IDS}
 missing_since = {uid: None for uid in UNIT_IDS}
@@ -460,118 +481,237 @@ collector_thread.start()
 
 
 # =========================
-# 그래프
+# 베이스라인 비교 및 결과 저장
 # =========================
-print("[초기화] matplotlib 그래프 생성")
-ncol = max(1, len(UNIT_IDS))
-fig = plt.figure(figsize=(6 * ncol, 12))
-gs = fig.add_gridspec(4, ncol)  # rows: ACC, VEL, DISP, FFT
+def _check_against_baseline(baseline: dict) -> dict:
+    """수집된 버퍼를 베이스라인 threshold와 비교하여 결과 dict 반환"""
+    thresholds = baseline.get("thresholds", {})
+    alerts = []
+    total_samples = 0
 
-axes = {}
-lines_acc = {}
-lines_vel = {}
-lines_disp = {}
-axes_fft = {}
-
-for c, uid in enumerate(UNIT_IDS):
-    # ACC
-    ax_acc = fig.add_subplot(gs[0, c])
-    ax_acc.set_title(f"UID 0x{uid:02X} - ACC (g)")
-    ax_acc.grid(True, alpha=0.3)
-    lines_acc[uid] = [ax_acc.plot([], [], label=lab)[0] for lab in ("X", "Y", "Z")]
-    ax_acc.legend(loc="upper right")
-
-    # VEL
-    ax_vel = fig.add_subplot(gs[1, c])
-    ax_vel.set_title(f"UID 0x{uid:02X} - VEL (mm/s)")
-    ax_vel.grid(True, alpha=0.3)
-    lines_vel[uid] = [ax_vel.plot([], [], label=lab)[0] for lab in ("X", "Y", "Z")]
-    ax_vel.legend(loc="upper right")
-
-    # DISP
-    ax_disp = fig.add_subplot(gs[2, c])
-    ax_disp.set_title(f"UID 0x{uid:02X} - DISP (um)")
-    ax_disp.grid(True, alpha=0.3)
-    lines_disp[uid] = [ax_disp.plot([], [], label=lab)[0] for lab in ("X", "Y", "Z")]
-    ax_disp.legend(loc="upper right")
-
-    # FFT
-    ax_fft = fig.add_subplot(gs[3, c])
-    ax_fft.set_title(f"UID 0x{uid:02X} - FFT (from DISP)")
-    ax_fft.grid(True, alpha=0.3)
-    axes_fft[uid] = ax_fft
-
-    axes[uid] = (ax_acc, ax_vel, ax_disp, ax_fft)
-
-def update(_):
+    # 전체 센서 velocity 합산
+    all_vel = [[], [], []]
     for uid in UNIT_IDS:
-        if len(buf_time[uid]) < 2:
-            continue
-
-        t0 = buf_time[uid][0]
-        t = np.array(buf_time[uid]) - t0
-
-        # 시계열 라인 업데이트
+        n = len(buf_vel[uid][0])
+        total_samples += n
         for i in range(3):
-            lines_acc[uid][i].set_data(t, list(buf_acc[uid][i]))
-            lines_vel[uid][i].set_data(t, list(buf_vel[uid][i]))
-            lines_disp[uid][i].set_data(t, list(buf_disp[uid][i]))
+            all_vel[i].extend(list(buf_vel[uid][i]))
 
-        # 자동 스케일
-        for ax in axes[uid][:3]:
-            ax.relim()
-            ax.autoscale_view()
+    if total_samples == 0:
+        return {"status": "ERROR", "reason": "수집된 샘플 없음", "timestamp": datetime.now().isoformat()}
 
-        # FFT 스펙트럼 (동적 x축)
-        axf = axes_fft[uid]
-        axf.cla()
-        axf.set_title(f"UID 0x{uid:02X} - FFT (from DISP)")
-        axf.set_xlabel("Frequency (Hz)")
-        axf.set_ylabel("Magnitude")
-        axf.grid(True, alpha=0.3)
+    # velocity magnitude 계산
+    mag = [
+        np.sqrt(all_vel[0][i]**2 + all_vel[1][i]**2 + all_vel[2][i]**2)
+        for i in range(len(all_vel[0]))
+    ]
 
-        # 현재 버퍼 시간 길이로부터 동적 fs 계산
-        dt = (buf_time[uid][-1] - buf_time[uid][0]) / max(1, (len(buf_time[uid]) - 1))
-        fs = 1.0 / dt if dt > 0 else SAMPLE_RATE_HINT_PER_UNIT
-        nyq = fs * 0.5
+    measured = {
+        "velocity_magnitude_mean": float(np.mean(mag)),
+        "velocity_magnitude_p99": float(np.percentile(mag, 99)) if len(mag) >= 10 else 0.0,
+        "vel_x_p99": float(np.percentile(np.abs(all_vel[0]), 99)) if all_vel[0] else 0.0,
+        "vel_y_p99": float(np.percentile(np.abs(all_vel[1]), 99)) if all_vel[1] else 0.0,
+        "vel_z_p99": float(np.percentile(np.abs(all_vel[2]), 99)) if all_vel[2] else 0.0,
+    }
 
-        labels = ("X", "Y", "Z")
-        for i in range(3):
-            series = buf_disp[uid][i]
-            if len(series) >= 16:
-                y = np.array(series, dtype=float)
-                y = y - np.mean(y)
-                Y = np.fft.rfft(np.hanning(len(y)) * y)
-                f = np.fft.rfftfreq(len(y), d=1.0 / fs)
-                axf.plot(f, np.abs(Y), label=labels[i])
+    # 3sigma threshold 비교
+    checks = [
+        ("velocity_magnitude_3sigma", measured["velocity_magnitude_p99"], "속도 크기(3σ)"),
+        ("vel_x_3sigma", measured["vel_x_p99"], "X축 속도(3σ)"),
+        ("vel_y_3sigma", measured["vel_y_p99"], "Y축 속도(3σ)"),
+        ("vel_z_3sigma", measured["vel_z_p99"], "Z축 속도(3σ)"),
+    ]
 
-        if np.isfinite(nyq) and nyq > 0:
-            axf.set_xlim(0, nyq)
-        axf.legend(loc="upper right")
+    for key, val, label in checks:
+        limit = thresholds.get(key)
+        if limit is not None and val > limit:
+            alerts.append(f"{label} 초과: {val:.1f} > {limit:.1f}")
 
-    return []
+    status = "ABNORMAL" if alerts else "NORMAL"
+    result = {
+        "status": status,
+        "timestamp": datetime.now().isoformat(),
+        "total_samples": total_samples,
+        "unit_ids": [f"0x{u:02X}" for u in UNIT_IDS],
+        "measured": measured,
+        "alerts": alerts,
+    }
+    print(f"[진동 체크] 결과: {status}")
+    for a in alerts:
+        print(f"  ⚠ {a}")
+    return result
 
-print("[그래프] 애니메이션 시작")
-ani = FuncAnimation(fig, update, interval=PLOT_INTERVAL_MS, blit=False, cache_frame_data=False)
-plt.tight_layout()
-plt.show()
 
-
-# =========================
-# 종료 처리
-# =========================
-print("[종료] 프로그램 종료 중...")
-stop_event.set()
-collector_thread.join(timeout=1.0)
-try:
-    client.close()
-except Exception:
-    pass
-
-for uid in UNIT_IDS:
+def _save_result(result: dict):
+    result_path = args.result or os.path.join(os.getcwd(), "vibration_result.json")
     try:
-        csv_files[uid].close()
+        with open(result_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+        print(f"[결과 저장] {result_path}")
+    except Exception as e:
+        print(f"[결과 저장 오류] {e}")
+
+
+# =========================
+# 헤드리스 모드: duration 후 자동 종료
+# =========================
+if args.headless:
+    duration = max(1.0, args.duration)
+    print(f"[헤드리스] {duration}초 수집 후 종료")
+    time.sleep(duration)
+    stop_event.set()
+    collector_thread.join(timeout=5.0)
+
+    if args.check:
+        baseline = None
+        if args.baseline and os.path.exists(args.baseline):
+            try:
+                with open(args.baseline, "r", encoding="utf-8") as f:
+                    baseline = json.load(f)
+                print(f"[베이스라인] {args.baseline} 로드")
+            except Exception as e:
+                print(f"[베이스라인 로드 오류] {e}")
+
+        if baseline:
+            result = _check_against_baseline(baseline)
+        else:
+            # 베이스라인 없으면 샘플 수만 확인하고 NORMAL 처리
+            total = sum(len(buf_time[u]) for u in UNIT_IDS)
+            result = {
+                "status": "NORMAL" if total > 0 else "ERROR",
+                "reason": "베이스라인 없음 - 샘플 수만 확인" if total > 0 else "수집 샘플 없음",
+                "timestamp": datetime.now().isoformat(),
+                "total_samples": total,
+            }
+            print(f"[진동 체크] 베이스라인 없음, 샘플 수={total}, 상태={result['status']}")
+        _save_result(result)
+
+    # CSV 닫기
+    for uid in UNIT_IDS:
+        try:
+            csv_files[uid].close()
+        except Exception:
+            pass
+
+    try:
+        client.close()
     except Exception:
         pass
 
-print("[종료] 완료")
+    print("[헤드리스] 완료")
+
+else:
+    # =========================
+    # GUI 모드: 그래프
+    # =========================
+    print("[초기화] matplotlib 그래프 생성")
+    ncol = max(1, len(UNIT_IDS))
+    fig = plt.figure(figsize=(6 * ncol, 12))
+    gs = fig.add_gridspec(4, ncol)  # rows: ACC, VEL, DISP, FFT
+
+    axes = {}
+    lines_acc = {}
+    lines_vel = {}
+    lines_disp = {}
+    axes_fft = {}
+
+    for c, uid in enumerate(UNIT_IDS):
+        # ACC
+        ax_acc = fig.add_subplot(gs[0, c])
+        ax_acc.set_title(f"UID 0x{uid:02X} - ACC (g)")
+        ax_acc.grid(True, alpha=0.3)
+        lines_acc[uid] = [ax_acc.plot([], [], label=lab)[0] for lab in ("X", "Y", "Z")]
+        ax_acc.legend(loc="upper right")
+
+        # VEL
+        ax_vel = fig.add_subplot(gs[1, c])
+        ax_vel.set_title(f"UID 0x{uid:02X} - VEL (mm/s)")
+        ax_vel.grid(True, alpha=0.3)
+        lines_vel[uid] = [ax_vel.plot([], [], label=lab)[0] for lab in ("X", "Y", "Z")]
+        ax_vel.legend(loc="upper right")
+
+        # DISP
+        ax_disp = fig.add_subplot(gs[2, c])
+        ax_disp.set_title(f"UID 0x{uid:02X} - DISP (um)")
+        ax_disp.grid(True, alpha=0.3)
+        lines_disp[uid] = [ax_disp.plot([], [], label=lab)[0] for lab in ("X", "Y", "Z")]
+        ax_disp.legend(loc="upper right")
+
+        # FFT
+        ax_fft = fig.add_subplot(gs[3, c])
+        ax_fft.set_title(f"UID 0x{uid:02X} - FFT (from DISP)")
+        ax_fft.grid(True, alpha=0.3)
+        axes_fft[uid] = ax_fft
+
+        axes[uid] = (ax_acc, ax_vel, ax_disp, ax_fft)
+
+    def update(_):
+        for uid in UNIT_IDS:
+            if len(buf_time[uid]) < 2:
+                continue
+
+            t0 = buf_time[uid][0]
+            t = np.array(buf_time[uid]) - t0
+
+            # 시계열 라인 업데이트
+            for i in range(3):
+                lines_acc[uid][i].set_data(t, list(buf_acc[uid][i]))
+                lines_vel[uid][i].set_data(t, list(buf_vel[uid][i]))
+                lines_disp[uid][i].set_data(t, list(buf_disp[uid][i]))
+
+            # 자동 스케일
+            for ax in axes[uid][:3]:
+                ax.relim()
+                ax.autoscale_view()
+
+            # FFT 스펙트럼 (동적 x축)
+            axf = axes_fft[uid]
+            axf.cla()
+            axf.set_title(f"UID 0x{uid:02X} - FFT (from DISP)")
+            axf.set_xlabel("Frequency (Hz)")
+            axf.set_ylabel("Magnitude")
+            axf.grid(True, alpha=0.3)
+
+            dt = (buf_time[uid][-1] - buf_time[uid][0]) / max(1, (len(buf_time[uid]) - 1))
+            fs = 1.0 / dt if dt > 0 else SAMPLE_RATE_HINT_PER_UNIT
+            nyq = fs * 0.5
+
+            labels = ("X", "Y", "Z")
+            for i in range(3):
+                series = buf_disp[uid][i]
+                if len(series) >= 16:
+                    y = np.array(series, dtype=float)
+                    y = y - np.mean(y)
+                    Y = np.fft.rfft(np.hanning(len(y)) * y)
+                    f = np.fft.rfftfreq(len(y), d=1.0 / fs)
+                    axf.plot(f, np.abs(Y), label=labels[i])
+
+            if np.isfinite(nyq) and nyq > 0:
+                axf.set_xlim(0, nyq)
+            axf.legend(loc="upper right")
+
+        return []
+
+    print("[그래프] 애니메이션 시작")
+    ani = FuncAnimation(fig, update, interval=PLOT_INTERVAL_MS, blit=False, cache_frame_data=False)
+    plt.tight_layout()
+    plt.show()
+
+    # =========================
+    # GUI 종료 처리
+    # =========================
+    print("[종료] 프로그램 종료 중...")
+    stop_event.set()
+    collector_thread.join(timeout=1.0)
+    try:
+        client.close()
+    except Exception:
+        pass
+
+    for uid in UNIT_IDS:
+        try:
+            csv_files[uid].close()
+        except Exception:
+            pass
+
+    print("[종료] 완료")
