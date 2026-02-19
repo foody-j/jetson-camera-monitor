@@ -43,6 +43,8 @@
             <div class="control-title">MQTT</div>
             <button class="btn" onclick="publishNow()">Publish</button>
             <button class="btn btn-test" onclick="publishNightSummaryNow()">Night Summary Test</button>
+            <button class="btn btn-test" onclick="publishPersonDetected(true)">Person TRUE</button>
+            <button class="btn btn-test" onclick="publishPersonDetected(false)">Person FALSE</button>
             <button class="btn" onclick="toggleMqttLog()">Log</button>
         </div>
     </div>
@@ -123,6 +125,23 @@
                 setTimeout(updateStatus, 500);
             } catch (e) {
                 console.error('Night summary publish failed:', e);
+            }
+        }
+
+        async function publishPersonDetected(value) {
+            try {
+                const res = await fetch('/api/control/person-detected/publish', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ value: !!value })
+                });
+                const data = await res.json();
+                const result = data && data.person_detected ? 'TRUE' : 'FALSE';
+                const bar = document.getElementById('status-bar');
+                bar.textContent = `[TEST] Forced publish: person_detected=${result}`;
+                setTimeout(updateStatus, 500);
+            } catch (e) {
+                console.error('Forced person_detected publish failed:', e);
             }
         }
 

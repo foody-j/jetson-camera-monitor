@@ -121,4 +121,13 @@ def create_app(cameras: Dict[int, object], state: object, config: dict) -> FastA
         except Exception:
             return {"ok": False}
 
+    @app.post("/api/control/person-detected/publish")
+    async def publish_person_detected(payload: dict = Body(...)):
+        try:
+            detected = bool(payload.get("value", False))
+            state._publish_mqtt_status(person_detected_override=detected)
+            return {"ok": True, "person_detected": detected}
+        except Exception:
+            return {"ok": False}
+
     return app
