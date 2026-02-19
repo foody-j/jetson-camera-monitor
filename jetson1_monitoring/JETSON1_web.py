@@ -339,6 +339,7 @@ class PersonDetectionWorker(threading.Thread):
         self.last_confidence = 0.0
         self.detection_count = 0
         self.night_detected_once = False
+        self.night_snapshot_saved_once = False
         self.last_night_detected_result = False
 
         self.last_person_detected_time = None
@@ -406,17 +407,20 @@ class PersonDetectionWorker(threading.Thread):
             self._last_daytime = daytime
             if not daytime:
                 self.night_detected_once = False
+                self.night_snapshot_saved_once = False
         elif self._last_daytime and not daytime:
             self.night_detected_once = False
+            self.night_snapshot_saved_once = False
             self._night_person_state = None
             self.parent._log_ops_event("night_summary_reset")
         elif (not self._last_daytime) and daytime:
-            self.last_night_detected_result = bool(self.night_detected_once)
+            self.last_night_detected_result = bool(self.night_detected_once or self.night_snapshot_saved_once)
             self.parent._log_ops_event(
                 "night_summary_finalized",
                 detected=self.last_night_detected_result,
             )
             self.night_detected_once = False
+            self.night_snapshot_saved_once = False
         self._last_daytime = daytime
 
         if daytime:
@@ -584,6 +588,7 @@ class PersonDetectionWorker(threading.Thread):
             self.snapshot_count += 1
             self.last_snapshot_path = out_path
             self.last_snapshot_time = timestamp
+            self.night_snapshot_saved_once = True
             self.parent._log_ops_event(
                 "night_snapshot_saved",
                 image_path=out_path,
@@ -1030,7 +1035,7 @@ class Jetson1Web:
         def run_vibration_check():
             try:
                 env = os.environ.copy()
-                env["VIB_UNIT_IDS"] = "0x50,0x51,0x52"
+                env["VIB_UNIT_IDS"] = "0x53,0x54,0x55"
                 cmd = ["python3", vibration_script, "--headless", "--check", "--duration", "10"]
                 if os.path.exists(baseline_file):
                     cmd.extend(["--baseline", baseline_file])
@@ -1328,9 +1333,13 @@ class Jetson1Web:
     def force_publish_next_day_night_result(self) -> bool:
         if not self.person_worker:
             return False
-        result = bool(self.person_worker.night_detected_once)
+        result = bool(
+            self.person_worker.night_detected_once
+            or self.person_worker.night_snapshot_saved_once
+        )
         self.person_worker.last_night_detected_result = result
-        self.person_worker.night_detected_once = False
+        # Keep current cycle flags for repeated test clicks during the same night.
+        self.person_worker.person_detected = result
         self._log_ops_event("night_summary_force_publish", detected=result)
         self._publish_mqtt_status(person_detected_override=result)
         return result
