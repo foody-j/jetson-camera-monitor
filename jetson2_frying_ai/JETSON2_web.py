@@ -2214,7 +2214,7 @@ class Jetson2Web:
                 cmd = ["python3", vibration_script, "--headless", "--check", "--duration", "10"]
                 if os.path.exists(baseline_file):
                     cmd += ["--baseline", baseline_file]
-                cmd += ["--output", result_file]
+                cmd += ["--result", result_file]
                 self.vibration_process = subprocess.Popen(
                     cmd,
                     cwd=base_dir,
