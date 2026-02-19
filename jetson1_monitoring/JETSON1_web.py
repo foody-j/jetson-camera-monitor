@@ -1329,7 +1329,9 @@ class Jetson1Web:
             return
         topic = self.config.get("mqtt_topic_jetson1_status", "jetson1/status")
         try:
-            payload = json.dumps(self.build_status(person_detected_override=person_detected_override), ensure_ascii=False)
+            status_data = self.build_status(person_detected_override=person_detected_override)
+            status_data["person_detected"] = "TRUE" if bool(status_data.get("person_detected", False)) else "FALSE"
+            payload = json.dumps(status_data, ensure_ascii=False)
             self.mqtt_client.client.publish(topic, payload, qos=self.config.get("mqtt_qos", 1))
         except Exception:
             pass
