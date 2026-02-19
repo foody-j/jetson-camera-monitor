@@ -667,11 +667,20 @@ def _apply_roi(frame: np.ndarray, roi) -> np.ndarray:
 class ObserveAIWorker(threading.Thread):
     """Observe (bucket) AI inference worker."""
 
-    def __init__(self, cam_id: int, camera_worker: CameraWorker, config: dict, seg_model_path: str, cls_model_path: str):
+    def __init__(
+        self,
+        cam_id: int,
+        camera_worker: CameraWorker,
+        config: dict,
+        seg_model_path: str,
+        cls_model_path: str,
+        event_logger=None,
+    ):
         super().__init__(daemon=True)
         self.cam_id = cam_id
         self.camera = camera_worker
         self.config = config
+        self.event_logger = event_logger
 
         self.seg_model_path = seg_model_path
         self.cls_model_path = cls_model_path
@@ -855,12 +864,28 @@ class ObserveAIWorker(threading.Thread):
                         print(f"[Observe AI] cam{self.cam_id} status -> {status}")
                     else:
                         print(f"[Observe AI] cam{self.cam_id} status -> {status} (top1={top1_name}, prob={prob:.2f})")
+                    if self.event_logger:
+                        self.event_logger(
+                            "observe_status_change",
+                            cam_id=self.cam_id,
+                            status=status,
+                            previous_status=self._last_status,
+                            detected=detected,
+                            filled=filled_stable,
+                            top1=top1_name,
+                            prob=round(prob, 4),
+                            has_dets=has_dets,
+                            expected_status=None,
+                            is_correct=None,
+                        )
                     self._last_status = status
                 last_infer = now
                 self._update_overlay(frame, in_mask)
                 self._update_snapshot(frame, in_mask, status, prob, top1_name)
             except Exception as e:
                 print(f"[Observe AI] cam{self.cam_id} error: {e}")
+                if self.event_logger:
+                    self.event_logger("observe_error", cam_id=self.cam_id, error=str(e))
 
     def get_result(self) -> dict:
         with self.result_lock:
@@ -987,6 +1012,8 @@ class Jetson2Web:
         self.observe_running = False
         self.observe_left_state = None
         self.observe_right_state = None
+        self.observe_left_effective = None   # 투입 판정 포함한 발행 상태
+        self.observe_right_effective = None
         self.vibration_status = "IDLE"
         self._last_chk_vibration = False
 
@@ -1073,6 +1100,8 @@ class Jetson2Web:
 
         self.mqtt_message_log = deque(maxlen=int(config.get("mqtt_log_maxlen", 200)))
         self.mqtt_log_dir = os.path.join(SCRIPT_DIR, "mqtt_logs")
+        self.ops_log_dir = os.path.join(SCRIPT_DIR, "ops_logs")
+        self._ops_log_lock = threading.Lock()
 
     def _init_cameras(self) -> None:
         cam_width = self.config.get("camera_width", 1920)
@@ -1120,9 +1149,23 @@ class Jetson2Web:
             right_cls = self.config.get("observe_right_cls_model", "") or left_cls
 
             if self.cameras.get(2) is not None and left_seg and left_cls and _path_exists(left_seg) and _path_exists(left_cls):
-                self.observe_workers[2] = ObserveAIWorker(2, self.cameras[2], self.config, left_seg, left_cls)
+                self.observe_workers[2] = ObserveAIWorker(
+                    2,
+                    self.cameras[2],
+                    self.config,
+                    left_seg,
+                    left_cls,
+                    event_logger=self._log_ops_event,
+                )
             if self.cameras.get(3) is not None and right_seg and right_cls and _path_exists(right_seg) and _path_exists(right_cls):
-                self.observe_workers[3] = ObserveAIWorker(3, self.cameras[3], self.config, right_seg, right_cls)
+                self.observe_workers[3] = ObserveAIWorker(
+                    3,
+                    self.cameras[3],
+                    self.config,
+                    right_seg,
+                    right_cls,
+                    event_logger=self._log_ops_event,
+                )
 
     def _init_mqtt(self) -> None:
         if not self.config.get("mqtt_enabled", False):
@@ -1166,8 +1209,10 @@ class Jetson2Web:
 
     def relay_turn_on(self) -> None:
         if not _GPIO_AVAILABLE:
+            self._log_ops_event("relay_on_skipped", reason="gpio_unavailable")
             return
         if self.relay_enabled:
+            self._log_ops_event("relay_on_skipped", reason="already_on")
             return
         try:
             if self.relay_mode == "pulse":
@@ -1179,13 +1224,17 @@ class Jetson2Web:
                 GPIO.output(31, GPIO.HIGH)
                 print("[GPIO] Relay ON (continuous)")
             self.relay_enabled = True
+            self._log_ops_event("relay_on", mode=self.relay_mode)
         except Exception as e:
             print(f"[GPIO] Relay ON 실패: {e}")
+            self._log_ops_event("relay_on_error", error=str(e))
 
     def relay_turn_off(self, force: bool = False) -> None:
         if not _GPIO_AVAILABLE:
+            self._log_ops_event("relay_off_skipped", reason="gpio_unavailable")
             return
         if not self.relay_enabled and not force:
+            self._log_ops_event("relay_off_skipped", reason="already_off", force=force)
             return
         try:
             if self.relay_mode == "pulse":
@@ -1197,8 +1246,10 @@ class Jetson2Web:
                 GPIO.output(29, GPIO.LOW)
                 print("[GPIO] Relay OFF (continuous)")
             self.relay_enabled = False
+            self._log_ops_event("relay_off", mode=self.relay_mode, force=force)
         except Exception as e:
             print(f"[GPIO] Relay OFF 실패: {e}")
+            self._log_ops_event("relay_off_error", error=str(e), force=force)
 
     def on_pot1_food_type(self, client, userdata, message):
         self._log_mqtt_message(message.topic, message.payload)
@@ -2233,6 +2284,24 @@ class Jetson2Web:
         except Exception as e:
             print(f"[MQTT 로그] 파일 저장 실패: {e}")
 
+    def _log_ops_event(self, event: str, **data) -> None:
+        ts = datetime.now()
+        entry = {
+            "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            "event": event,
+            **data,
+        }
+        try:
+            os.makedirs(self.ops_log_dir, exist_ok=True)
+            date_str = ts.strftime("%Y-%m-%d")
+            path = os.path.join(self.ops_log_dir, f"ops_{date_str}.jsonl")
+            with self._ops_log_lock:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception as e:
+            if self.debug_print:
+                print(f"[OPS 로그] 저장 실패: {e}")
+
     def _publish_mqtt_status(self) -> None:
         if not self.mqtt_client:
             return
@@ -2264,31 +2333,69 @@ class Jetson2Web:
             "system": self.system_info.get_dynamic_info() if self.system_info else {},
         }
 
+    def _get_effective_observe_state(self, raw_status: str, oil_temp: float) -> str:
+        """FILLED + 유온 170°C 이상이면 '투입', 아니면 raw_status 그대로 반환"""
+        투입_temp = float(self.config.get("observe_투입_temp_threshold", 170.0))
+        if raw_status == "FILLED" and oil_temp >= 투입_temp:
+            return "투입"
+        return raw_status
+
     def _sync_observe_state(self) -> None:
         if not self.observe_workers:
             return
         left_worker = self.observe_workers.get(2)
         right_worker = self.observe_workers.get(3)
+        topic = self.config.get("mqtt_topic_observe", "observe/status")
+
         if left_worker:
-            left_status = left_worker.get_result().get("status")
-            if left_status != self.observe_left_state and left_status is not None:
-                self.observe_left_state = left_status
-                topic = self.config.get("mqtt_topic_observe", "observe/status")
-                if self.mqtt_client:
-                    try:
-                        self.mqtt_client.client.publish(topic, f"LEFT:{left_status}")
-                    except Exception:
-                        pass
+            left_result = left_worker.get_result()
+            left_status = left_result.get("status")
+            if left_status is not None:
+                if left_status != self.observe_left_state:
+                    self.observe_left_state = left_status
+                    self._log_ops_event(
+                        "observe_state_sync",
+                        side="left",
+                        status=left_status,
+                        top1=left_result.get("top1"),
+                        prob=left_result.get("prob"),
+                    )
+                left_effective = self._get_effective_observe_state(
+                    left_status, self.temps.get("pot1_oil", 0.0)
+                )
+                if left_effective != self.observe_left_effective:
+                    self.observe_left_effective = left_effective
+                    if self.mqtt_client:
+                        try:
+                            self.mqtt_client.client.publish(topic, f"LEFT:{left_effective}")
+                            self._log_ops_event("observe_mqtt_publish", side="left", topic=topic, message=f"LEFT:{left_effective}")
+                        except Exception:
+                            pass
+
         if right_worker:
-            right_status = right_worker.get_result().get("status")
-            if right_status != self.observe_right_state and right_status is not None:
-                self.observe_right_state = right_status
-                topic = self.config.get("mqtt_topic_observe", "observe/status")
-                if self.mqtt_client:
-                    try:
-                        self.mqtt_client.client.publish(topic, f"RIGHT:{right_status}")
-                    except Exception:
-                        pass
+            right_result = right_worker.get_result()
+            right_status = right_result.get("status")
+            if right_status is not None:
+                if right_status != self.observe_right_state:
+                    self.observe_right_state = right_status
+                    self._log_ops_event(
+                        "observe_state_sync",
+                        side="right",
+                        status=right_status,
+                        top1=right_result.get("top1"),
+                        prob=right_result.get("prob"),
+                    )
+                right_effective = self._get_effective_observe_state(
+                    right_status, self.temps.get("pot2_oil", 0.0)
+                )
+                if right_effective != self.observe_right_effective:
+                    self.observe_right_effective = right_effective
+                    if self.mqtt_client:
+                        try:
+                            self.mqtt_client.client.publish(topic, f"RIGHT:{right_effective}")
+                            self._log_ops_event("observe_mqtt_publish", side="right", topic=topic, message=f"RIGHT:{right_effective}")
+                        except Exception:
+                            pass
 
     def start(self) -> None:
         print("=" * 60)
