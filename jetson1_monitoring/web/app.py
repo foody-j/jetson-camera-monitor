@@ -113,4 +113,12 @@ def create_app(cameras: Dict[int, object], state: object, config: dict) -> FastA
             pass
         return {"ok": True}
 
+    @app.post("/api/control/night-summary/publish")
+    async def publish_night_summary_now():
+        try:
+            detected = state.force_publish_next_day_night_result()
+            return {"ok": True, "person_detected": bool(detected)}
+        except Exception:
+            return {"ok": False}
+
     return app

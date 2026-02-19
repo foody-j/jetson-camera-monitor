@@ -42,6 +42,7 @@
         <div class="control-group">
             <div class="control-title">MQTT</div>
             <button class="btn" onclick="publishNow()">Publish</button>
+            <button class="btn btn-test" onclick="publishNightSummaryNow()">Night Summary Test</button>
             <button class="btn" onclick="toggleMqttLog()">Log</button>
         </div>
     </div>
@@ -106,6 +107,23 @@
 
         function publishNow() {
             postJSON('/api/control/publish', {});
+        }
+
+        async function publishNightSummaryNow() {
+            try {
+                const res = await fetch('/api/control/night-summary/publish', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                const result = data && data.person_detected ? 'TRUE' : 'FALSE';
+                const bar = document.getElementById('status-bar');
+                bar.textContent = `[TEST] Night summary published: person_detected=${result}`;
+                setTimeout(updateStatus, 500);
+            } catch (e) {
+                console.error('Night summary publish failed:', e);
+            }
         }
 
         async function toggleMqttLog() {

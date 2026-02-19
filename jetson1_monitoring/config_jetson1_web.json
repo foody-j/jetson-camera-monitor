@@ -34,6 +34,9 @@
   "motion_min_area": 2500,
   "mog2_varthresh": 24,
   "binary_thresh": 220,
+  "snapshot_dir": "Detection",
+  "snapshot_cooldown_sec": 15,
+  "snapshot_warmup_frames": 30,
 
   "camera_person_enabled": true,
   "stirfry_left_enabled": true,

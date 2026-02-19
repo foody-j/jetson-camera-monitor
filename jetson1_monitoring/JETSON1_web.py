@@ -319,6 +319,9 @@ class PersonDetectionWorker(threading.Thread):
         self.motion_min_area = int(config.get("motion_min_area", 2500))
         self.binary_thresh = int(config.get("binary_thresh", 220))
         self.mog2_varthresh = int(config.get("mog2_varthresh", 24))
+        self.warmup_frames = int(config.get("snapshot_warmup_frames", 30))
+        self.snapshot_cooldown_sec = float(config.get("snapshot_cooldown_sec", 15))
+        self.snapshot_dir = str(config.get("snapshot_dir", "Detection"))
 
         self.periodic_off_enabled = bool(config.get("periodic_off_pulse_enabled", True))
         self.periodic_off_interval_min = float(config.get("periodic_off_pulse_interval_min", 0.05))
@@ -335,15 +338,24 @@ class PersonDetectionWorker(threading.Thread):
         self.motion_detected = False
         self.last_confidence = 0.0
         self.detection_count = 0
+        self.night_detected_once = False
+        self.last_night_detected_result = False
 
         self.last_person_detected_time = None
         self.det_hold_start = None
         self.on_triggered = False
+        self._last_daytime = None
 
         self.running = False
         self.frame_idx = 0
         self.yolo_frame_skip = 0
         self.motion_frame_skip = 0
+        self._night_person_state = None
+        self._night_motion_state = None
+        self.snapshot_count = 0
+        self.last_snapshot_path = None
+        self.last_snapshot_time = None
+        self.last_snapshot_tick = None
 
         self.bg = cv2.createBackgroundSubtractorMOG2(
             history=500, varThreshold=self.mog2_varthresh, detectShadows=True
@@ -390,6 +402,23 @@ class PersonDetectionWorker(threading.Thread):
 
     def _update_mode(self, now: datetime) -> None:
         daytime = self._is_daytime(now)
+        if self._last_daytime is None:
+            self._last_daytime = daytime
+            if not daytime:
+                self.night_detected_once = False
+        elif self._last_daytime and not daytime:
+            self.night_detected_once = False
+            self._night_person_state = None
+            self.parent._log_ops_event("night_summary_reset")
+        elif (not self._last_daytime) and daytime:
+            self.last_night_detected_result = bool(self.night_detected_once)
+            self.parent._log_ops_event(
+                "night_summary_finalized",
+                detected=self.last_night_detected_result,
+            )
+            self.night_detected_once = False
+        self._last_daytime = daytime
+
         if daytime:
             if self.off_triggered_once or self.periodic_off_active:
                 self.off_triggered_once = False
@@ -397,6 +426,7 @@ class PersonDetectionWorker(threading.Thread):
                 self.night_check_active = False
                 self.night_no_person_deadline = None
                 self.on_triggered = False
+                self.parent._log_ops_event("night_mode_reset", mode=self.mode)
             if self.parent.auto_relay_enabled and not self.on_triggered and self.parent.startup_on_pulse_enabled:
                 self.parent.relay_turn_on(publish_to_jetson2=True)
                 self.parent.publish_robot_control("ON")
@@ -407,6 +437,12 @@ class PersonDetectionWorker(threading.Thread):
                 self.night_no_person_deadline = now + timedelta(minutes=self.night_check_minutes)
                 self.det_hold_start = None
                 self.off_triggered_once = False
+                self.parent._log_ops_event(
+                    "night_mode_enter",
+                    mode=self.mode,
+                    night_check_minutes=self.night_check_minutes,
+                    deadline=self.night_no_person_deadline.strftime("%Y-%m-%d %H:%M:%S"),
+                )
 
     def _process_day(self, frame: np.ndarray, now: datetime) -> None:
         if not self.yolo_model:
@@ -460,13 +496,28 @@ class PersonDetectionWorker(threading.Thread):
                     detected = any(r.names.get(int(c), "") == "person" for c in r.boxes.cls)
                 if detected:
                     self.person_detected = True
+                    self.night_detected_once = True
                     self.last_person_detected_time = now
                     self.night_no_person_deadline = now + timedelta(minutes=self.night_check_minutes)
+                    if self._night_person_state is not True:
+                        self.parent._log_ops_event(
+                            "night_person_detected",
+                            deadline=self.night_no_person_deadline.strftime("%Y-%m-%d %H:%M:%S"),
+                        )
+                    self._night_person_state = True
                 else:
                     self.person_detected = False
+                    if self._night_person_state is not False:
+                        self.parent._log_ops_event("night_person_not_detected")
+                    self._night_person_state = False
                 if self.night_no_person_deadline is not None and now >= self.night_no_person_deadline:
                     if not self.off_triggered_once:
                         self.parent.send_off_pulse()
+                        self.parent._log_ops_event(
+                            "night_off_triggered",
+                            reason="no_person_timeout",
+                            night_check_minutes=self.night_check_minutes,
+                        )
                         self.off_triggered_once = True
                         if self.periodic_off_enabled:
                             self.periodic_off_active = True
@@ -490,6 +541,18 @@ class PersonDetectionWorker(threading.Thread):
                 motion = True
                 break
         self.motion_detected = motion
+        if motion and self.frame_idx > self.warmup_frames:
+            now_tick = time.monotonic()
+            can_save = (
+                self.last_snapshot_tick is None
+                or ((now_tick - self.last_snapshot_tick) >= self.snapshot_cooldown_sec)
+            )
+            if can_save:
+                self._save_snapshot(frame, now)
+                self.last_snapshot_tick = now_tick
+        if self._night_motion_state != motion:
+            self.parent._log_ops_event("night_motion_changed", motion=motion)
+            self._night_motion_state = motion
 
     def _check_periodic_off(self, now: datetime) -> None:
         if not self.periodic_off_enabled:
@@ -504,15 +567,42 @@ class PersonDetectionWorker(threading.Thread):
             self.parent.send_off_pulse()
             self.last_off_pulse = now
 
+    def _save_snapshot(self, frame: np.ndarray, timestamp: datetime) -> None:
+        try:
+            day_dir = timestamp.strftime("%Y%m%d")
+            ts_name = timestamp.strftime("%H%M%S_%f")[:-3]
+            expanded = os.path.expanduser(self.snapshot_dir)
+            if os.path.isabs(expanded):
+                base_dir = expanded
+            else:
+                base_dir = os.path.join(os.path.expanduser("~"), expanded)
+            out_dir = os.path.join(base_dir, day_dir)
+            os.makedirs(out_dir, mode=0o755, exist_ok=True)
+            out_path = os.path.join(out_dir, f"{ts_name}.jpg")
+            cv2.imwrite(out_path, frame)
+
+            self.snapshot_count += 1
+            self.last_snapshot_path = out_path
+            self.last_snapshot_time = timestamp
+            self.parent._log_ops_event(
+                "night_snapshot_saved",
+                image_path=out_path,
+                count=self.snapshot_count,
+            )
+        except Exception as e:
+            if self.parent.debug_print:
+                print(f"[Night Snapshot] save failed: {e}")
+
 
 class PersonDataCollectionWorker(threading.Thread):
     """Scheduled person data collection (weekday, time window)."""
 
-    def __init__(self, camera_worker: CameraWorker, config: dict, stop_event: threading.Event):
+    def __init__(self, camera_worker: CameraWorker, config: dict, stop_event: threading.Event, parent=None):
         super().__init__(daemon=True)
         self.camera = camera_worker
         self.config = config
         self.stop_event = stop_event
+        self.parent = parent
         self.enabled = bool(config.get("person_data_collection_enabled", False))
 
         self.start_time = config.get("person_collection_start_time", "08:30")
@@ -566,6 +656,14 @@ class PersonDataCollectionWorker(threading.Thread):
 
         self.last_saved = now
         self.saved_count += 1
+        if self.parent:
+            self.parent._log_ops_event(
+                "person_snapshot_saved",
+                path=out_path,
+                width=save_w,
+                height=save_h,
+                count=self.saved_count,
+            )
 
 
 class Jetson1Web:
@@ -593,6 +691,8 @@ class Jetson1Web:
 
         self.mqtt_message_log = deque(maxlen=int(config.get("mqtt_log_maxlen", 200)))
         self.mqtt_log_dir = os.path.join(SCRIPT_DIR, "mqtt_logs")
+        self.ops_log_dir = os.path.join(SCRIPT_DIR, "ops_logs")
+        self._ops_log_lock = threading.Lock()
 
         self.cameras: Dict[int, Optional[CameraWorker]] = {}
         self._init_cameras()
@@ -678,7 +778,7 @@ class Jetson1Web:
             return
         if not self.config.get("person_data_collection_enabled", False):
             return
-        self.person_collection_worker = PersonDataCollectionWorker(cam, self.config, self.stop_event)
+        self.person_collection_worker = PersonDataCollectionWorker(cam, self.config, self.stop_event, self)
 
     def _init_mqtt(self) -> None:
         if not self.config.get("mqtt_enabled", False):
@@ -713,8 +813,10 @@ class Jetson1Web:
 
     def relay_turn_on(self, publish_to_jetson2: bool = True) -> None:
         if not _GPIO_AVAILABLE:
+            self._log_ops_event("relay_on_skipped", reason="gpio_unavailable")
             return
         if self.relay_enabled:
+            self._log_ops_event("relay_on_skipped", reason="already_on")
             return
         try:
             if self.relay_mode == "pulse":
@@ -726,13 +828,17 @@ class Jetson1Web:
             self.relay_enabled = True
             if publish_to_jetson2:
                 self.publish_relay_status("ON")
+            self._log_ops_event("relay_on", mode=self.relay_mode, publish_to_jetson2=publish_to_jetson2)
         except Exception as e:
             print(f"[GPIO] Relay ON 실패: {e}")
+            self._log_ops_event("relay_on_error", error=str(e))
 
     def relay_turn_off(self) -> None:
         if not _GPIO_AVAILABLE:
+            self._log_ops_event("relay_off_skipped", reason="gpio_unavailable")
             return
         if not self.relay_enabled:
+            self._log_ops_event("relay_off_skipped", reason="already_off")
             return
         try:
             if self.relay_mode == "pulse":
@@ -743,11 +849,14 @@ class Jetson1Web:
                 GPIO.output(29, GPIO.LOW)
             self.relay_enabled = False
             self.publish_relay_status("OFF")
+            self._log_ops_event("relay_off", mode=self.relay_mode)
         except Exception as e:
             print(f"[GPIO] Relay OFF 실패: {e}")
+            self._log_ops_event("relay_off_error", error=str(e))
 
     def send_off_pulse(self) -> None:
         if not _GPIO_AVAILABLE:
+            self._log_ops_event("relay_off_pulse_skipped", reason="gpio_unavailable")
             return
         try:
             GPIO.output(29, GPIO.HIGH)
@@ -756,8 +865,10 @@ class Jetson1Web:
             self.relay_enabled = False
             self.publish_relay_status("OFF")
             self.publish_robot_control("OFF")
+            self._log_ops_event("relay_off_pulse", mode=self.relay_mode)
         except Exception as e:
             print(f"[GPIO] OFF 펄스 실패: {e}")
+            self._log_ops_event("relay_off_pulse_error", error=str(e))
 
     def publish_relay_status(self, status: str) -> None:
         if not self.mqtt_client:
@@ -982,12 +1093,24 @@ class Jetson1Web:
             "session_id": self.stirfry_pot1_session_id,
             "food_type": self.stirfry_pot1_food_type,
         })
+        self._log_ops_event(
+            "stirfry_recording_start",
+            pot="pot1",
+            session_id=self.stirfry_pot1_session_id,
+            food_type=self.stirfry_pot1_food_type,
+        )
 
     def stop_stirfry_pot1_recording(self):
         if not self.stirfry_pot1_recording:
             return
         self.stirfry_pot1_recording = False
         self.stirfry_pot1_skip_counter = 0
+        self._log_ops_event(
+            "stirfry_recording_stop",
+            pot="pot1",
+            session_id=self.stirfry_pot1_session_id,
+            frame_count=self.stirfry_pot1_frame_count,
+        )
 
     def start_stirfry_pot2_recording(self):
         if not self.stirfry_save_enabled:
@@ -1003,12 +1126,24 @@ class Jetson1Web:
             "session_id": self.stirfry_pot2_session_id,
             "food_type": self.stirfry_pot2_food_type,
         })
+        self._log_ops_event(
+            "stirfry_recording_start",
+            pot="pot2",
+            session_id=self.stirfry_pot2_session_id,
+            food_type=self.stirfry_pot2_food_type,
+        )
 
     def stop_stirfry_pot2_recording(self):
         if not self.stirfry_pot2_recording:
             return
         self.stirfry_pot2_recording = False
         self.stirfry_pot2_skip_counter = 0
+        self._log_ops_event(
+            "stirfry_recording_stop",
+            pot="pot2",
+            session_id=self.stirfry_pot2_session_id,
+            frame_count=self.stirfry_pot2_frame_count,
+        )
 
     def _save_stirfry_frame(self, frame: np.ndarray, pot: str):
         if not self.stirfry_save_enabled or frame is None:
@@ -1044,6 +1179,13 @@ class Jetson1Web:
         }
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, ensure_ascii=False)
+        self._log_ops_event(
+            "stirfry_snapshot_saved",
+            pot=pot,
+            image_path=out_path,
+            meta_path=meta_path,
+            frame_id=ts_name,
+        )
 
     def _collection_loop(self):
         while not self.stop_event.is_set():
@@ -1090,7 +1232,25 @@ class Jetson1Web:
         except Exception:
             pass
 
-    def build_status(self) -> dict:
+    def _log_ops_event(self, event: str, **data) -> None:
+        ts = datetime.now()
+        entry = {
+            "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            "event": event,
+            **data,
+        }
+        try:
+            os.makedirs(self.ops_log_dir, exist_ok=True)
+            date_str = ts.strftime("%Y-%m-%d")
+            path = os.path.join(self.ops_log_dir, f"ops_{date_str}.jsonl")
+            with self._ops_log_lock:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception as e:
+            if self.debug_print:
+                print(f"[OPS 로그] 저장 실패: {e}")
+
+    def build_status(self, person_detected_override: Optional[bool] = None) -> dict:
         person = self.person_worker
         mqtt_connected = False
         if self.mqtt_client:
@@ -1098,6 +1258,15 @@ class Jetson1Web:
                 mqtt_connected = self.mqtt_client.is_connected()
             except Exception:
                 mqtt_connected = False
+        if person_detected_override is not None:
+            person_detected_value = bool(person_detected_override)
+        elif person:
+            is_daytime = person._is_daytime(datetime.now())
+            person_detected_value = (
+                bool(person.last_night_detected_result) if is_daytime else bool(person.person_detected)
+            )
+        else:
+            person_detected_value = False
         person_collection = {
             "enabled": bool(self.person_collection_worker and self.person_collection_worker.enabled),
             "count": self.person_collection_worker.saved_count if self.person_collection_worker else 0,
@@ -1107,12 +1276,21 @@ class Jetson1Web:
                 else None
             ),
         }
+        night_snapshot = {
+            "count": person.snapshot_count if person else 0,
+            "last_saved": (
+                person.last_snapshot_time.strftime("%Y-%m-%d %H:%M:%S")
+                if person and person.last_snapshot_time
+                else None
+            ),
+            "last_path": person.last_snapshot_path if person else None,
+        }
         return {
             "device_id": self.config.get("device_id", "jetson1"),
             "device_name": self.config.get("device_name", "Jetson1_Web"),
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "mode": person.mode if person else "unknown",
-            "person_detected": person.person_detected if person else False,
+            "person_detected": person_detected_value,
             "motion_detected": person.motion_detected if person else False,
             "yolo_confidence": person.last_confidence if person else 0.0,
             "relay_enabled": self.relay_enabled,
@@ -1124,6 +1302,7 @@ class Jetson1Web:
                 "pot2_frames": self.stirfry_pot2_frame_count,
             },
             "person_collection": person_collection,
+            "night_snapshot": night_snapshot,
             "mqtt": {"connected": mqtt_connected},
             "system": self.system_info.get_dynamic_info(),
         }
@@ -1136,15 +1315,25 @@ class Jetson1Web:
         if self.person_worker:
             self.person_worker.mode = mode
 
-    def _publish_mqtt_status(self) -> None:
+    def _publish_mqtt_status(self, person_detected_override: Optional[bool] = None) -> None:
         if not self.mqtt_client:
             return
         topic = self.config.get("mqtt_topic_jetson1_status", "jetson1/status")
         try:
-            payload = json.dumps(self.build_status(), ensure_ascii=False)
+            payload = json.dumps(self.build_status(person_detected_override=person_detected_override), ensure_ascii=False)
             self.mqtt_client.client.publish(topic, payload, qos=self.config.get("mqtt_qos", 1))
         except Exception:
             pass
+
+    def force_publish_next_day_night_result(self) -> bool:
+        if not self.person_worker:
+            return False
+        result = bool(self.person_worker.night_detected_once)
+        self.person_worker.last_night_detected_result = result
+        self.person_worker.night_detected_once = False
+        self._log_ops_event("night_summary_force_publish", detected=result)
+        self._publish_mqtt_status(person_detected_override=result)
+        return result
 
     def start(self) -> None:
         print("=" * 60)
