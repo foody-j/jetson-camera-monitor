@@ -43,8 +43,9 @@
             <div class="control-title">MQTT</div>
             <button class="btn" onclick="publishNow()">Publish</button>
             <button class="btn btn-test" onclick="publishNightSummaryNow()">Night Summary Test</button>
-            <button class="btn btn-test" onclick="publishPersonDetected(true)">Person TRUE</button>
-            <button class="btn btn-test" onclick="publishPersonDetected(false)">Person FALSE</button>
+            <button class="btn btn-test" onclick="publishPersonDetected(true)">Person TRUE (HOLD)</button>
+            <button class="btn btn-test" onclick="publishPersonDetected(false)">Person FALSE (HOLD)</button>
+            <button class="btn" onclick="clearPersonDetectedOverride()">Person AUTO</button>
             <button class="btn" onclick="toggleMqttLog()">Log</button>
         </div>
     </div>
@@ -133,15 +134,30 @@
                 const res = await fetch('/api/control/person-detected/publish', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ value: !!value })
+                    body: JSON.stringify({ value: !!value, hold: true })
                 });
                 const data = await res.json();
                 const result = data && data.person_detected ? 'TRUE' : 'FALSE';
                 const bar = document.getElementById('status-bar');
-                bar.textContent = `[TEST] Forced publish: person_detected=${result}`;
+                bar.textContent = `[TEST] Forced HOLD: person_detected=${result}`;
                 setTimeout(updateStatus, 500);
             } catch (e) {
                 console.error('Forced person_detected publish failed:', e);
+            }
+        }
+
+        async function clearPersonDetectedOverride() {
+            try {
+                await fetch('/api/control/person-detected/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const bar = document.getElementById('status-bar');
+                bar.textContent = '[TEST] Forced HOLD cleared: person_detected=AUTO';
+                setTimeout(updateStatus, 500);
+            } catch (e) {
+                console.error('Clear person_detected override failed:', e);
             }
         }
 
@@ -201,6 +217,9 @@
                     `Mode: ${data.mode} | Person: ${data.person_detected ? 'YES' : 'NO'} | Motion: ${data.motion_detected ? 'YES' : 'NO'} | ` +
                     `Relay: ${data.relay_enabled ? 'ON' : 'OFF'} | Vibration: ${data.vibration ? data.vibration.status : 'N/A'} | ` +
                     `Updated: ${ts.toLocaleTimeString()}`;
+                if (data.person_detected_forced !== null && data.person_detected_forced !== undefined) {
+                    header += ` | PersonForced: ${data.person_detected_forced ? 'TRUE' : 'FALSE'}`;
+                }
 
                 if (data.person_collection) {
                     const pc = data.person_collection;

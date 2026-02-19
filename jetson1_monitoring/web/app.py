@@ -125,8 +125,22 @@ def create_app(cameras: Dict[int, object], state: object, config: dict) -> FastA
     async def publish_person_detected(payload: dict = Body(...)):
         try:
             detected = bool(payload.get("value", False))
-            state._publish_mqtt_status(person_detected_override=detected)
-            return {"ok": True, "person_detected": detected}
+            hold = bool(payload.get("hold", True))
+            if hold:
+                state.set_forced_person_detected(detected)
+                state._publish_mqtt_status()
+            else:
+                state._publish_mqtt_status(person_detected_override=detected)
+            return {"ok": True, "person_detected": detected, "hold": hold}
+        except Exception:
+            return {"ok": False}
+
+    @app.post("/api/control/person-detected/clear")
+    async def clear_person_detected_override():
+        try:
+            state.set_forced_person_detected(None)
+            state._publish_mqtt_status()
+            return {"ok": True}
         except Exception:
             return {"ok": False}
 

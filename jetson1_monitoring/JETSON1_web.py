@@ -745,6 +745,7 @@ class Jetson1Web:
         self.stirfry_pot2_skip_counter = 0
         self.pot1_discharge_timer = None
         self.pot2_discharge_timer = None
+        self.forced_person_detected: Optional[bool] = None
 
         self.person_collection_worker: Optional[PersonDataCollectionWorker] = None
         self._init_person_collection_worker()
@@ -1265,6 +1266,8 @@ class Jetson1Web:
                 mqtt_connected = False
         if person_detected_override is not None:
             person_detected_value = bool(person_detected_override)
+        elif self.forced_person_detected is not None:
+            person_detected_value = bool(self.forced_person_detected)
         elif person:
             is_daytime = person._is_daytime(datetime.now())
             person_detected_value = (
@@ -1296,6 +1299,7 @@ class Jetson1Web:
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "mode": person.mode if person else "unknown",
             "person_detected": person_detected_value,
+            "person_detected_forced": self.forced_person_detected,
             "motion_detected": person.motion_detected if person else False,
             "yolo_confidence": person.last_confidence if person else 0.0,
             "relay_enabled": self.relay_enabled,
@@ -1343,6 +1347,9 @@ class Jetson1Web:
         self._log_ops_event("night_summary_force_publish", detected=result)
         self._publish_mqtt_status(person_detected_override=result)
         return result
+
+    def set_forced_person_detected(self, value: Optional[bool]) -> None:
+        self.forced_person_detected = None if value is None else bool(value)
 
     def start(self) -> None:
         print("=" * 60)
