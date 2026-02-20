@@ -225,9 +225,6 @@ def create_app(
         @app.post("/api/control/mqtt/quick")
         async def mqtt_quick(payload: dict = Body(...)):
             action = str(payload.get("action", "")).strip().lower()
-            qos = int(config.get("mqtt_qos", 1))
-            topic_observe = config.get("mqtt_topic_observe", "observe/status")
-            topic_frying = config.get("mqtt_topic_frying", "frying/status")
             topic_status = config.get("mqtt_topic_status", "jetson2/status")
 
             if action not in {
@@ -239,22 +236,13 @@ def create_app(
                 return {"ok": False, "error": "invalid_action"}
 
             sent = []
-            action_map = {
-                "observe_input_left": (topic_observe, "LEFT:투입"),
-                "observe_input_right": (topic_observe, "RIGHT:투입"),
-                "frying_discharge_left": (topic_frying, "LEFT:DISCHARGE"),
-                "frying_discharge_right": (topic_frying, "RIGHT:DISCHARGE"),
-            }
-            topic, message = action_map[action]
-            if _mqtt_publish(topic, message, qos=qos):
-                sent.append({"topic": topic, "message": message})
-
-            # Keep state in sync so the same change is visible on jetson2/status.
             try:
                 if action == "observe_input_left":
-                    state.observe_left_state = "투입"
+                    state.observe_left_state = "FILLED"
+                    state.observe_left_effective = "투입"
                 elif action == "observe_input_right":
-                    state.observe_right_state = "투입"
+                    state.observe_right_state = "FILLED"
+                    state.observe_right_effective = "투입"
                 elif action == "frying_discharge_left":
                     state.pot1_status = "DISCHARGE"
                 elif action == "frying_discharge_right":

@@ -2339,6 +2339,18 @@ class Jetson2Web:
             print(f"[MQTT] publish error: {e}")
 
     def _build_status_payload(self) -> dict:
+        observe_left = self.observe_left_effective
+        if observe_left is None:
+            observe_left = self.observe_left_state
+        if observe_left is None:
+            observe_left = "UNKNOWN"
+
+        observe_right = self.observe_right_effective
+        if observe_right is None:
+            observe_right = self.observe_right_state
+        if observe_right is None:
+            observe_right = "UNKNOWN"
+
         return {
             "device_id": self.config.get("device_id", "jetson2"),
             "device_name": self.config.get("device_name", "Jetson2_Web"),
@@ -2350,8 +2362,8 @@ class Jetson2Web:
                 "right": self.pot2_status,
             },
             "observe": {
-                "left": self.observe_left_state if self.observe_left_state is not None else "UNKNOWN",
-                "right": self.observe_right_state if self.observe_right_state is not None else "UNKNOWN",
+                "left": observe_left,
+                "right": observe_right,
             },
             "vibration": {"status": self.vibration_status},
             "system": self.system_info.get_dynamic_info() if self.system_info else {},
@@ -2369,7 +2381,6 @@ class Jetson2Web:
             return
         left_worker = self.observe_workers.get(2)
         right_worker = self.observe_workers.get(3)
-        topic = self.config.get("mqtt_topic_observe", "observe/status")
 
         if left_worker:
             left_result = left_worker.get_result()
@@ -2389,12 +2400,7 @@ class Jetson2Web:
                 )
                 if left_effective != self.observe_left_effective:
                     self.observe_left_effective = left_effective
-                    if self.mqtt_client:
-                        try:
-                            self.mqtt_client.client.publish(topic, f"LEFT:{left_effective}")
-                            self._log_ops_event("observe_mqtt_publish", side="left", topic=topic, message=f"LEFT:{left_effective}")
-                        except Exception:
-                            pass
+                    self._log_ops_event("observe_effective_changed", side="left", effective=left_effective)
 
         if right_worker:
             right_result = right_worker.get_result()
@@ -2414,12 +2420,7 @@ class Jetson2Web:
                 )
                 if right_effective != self.observe_right_effective:
                     self.observe_right_effective = right_effective
-                    if self.mqtt_client:
-                        try:
-                            self.mqtt_client.client.publish(topic, f"RIGHT:{right_effective}")
-                            self._log_ops_event("observe_mqtt_publish", side="right", topic=topic, message=f"RIGHT:{right_effective}")
-                        except Exception:
-                            pass
+                    self._log_ops_event("observe_effective_changed", side="right", effective=right_effective)
 
     def start(self) -> None:
         print("=" * 60)
