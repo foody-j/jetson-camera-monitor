@@ -1061,6 +1061,8 @@ class Jetson2Web:
         self.pot2_completion_info = {}
         self.pot1_discharge_timer = None
         self.pot2_discharge_timer = None
+        self.pot1_discharge_idle_timer = None
+        self.pot2_discharge_idle_timer = None
         self.pot1_timeout_timer = None
         self.pot2_timeout_timer = None
         self.pot1_timeout_seconds = int(config.get("pot1_timeout_seconds", 5))
@@ -1076,6 +1078,9 @@ class Jetson2Web:
 
         self.recording_delay_after_discharge = float(
             config.get("recording_delay_after_discharge", 50)
+        )
+        self.discharge_to_idle_delay_sec = float(
+            config.get("discharge_to_idle_delay_sec", 60)
         )
         self.data_collection_interval_normal = float(
             config.get("data_collection_interval_normal", 1)
@@ -1262,6 +1267,7 @@ class Jetson2Web:
         food_type = message.payload.decode().strip()
         self.pot1_food_type = food_type
         self.pot1_status = "COOKING"
+        self._cancel_discharge_idle_timer(1)
         if not self.frying_running:
             self._set_frying_enabled(True)
         if not self.observe_running:
@@ -1300,6 +1306,7 @@ class Jetson2Web:
         food_type = message.payload.decode().strip()
         self.pot2_food_type = food_type
         self.pot2_status = "COOKING"
+        self._cancel_discharge_idle_timer(2)
         if not self.frying_running:
             self._set_frying_enabled(True)
         if not self.observe_running:
@@ -1344,6 +1351,7 @@ class Jetson2Web:
                     pass
                 self.pot1_timeout_timer = None
             self.pot1_status = "IDLE"
+            self._cancel_discharge_idle_timer(1)
             if self.pot1_collecting:
                 self.stop_pot1_collection()
             worker = self.frying_workers.get(0)
@@ -1361,6 +1369,7 @@ class Jetson2Web:
                     pass
                 self.pot2_timeout_timer = None
             self.pot2_status = "IDLE"
+            self._cancel_discharge_idle_timer(2)
             if self.pot2_collecting:
                 self.stop_pot2_collection()
             worker = self.frying_workers.get(1)
@@ -1609,6 +1618,7 @@ class Jetson2Web:
                 elif is_cleaning:
                     pass
                 elif process_type == "배출":
+                    self._set_discharge_with_idle_timer(1, reason="robot_process_discharge")
                     if self.pot1_collecting and not self.pot1_discharge_timer:
                         self.pot1_discharge_timer = threading.Timer(
                             self.recording_delay_after_discharge,
@@ -1633,6 +1643,7 @@ class Jetson2Web:
                 elif is_cleaning:
                     pass
                 elif process_type == "배출":
+                    self._set_discharge_with_idle_timer(2, reason="robot_process_discharge")
                     if self.pot2_collecting and not self.pot2_discharge_timer:
                         self.pot2_discharge_timer = threading.Timer(
                             self.recording_delay_after_discharge,
@@ -1663,6 +1674,54 @@ class Jetson2Web:
         if self.pot2_collecting:
             print(f"[POT2] 배출 후 {self.recording_delay_after_discharge}초 경과 - 수집 종료")
             self.stop_pot2_collection()
+
+    def _cancel_discharge_idle_timer(self, pot: int) -> None:
+        timer_attr = "pot1_discharge_idle_timer" if pot == 1 else "pot2_discharge_idle_timer"
+        timer = getattr(self, timer_attr)
+        if timer:
+            try:
+                timer.cancel()
+            except Exception:
+                pass
+            setattr(self, timer_attr, None)
+
+    def _set_discharge_with_idle_timer(self, pot: int, reason: str = "") -> None:
+        if pot == 1:
+            if self.pot1_status != "DISCHARGE":
+                self.pot1_status = "DISCHARGE"
+                print(f"[POT1] 상태 변경: DISCHARGE ({reason})")
+                self._log_ops_event("pot_status_changed", pot=1, status="DISCHARGE", reason=reason)
+            if self.pot1_discharge_idle_timer is None:
+                self.pot1_discharge_idle_timer = threading.Timer(
+                    self.discharge_to_idle_delay_sec,
+                    self._set_pot1_idle_after_discharge,
+                )
+                self.pot1_discharge_idle_timer.start()
+        else:
+            if self.pot2_status != "DISCHARGE":
+                self.pot2_status = "DISCHARGE"
+                print(f"[POT2] 상태 변경: DISCHARGE ({reason})")
+                self._log_ops_event("pot_status_changed", pot=2, status="DISCHARGE", reason=reason)
+            if self.pot2_discharge_idle_timer is None:
+                self.pot2_discharge_idle_timer = threading.Timer(
+                    self.discharge_to_idle_delay_sec,
+                    self._set_pot2_idle_after_discharge,
+                )
+                self.pot2_discharge_idle_timer.start()
+
+    def _set_pot1_idle_after_discharge(self) -> None:
+        self.pot1_discharge_idle_timer = None
+        if self.pot1_status == "DISCHARGE":
+            self.pot1_status = "IDLE"
+            print(f"[POT1] 상태 변경: IDLE (DISCHARGE 후 {self.discharge_to_idle_delay_sec:.0f}초)")
+            self._log_ops_event("pot_status_changed", pot=1, status="IDLE", reason="discharge_timeout")
+
+    def _set_pot2_idle_after_discharge(self) -> None:
+        self.pot2_discharge_idle_timer = None
+        if self.pot2_status == "DISCHARGE":
+            self.pot2_status = "IDLE"
+            print(f"[POT2] 상태 변경: IDLE (DISCHARGE 후 {self.discharge_to_idle_delay_sec:.0f}초)")
+            self._log_ops_event("pot_status_changed", pot=2, status="IDLE", reason="discharge_timeout")
 
     def _set_frying_enabled(self, enabled: bool) -> None:
         self.frying_running = enabled
@@ -1928,6 +1987,7 @@ class Jetson2Web:
         self.pot1_frame_counter = 0
         self.pot1_last_collection_ts = 0.0
         self.pot1_status = "COOKING"
+        self._cancel_discharge_idle_timer(1)
 
         base_dir = os.path.expanduser("~/AI_Data")
         food = self.pot1_food_type or "unknown"
@@ -1954,6 +2014,7 @@ class Jetson2Web:
             return
         self.pot1_collecting = False
         self.pot1_status = "IDLE"
+        self._cancel_discharge_idle_timer(1)
         duration = (datetime.now() - self.pot1_start_time).total_seconds() if self.pot1_start_time else 0
 
         self.lift_tracker_pot1.stop_session()
@@ -1999,6 +2060,7 @@ class Jetson2Web:
         self.pot2_frame_counter = 0
         self.pot2_last_collection_ts = 0.0
         self.pot2_status = "COOKING"
+        self._cancel_discharge_idle_timer(2)
 
         base_dir = os.path.expanduser("~/AI_Data")
         food = self.pot2_food_type or "unknown"
@@ -2025,6 +2087,7 @@ class Jetson2Web:
             return
         self.pot2_collecting = False
         self.pot2_status = "IDLE"
+        self._cancel_discharge_idle_timer(2)
         duration = (datetime.now() - self.pot2_start_time).total_seconds() if self.pot2_start_time else 0
 
         self.lift_tracker_pot2.stop_session()
@@ -2499,6 +2562,7 @@ class Jetson2Web:
             while self.running:
                 now = time.time()
                 self._sync_observe_state()
+                self._sync_frying_completion_state()
                 if self.mqtt_client and now - last_mqtt_publish >= mqtt_interval:
                     self._publish_mqtt_status()
                     last_mqtt_publish = now
@@ -2507,6 +2571,22 @@ class Jetson2Web:
             print("[Main] Interrupted by user")
         finally:
             self.stop()
+
+    def _sync_frying_completion_state(self) -> None:
+        # Original completion criteria is handled inside LiftEventTracker and
+        # exposed as completion_detected in frying worker result.
+        left_worker = self.frying_workers.get(0)
+        right_worker = self.frying_workers.get(1)
+
+        if left_worker and self.pot1_collecting:
+            left_result = left_worker.get_result()
+            if bool(left_result.get("completion_detected", False)):
+                self._set_discharge_with_idle_timer(1, reason="tracker_completion")
+
+        if right_worker and self.pot2_collecting:
+            right_result = right_worker.get_result()
+            if bool(right_result.get("completion_detected", False)):
+                self._set_discharge_with_idle_timer(2, reason="tracker_completion")
 
     def _camera_watchdog_loop(self) -> None:
         grace = float(self.config.get("camera_watch_grace_sec", 10))
