@@ -49,8 +49,10 @@
         </div>
         <div class="control-group">
             <div class="control-title">MQTT Quick</div>
-            <button class="btn" onclick="quickMqtt('observe_input')">OBS 투입</button>
-            <button class="btn" onclick="quickMqtt('frying_discharge')">FRY DISCHARGE</button>
+            <button class="btn" onclick="quickMqtt('observe_input_left')">OBS L 투입</button>
+            <button class="btn" onclick="quickMqtt('observe_input_right')">OBS R 투입</button>
+            <button class="btn" onclick="quickMqtt('frying_discharge_left')">FRY L DISCHARGE</button>
+            <button class="btn" onclick="quickMqtt('frying_discharge_right')">FRY R DISCHARGE</button>
             <div style="margin-top:6px;">
                 <input id="mqtt-topic" type="text" placeholder="topic" style="width:220px;">
                 <input id="mqtt-message" type="text" placeholder="message" style="width:220px;">

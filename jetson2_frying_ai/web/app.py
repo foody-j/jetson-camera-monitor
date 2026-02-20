@@ -229,24 +229,24 @@ def create_app(
             topic_observe = config.get("mqtt_topic_observe", "observe/status")
             topic_frying = config.get("mqtt_topic_frying", "frying/status")
 
-            if action not in {"observe_input", "frying_discharge"}:
+            if action not in {
+                "observe_input_left",
+                "observe_input_right",
+                "frying_discharge_left",
+                "frying_discharge_right",
+            }:
                 return {"ok": False, "error": "invalid_action"}
 
             sent = []
-            if action == "observe_input":
-                left_msg = "LEFT:투입"
-                right_msg = "RIGHT:투입"
-                if _mqtt_publish(topic_observe, left_msg, qos=qos):
-                    sent.append({"topic": topic_observe, "message": left_msg})
-                if _mqtt_publish(topic_observe, right_msg, qos=qos):
-                    sent.append({"topic": topic_observe, "message": right_msg})
-            elif action == "frying_discharge":
-                left_msg = "LEFT:DISCHARGE"
-                right_msg = "RIGHT:DISCHARGE"
-                if _mqtt_publish(topic_frying, left_msg, qos=qos):
-                    sent.append({"topic": topic_frying, "message": left_msg})
-                if _mqtt_publish(topic_frying, right_msg, qos=qos):
-                    sent.append({"topic": topic_frying, "message": right_msg})
+            action_map = {
+                "observe_input_left": (topic_observe, "LEFT:투입"),
+                "observe_input_right": (topic_observe, "RIGHT:투입"),
+                "frying_discharge_left": (topic_frying, "LEFT:DISCHARGE"),
+                "frying_discharge_right": (topic_frying, "RIGHT:DISCHARGE"),
+            }
+            topic, message = action_map[action]
+            if _mqtt_publish(topic, message, qos=qos):
+                sent.append({"topic": topic, "message": message})
 
             return {
                 "ok": len(sent) > 0,
