@@ -1089,6 +1089,7 @@ class Jetson1Web:
 
     def start_vibration_check(self):
         if self.vibration_process is not None:
+            self._log_ops_event("vibration_check_skipped", reason="already_running", status=self.vibration_status)
             return
         base_dir = REPO_ROOT
         vibration_script = os.path.join(base_dir, "test_vibration_pymodbus3_finalrev.py")
@@ -1098,6 +1099,7 @@ class Jetson1Web:
         if not os.path.exists(vibration_script):
             print(f"[진동] 오류: {vibration_script} 파일이 없습니다")
             self.vibration_status = "ERROR"
+            self._log_ops_event("vibration_check_failed", reason="script_missing", script=vibration_script)
             return
 
         def run_vibration_check():
@@ -1116,6 +1118,12 @@ class Jetson1Web:
                     text=True,
                 )
                 self.child_processes.append(self.vibration_process)
+                self._log_ops_event(
+                    "vibration_check_started",
+                    pid=self.vibration_process.pid,
+                    baseline_exists=os.path.exists(baseline_file),
+                    unit_ids=env.get("VIB_UNIT_IDS", ""),
+                )
                 stdout, _ = self.vibration_process.communicate(timeout=30)
                 if stdout:
                     print(stdout)
@@ -1123,10 +1131,24 @@ class Jetson1Web:
                     with open(result_file, "r", encoding="utf-8") as f:
                         result = json.load(f)
                     self.vibration_status = result.get("status", "ERROR")
+                    self._log_ops_event(
+                        "vibration_check_completed",
+                        status=self.vibration_status,
+                        result_file=result_file,
+                    )
                 else:
                     self.vibration_status = "ERROR"
-            except Exception:
+                    self._log_ops_event(
+                        "vibration_check_failed",
+                        reason="result_missing",
+                        result_file=result_file,
+                    )
+            except subprocess.TimeoutExpired:
                 self.vibration_status = "ERROR"
+                self._log_ops_event("vibration_check_failed", reason="timeout")
+            except Exception as e:
+                self.vibration_status = "ERROR"
+                self._log_ops_event("vibration_check_failed", reason="exception", error=str(e))
             finally:
                 if self.vibration_process in self.child_processes:
                     self.child_processes.remove(self.vibration_process)
@@ -1138,6 +1160,11 @@ class Jetson1Web:
     def stop_vibration_check(self):
         if self.vibration_process is None:
             return
+        stopped_pid = None
+        try:
+            stopped_pid = self.vibration_process.pid
+        except Exception:
+            stopped_pid = None
         try:
             self.vibration_process.terminate()
             self.vibration_process.wait(timeout=3)
@@ -1151,6 +1178,7 @@ class Jetson1Web:
             self.child_processes.remove(self.vibration_process)
         self.vibration_process = None
         self.vibration_status = "IDLE"
+        self._log_ops_event("vibration_check_stopped", pid=stopped_pid, status=self.vibration_status)
 
     def start_stirfry_pot1_recording(self):
         if not self.stirfry_save_enabled:

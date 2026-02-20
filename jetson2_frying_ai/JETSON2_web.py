@@ -2270,6 +2270,12 @@ class Jetson2Web:
             except Exception:
                 running_pid = "unknown"
             print(f"[진동] 시작 스킵: 이미 실행 중(pid={running_pid}) status={self.vibration_status}")
+            self._log_ops_event(
+                "vibration_check_skipped",
+                reason="already_running",
+                pid=running_pid,
+                status=self.vibration_status,
+            )
             return
         base_dir = os.path.dirname(os.path.abspath(SCRIPT_DIR))
         vibration_script = os.path.join(base_dir, "test_vibration_pymodbus3_finalrev.py")
@@ -2279,6 +2285,7 @@ class Jetson2Web:
         if not os.path.exists(vibration_script):
             print(f"[진동] 오류: {vibration_script} 파일이 없습니다")
             self.vibration_status = "ERROR"
+            self._log_ops_event("vibration_check_failed", reason="script_missing", script=vibration_script)
             return
 
         def run_vibration_check():
@@ -2304,6 +2311,12 @@ class Jetson2Web:
                     f"pid={self.vibration_process.pid} cmd={' '.join(cmd)} "
                     f"baseline={'Y' if os.path.exists(baseline_file) else 'N'}"
                 )
+                self._log_ops_event(
+                    "vibration_check_started",
+                    pid=self.vibration_process.pid,
+                    baseline_exists=os.path.exists(baseline_file),
+                    unit_ids=env.get("VIB_UNIT_IDS", ""),
+                )
                 stdout, _ = self.vibration_process.communicate(timeout=30)
                 exit_code = self.vibration_process.returncode
                 tail_lines = [line for line in (stdout or "").strip().splitlines() if line][-5:]
@@ -2315,11 +2328,23 @@ class Jetson2Web:
                     status = result.get("status", "ERROR")
                     self.vibration_status = status
                     print(f"[진동] 완료: exit={exit_code} status={status} result={result_file}")
+                    self._log_ops_event(
+                        "vibration_check_completed",
+                        exit_code=exit_code,
+                        status=status,
+                        result_file=result_file,
+                    )
                 else:
                     self.vibration_status = "ERROR"
                     print(
                         f"[진동] 실패: exit={exit_code} result_exists={os.path.exists(result_file)} "
                         f"status={self.vibration_status}"
+                    )
+                    self._log_ops_event(
+                        "vibration_check_failed",
+                        reason="nonzero_or_no_result",
+                        exit_code=exit_code,
+                        result_exists=os.path.exists(result_file),
                     )
             except subprocess.TimeoutExpired:
                 print("[진동] 타임아웃(30초): 프로세스 강제 종료")
@@ -2329,9 +2354,11 @@ class Jetson2Web:
                 except Exception:
                     pass
                 self.vibration_status = "ERROR"
+                self._log_ops_event("vibration_check_failed", reason="timeout")
             except Exception as e:
                 print(f"[진동] 예외: {e}")
                 self.vibration_status = "ERROR"
+                self._log_ops_event("vibration_check_failed", reason="exception", error=str(e))
             finally:
                 if self.vibration_process in self.child_processes:
                     self.child_processes.remove(self.vibration_process)
@@ -2345,6 +2372,11 @@ class Jetson2Web:
     def stop_vibration_check(self):
         if self.vibration_process is None:
             return
+        stopped_pid = None
+        try:
+            stopped_pid = self.vibration_process.pid
+        except Exception:
+            stopped_pid = None
         try:
             self.vibration_process.terminate()
             self.vibration_process.wait(timeout=3)
@@ -2358,6 +2390,7 @@ class Jetson2Web:
             self.child_processes.remove(self.vibration_process)
         self.vibration_process = None
         self.vibration_status = "IDLE"
+        self._log_ops_event("vibration_check_stopped", pid=stopped_pid, status=self.vibration_status)
 
     def _log_mqtt_message(self, topic: str, payload) -> None:
         try:
