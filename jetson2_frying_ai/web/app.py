@@ -228,6 +228,7 @@ def create_app(
             qos = int(config.get("mqtt_qos", 1))
             topic_observe = config.get("mqtt_topic_observe", "observe/status")
             topic_frying = config.get("mqtt_topic_frying", "frying/status")
+            topic_status = config.get("mqtt_topic_status", "jetson2/status")
 
             if action not in {
                 "observe_input_left",
@@ -247,6 +248,22 @@ def create_app(
             topic, message = action_map[action]
             if _mqtt_publish(topic, message, qos=qos):
                 sent.append({"topic": topic, "message": message})
+
+            # Keep state in sync so the same change is visible on jetson2/status.
+            try:
+                if action == "observe_input_left":
+                    state.observe_left_state = "투입"
+                elif action == "observe_input_right":
+                    state.observe_right_state = "투입"
+                elif action == "frying_discharge_left":
+                    state.pot1_status = "DISCHARGE"
+                elif action == "frying_discharge_right":
+                    state.pot2_status = "DISCHARGE"
+
+                state._publish_mqtt_status()
+                sent.append({"topic": topic_status, "message": "state_publish"})
+            except Exception:
+                pass
 
             return {
                 "ok": len(sent) > 0,
