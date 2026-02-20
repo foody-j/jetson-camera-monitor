@@ -128,6 +128,8 @@ class CameraWorker(threading.Thread):
         self.latest_lock = threading.Lock()
         self.web_frame = None
         self.web_lock = threading.Lock()
+        self.person_boxes = []
+        self.person_boxes_lock = threading.Lock()
         self.ready_event = threading.Event()
 
         self.stats = {
@@ -264,10 +266,26 @@ class CameraWorker(threading.Thread):
         if now - self._last_web_update < interval:
             return
 
-        h, w = frame.shape[:2]
+        draw_frame = frame.copy()
+        with self.person_boxes_lock:
+            boxes = list(self.person_boxes)
+        for x1, y1, x2, y2, conf in boxes:
+            cv2.rectangle(draw_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            label = f"Person {conf:.2f}"
+            cv2.putText(
+                draw_frame,
+                label,
+                (x1, max(20, y1 - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 255, 0),
+                2,
+            )
+
+        h, w = draw_frame.shape[:2]
         target_w = int(self.config.get("web_preview_width", 640))
         target_h = int(h * target_w / max(w, 1))
-        small = cv2.resize(frame, (target_w, target_h))
+        small = cv2.resize(draw_frame, (target_w, target_h))
 
         ret, jpg = cv2.imencode(
             ".jpg",
@@ -292,6 +310,10 @@ class CameraWorker(threading.Thread):
     def get_web_frame(self):
         with self.web_lock:
             return self.web_frame
+
+    def set_person_boxes(self, boxes):
+        with self.person_boxes_lock:
+            self.person_boxes = boxes
 
     def stop(self):
         self.running = False
@@ -450,6 +472,7 @@ class PersonDetectionWorker(threading.Thread):
 
     def _process_day(self, frame: np.ndarray, now: datetime) -> None:
         if not self.yolo_model:
+            self.camera.set_person_boxes([])
             return
         self.yolo_frame_skip += 1
         if self.yolo_frame_skip < 3:
@@ -461,12 +484,16 @@ class PersonDetectionWorker(threading.Thread):
 
         detected = False
         max_conf = 0.0
+        person_boxes = []
         if r.boxes is not None and r.boxes.cls is not None and len(r.boxes.cls) > 0:
             for i, cls in enumerate(r.boxes.cls):
                 if r.names.get(int(cls), "") == "person":
                     detected = True
                     conf = float(r.boxes.conf[i]) if hasattr(r.boxes, "conf") else 0.0
                     max_conf = max(max_conf, conf)
+                    box = r.boxes.xyxy[i].cpu().numpy().astype(int).tolist()
+                    person_boxes.append((box[0], box[1], box[2], box[3], conf))
+        self.camera.set_person_boxes(person_boxes)
 
         if detected:
             self.person_detected = True
@@ -496,8 +523,15 @@ class PersonDetectionWorker(threading.Thread):
                 results = self.yolo_model.predict(frame, conf=self.yolo_conf, imgsz=self.yolo_imgsz, verbose=False, device=self.device)
                 r = results[0]
                 detected = False
+                person_boxes = []
                 if r.boxes is not None and r.boxes.cls is not None and len(r.boxes.cls) > 0:
-                    detected = any(r.names.get(int(c), "") == "person" for c in r.boxes.cls)
+                    for i, cls in enumerate(r.boxes.cls):
+                        if r.names.get(int(cls), "") == "person":
+                            detected = True
+                            conf = float(r.boxes.conf[i]) if hasattr(r.boxes, "conf") else 0.0
+                            box = r.boxes.xyxy[i].cpu().numpy().astype(int).tolist()
+                            person_boxes.append((box[0], box[1], box[2], box[3], conf))
+                self.camera.set_person_boxes(person_boxes)
                 if detected:
                     self.person_detected = True
                     self.night_detected_once = True
@@ -527,6 +561,8 @@ class PersonDetectionWorker(threading.Thread):
                             self.periodic_off_active = True
                     self.night_check_active = False
             return
+
+        self.camera.set_person_boxes([])
 
         # motion detection stage
         self.motion_frame_skip += 1
