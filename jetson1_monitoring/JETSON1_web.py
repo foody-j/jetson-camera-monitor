@@ -459,11 +459,12 @@ class PersonDetectionWorker(threading.Thread):
                 self.parent.publish_robot_control("ON")
                 self.on_triggered = True
         else:
-            if not self.night_check_active:
+            # Re-arm night person-check only once per night entry.
+            # After OFF has been triggered, keep moving in motion stage.
+            if (not self.night_check_active) and (not self.off_triggered_once):
                 self.night_check_active = True
                 self.night_no_person_deadline = now + timedelta(minutes=self.night_check_minutes)
                 self.det_hold_start = None
-                self.off_triggered_once = False
                 self.parent._log_ops_event(
                     "night_mode_enter",
                     mode=self.mode,
