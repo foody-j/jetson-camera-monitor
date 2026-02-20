@@ -4,6 +4,8 @@ import time
 from pathlib import Path
 from typing import Dict, Optional
 
+import json
+
 from fastapi import FastAPI, Body
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -105,6 +107,20 @@ def create_app(
         return JSONResponse(config)
 
     if state is not None:
+        def _mqtt_publish(topic: str, payload: str, qos: int | None = None) -> bool:
+            if not state.mqtt_client:
+                return False
+            q = int(config.get("mqtt_qos", 1) if qos is None else qos)
+            try:
+                state.mqtt_client.client.publish(topic, payload, qos=q)
+                try:
+                    state._log_mqtt_message(topic, payload)
+                except Exception:
+                    pass
+                return True
+            except Exception:
+                return False
+
         @app.get("/api/mqtt/log")
         async def mqtt_log():
             try:
@@ -197,5 +213,89 @@ def create_app(
             if state.mqtt_client:
                 state._publish_mqtt_status()
             return {"ok": True}
+
+        @app.post("/api/control/mqtt/publish")
+        async def mqtt_publish(payload: dict = Body(...)):
+            topic = str(payload.get("topic", "")).strip()
+            message = str(payload.get("message", ""))
+            qos = payload.get("qos", None)
+            if not topic:
+                return {"ok": False, "error": "topic_required"}
+            ok = _mqtt_publish(topic, message, qos=qos)
+            return {"ok": ok, "topic": topic, "message": message}
+
+        @app.post("/api/control/mqtt/quick")
+        async def mqtt_quick(payload: dict = Body(...)):
+            action = str(payload.get("action", "")).strip().lower()
+            qos = int(config.get("mqtt_qos", 1))
+            topic_robot = config.get("mqtt_topic_robot_status", "HR/Status")
+            topic_p1_food = config.get("mqtt_topic_frying_pot1_food_type", "frying/pot1/food_type")
+            topic_p2_food = config.get("mqtt_topic_frying_pot2_food_type", "frying/pot2/food_type")
+            recipe1 = str(payload.get("recipe1", "chicken"))
+            recipe2 = str(payload.get("recipe2", "shrimp"))
+
+            if action not in {"input", "cook", "discharge"}:
+                return {"ok": False, "error": "invalid_action"}
+
+            process_map = {
+                "input": "투입",
+                "cook": "조리",
+                "discharge": "배출",
+            }
+            process = process_map[action]
+            status_msg = {
+                "Status": [
+                    {
+                        "DeviceNum": "0",
+                        "PTNum": "0",
+                        "NowRecipe": recipe1,
+                        "ProcessType": process,
+                        "RunningTime": "00:00:10",
+                        "TargetTime": "00:03:00",
+                        "RBstatus": "OK",
+                        "Potstatus": {
+                            "PT_Temp": 170,
+                            "PT_Power": "True",
+                            "PT_Level": 0,
+                            "RT_Speed": 0,
+                            "RT_Dir": 0,
+                        },
+                    },
+                    {
+                        "DeviceNum": "0",
+                        "PTNum": "1",
+                        "NowRecipe": recipe2,
+                        "ProcessType": process,
+                        "RunningTime": "00:00:12",
+                        "TargetTime": "00:03:00",
+                        "RBstatus": "OK",
+                        "Potstatus": {
+                            "PT_Temp": 168,
+                            "PT_Power": "True",
+                            "PT_Level": 0,
+                            "RT_Speed": 0,
+                            "RT_Dir": 0,
+                        },
+                    },
+                ],
+                "RBMotion": 1 if action in {"input", "cook"} else 0,
+                "VibrationRequest": False,
+            }
+
+            sent = []
+            if _mqtt_publish(topic_p1_food, recipe1, qos=qos):
+                sent.append({"topic": topic_p1_food, "message": recipe1})
+            if _mqtt_publish(topic_p2_food, recipe2, qos=qos):
+                sent.append({"topic": topic_p2_food, "message": recipe2})
+            raw_status = json.dumps(status_msg, ensure_ascii=False)
+            if _mqtt_publish(topic_robot, raw_status, qos=qos):
+                sent.append({"topic": topic_robot, "message": raw_status})
+
+            return {
+                "ok": len(sent) > 0,
+                "action": action,
+                "process": process,
+                "sent": sent,
+            }
 
     return app

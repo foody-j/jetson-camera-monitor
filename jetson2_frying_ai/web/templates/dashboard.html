@@ -48,6 +48,18 @@
             <button class="btn" onclick="toggleMqttLog()">Log</button>
         </div>
         <div class="control-group">
+            <div class="control-title">MQTT Quick</div>
+            <button class="btn" onclick="quickMqtt('input')">투입</button>
+            <button class="btn" onclick="quickMqtt('cook')">조리</button>
+            <button class="btn" onclick="quickMqtt('discharge')">배출</button>
+            <div style="margin-top:6px;">
+                <input id="mqtt-topic" type="text" placeholder="topic" style="width:220px;">
+                <input id="mqtt-message" type="text" placeholder="message" style="width:220px;">
+                <button class="btn" onclick="publishMqttRaw()">SEND</button>
+            </div>
+            <div id="mqtt-send-result" style="margin-top:4px; font-size:12px; opacity:0.9;">-</div>
+        </div>
+        <div class="control-group">
             <div class="control-title">Overlay</div>
             <button class="btn" onclick="overlayControl(true)">ON</button>
             <button class="btn" onclick="overlayControl(false)">OFF</button>
@@ -139,6 +151,42 @@
 
         function publishNow() {
             postJSON('/api/control/publish', {});
+        }
+
+        async function quickMqtt(action) {
+            try {
+                const res = await fetch('/api/control/mqtt/quick', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action })
+                });
+                const data = await res.json();
+                document.getElementById('mqtt-send-result').textContent =
+                    data.ok ? `OK quick=${action}` : `FAIL quick=${action}`;
+            } catch (e) {
+                document.getElementById('mqtt-send-result').textContent = `FAIL quick=${action}`;
+            }
+        }
+
+        async function publishMqttRaw() {
+            const topic = (document.getElementById('mqtt-topic').value || '').trim();
+            const message = document.getElementById('mqtt-message').value || '';
+            if (!topic) {
+                document.getElementById('mqtt-send-result').textContent = 'FAIL topic required';
+                return;
+            }
+            try {
+                const res = await fetch('/api/control/mqtt/publish', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic, message })
+                });
+                const data = await res.json();
+                document.getElementById('mqtt-send-result').textContent =
+                    data.ok ? `OK ${topic}` : `FAIL ${topic}`;
+            } catch (e) {
+                document.getElementById('mqtt-send-result').textContent = `FAIL ${topic}`;
+            }
         }
 
         function overlayControl(enabled) {
