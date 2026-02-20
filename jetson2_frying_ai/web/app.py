@@ -4,8 +4,6 @@ import time
 from pathlib import Path
 from typing import Dict, Optional
 
-import json
-
 from fastapi import FastAPI, Body
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -228,73 +226,31 @@ def create_app(
         async def mqtt_quick(payload: dict = Body(...)):
             action = str(payload.get("action", "")).strip().lower()
             qos = int(config.get("mqtt_qos", 1))
-            topic_robot = config.get("mqtt_topic_robot_status", "HR/Status")
-            topic_p1_food = config.get("mqtt_topic_frying_pot1_food_type", "frying/pot1/food_type")
-            topic_p2_food = config.get("mqtt_topic_frying_pot2_food_type", "frying/pot2/food_type")
-            recipe1 = str(payload.get("recipe1", "chicken"))
-            recipe2 = str(payload.get("recipe2", "shrimp"))
+            topic_observe = config.get("mqtt_topic_observe", "observe/status")
+            topic_frying = config.get("mqtt_topic_frying", "frying/status")
 
-            if action not in {"input", "cook", "discharge"}:
+            if action not in {"observe_input", "frying_discharge"}:
                 return {"ok": False, "error": "invalid_action"}
 
-            process_map = {
-                "input": "투입",
-                "cook": "조리",
-                "discharge": "배출",
-            }
-            process = process_map[action]
-            status_msg = {
-                "Status": [
-                    {
-                        "DeviceNum": "0",
-                        "PTNum": "0",
-                        "NowRecipe": recipe1,
-                        "ProcessType": process,
-                        "RunningTime": "00:00:10",
-                        "TargetTime": "00:03:00",
-                        "RBstatus": "OK",
-                        "Potstatus": {
-                            "PT_Temp": 170,
-                            "PT_Power": "True",
-                            "PT_Level": 0,
-                            "RT_Speed": 0,
-                            "RT_Dir": 0,
-                        },
-                    },
-                    {
-                        "DeviceNum": "0",
-                        "PTNum": "1",
-                        "NowRecipe": recipe2,
-                        "ProcessType": process,
-                        "RunningTime": "00:00:12",
-                        "TargetTime": "00:03:00",
-                        "RBstatus": "OK",
-                        "Potstatus": {
-                            "PT_Temp": 168,
-                            "PT_Power": "True",
-                            "PT_Level": 0,
-                            "RT_Speed": 0,
-                            "RT_Dir": 0,
-                        },
-                    },
-                ],
-                "RBMotion": 1 if action in {"input", "cook"} else 0,
-                "VibrationRequest": False,
-            }
-
             sent = []
-            if _mqtt_publish(topic_p1_food, recipe1, qos=qos):
-                sent.append({"topic": topic_p1_food, "message": recipe1})
-            if _mqtt_publish(topic_p2_food, recipe2, qos=qos):
-                sent.append({"topic": topic_p2_food, "message": recipe2})
-            raw_status = json.dumps(status_msg, ensure_ascii=False)
-            if _mqtt_publish(topic_robot, raw_status, qos=qos):
-                sent.append({"topic": topic_robot, "message": raw_status})
+            if action == "observe_input":
+                left_msg = "LEFT:투입"
+                right_msg = "RIGHT:투입"
+                if _mqtt_publish(topic_observe, left_msg, qos=qos):
+                    sent.append({"topic": topic_observe, "message": left_msg})
+                if _mqtt_publish(topic_observe, right_msg, qos=qos):
+                    sent.append({"topic": topic_observe, "message": right_msg})
+            elif action == "frying_discharge":
+                left_msg = "LEFT:DISCHARGE"
+                right_msg = "RIGHT:DISCHARGE"
+                if _mqtt_publish(topic_frying, left_msg, qos=qos):
+                    sent.append({"topic": topic_frying, "message": left_msg})
+                if _mqtt_publish(topic_frying, right_msg, qos=qos):
+                    sent.append({"topic": topic_frying, "message": right_msg})
 
             return {
                 "ok": len(sent) > 0,
                 "action": action,
-                "process": process,
                 "sent": sent,
             }
 
