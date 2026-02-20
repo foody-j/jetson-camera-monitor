@@ -1015,6 +1015,7 @@ class Jetson2Web:
         self.observe_left_effective = None   # 투입 판정 포함한 발행 상태
         self.observe_right_effective = None
         self.vibration_status = "IDLE"
+        self.last_vibration_event = {"event": "INIT", "status": "IDLE", "timestamp": None}
         self._last_chk_vibration = False
 
         self.relay_enabled = False
@@ -1546,11 +1547,13 @@ class Jetson2Web:
         if seen_device and chk_vibration:
             if self.vibration_test_mode:
                 self.vibration_status = "NORMAL"
+                self._set_vibration_event("TEST_MODE_NORMAL", self.vibration_status)
             else:
                 self.start_vibration_check()
         elif vibration_request:
             if self.vibration_test_mode:
                 self.vibration_status = "NORMAL"
+                self._set_vibration_event("TEST_MODE_NORMAL", self.vibration_status)
             else:
                 self.start_vibration_check()
 
@@ -2270,6 +2273,7 @@ class Jetson2Web:
             except Exception:
                 running_pid = "unknown"
             print(f"[진동] 시작 스킵: 이미 실행 중(pid={running_pid}) status={self.vibration_status}")
+            self._set_vibration_event("SKIPPED_ALREADY_RUNNING", self.vibration_status)
             self._log_ops_event(
                 "vibration_check_skipped",
                 reason="already_running",
@@ -2285,6 +2289,7 @@ class Jetson2Web:
         if not os.path.exists(vibration_script):
             print(f"[진동] 오류: {vibration_script} 파일이 없습니다")
             self.vibration_status = "ERROR"
+            self._set_vibration_event("FAILED_SCRIPT_MISSING", self.vibration_status)
             self._log_ops_event("vibration_check_failed", reason="script_missing", script=vibration_script)
             return
 
@@ -2317,6 +2322,7 @@ class Jetson2Web:
                     baseline_exists=os.path.exists(baseline_file),
                     unit_ids=env.get("VIB_UNIT_IDS", ""),
                 )
+                self._set_vibration_event("STARTED", "MEASURING")
                 stdout, _ = self.vibration_process.communicate(timeout=30)
                 exit_code = self.vibration_process.returncode
                 tail_lines = [line for line in (stdout or "").strip().splitlines() if line][-5:]
@@ -2327,6 +2333,7 @@ class Jetson2Web:
                         result = json.load(f)
                     status = result.get("status", "ERROR")
                     self.vibration_status = status
+                    self._set_vibration_event("COMPLETED", self.vibration_status)
                     print(f"[진동] 완료: exit={exit_code} status={status} result={result_file}")
                     self._log_ops_event(
                         "vibration_check_completed",
@@ -2336,6 +2343,7 @@ class Jetson2Web:
                     )
                 else:
                     self.vibration_status = "ERROR"
+                    self._set_vibration_event("FAILED_NONZERO_OR_NO_RESULT", self.vibration_status)
                     print(
                         f"[진동] 실패: exit={exit_code} result_exists={os.path.exists(result_file)} "
                         f"status={self.vibration_status}"
@@ -2354,10 +2362,12 @@ class Jetson2Web:
                 except Exception:
                     pass
                 self.vibration_status = "ERROR"
+                self._set_vibration_event("FAILED_TIMEOUT", self.vibration_status)
                 self._log_ops_event("vibration_check_failed", reason="timeout")
             except Exception as e:
                 print(f"[진동] 예외: {e}")
                 self.vibration_status = "ERROR"
+                self._set_vibration_event("FAILED_EXCEPTION", self.vibration_status)
                 self._log_ops_event("vibration_check_failed", reason="exception", error=str(e))
             finally:
                 if self.vibration_process in self.child_processes:
@@ -2366,6 +2376,7 @@ class Jetson2Web:
                 print(f"[진동] 상태 갱신: {self.vibration_status}")
 
         self.vibration_status = "MEASURING"
+        self._set_vibration_event("MEASURING", self.vibration_status)
         print("[진동] 측정 시작 요청 수락: status=MEASURING")
         threading.Thread(target=run_vibration_check, daemon=True).start()
 
@@ -2390,6 +2401,7 @@ class Jetson2Web:
             self.child_processes.remove(self.vibration_process)
         self.vibration_process = None
         self.vibration_status = "IDLE"
+        self._set_vibration_event("STOPPED", self.vibration_status)
         self._log_ops_event("vibration_check_stopped", pid=stopped_pid, status=self.vibration_status)
 
     def _log_mqtt_message(self, topic: str, payload) -> None:
@@ -2452,6 +2464,13 @@ class Jetson2Web:
             if self.debug_print:
                 print(f"[Relay 로그] 저장 실패: {e}")
 
+    def _set_vibration_event(self, event: str, status: str) -> None:
+        self.last_vibration_event = {
+            "event": event,
+            "status": status,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
     def _publish_mqtt_status(self) -> None:
         if not self.mqtt_client:
             return
@@ -2491,7 +2510,10 @@ class Jetson2Web:
                 "left": observe_left,
                 "right": observe_right,
             },
-            "vibration": {"status": self.vibration_status},
+            "vibration": {
+                "status": self.vibration_status,
+                "last_event": self.last_vibration_event,
+            },
             "system": self.system_info.get_dynamic_info() if self.system_info else {},
         }
 

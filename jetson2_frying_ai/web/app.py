@@ -73,7 +73,10 @@ def create_app(
                         "left": state.observe_left_state,
                         "right": state.observe_right_state,
                     },
-                    "vibration": {"status": state.vibration_status},
+                    "vibration": {
+                        "status": state.vibration_status,
+                        "last_event": getattr(state, "last_vibration_event", None),
+                    },
                     "relay": {"enabled": state.relay_enabled},
                     "collection": {
                         "pot1": state.pot1_collecting,
@@ -150,6 +153,10 @@ def create_app(
             status = str(payload.get("status", "")).upper()
             if status:
                 state.vibration_status = status
+                try:
+                    state._set_vibration_event("MANUAL_STATUS_SET", status)
+                except Exception:
+                    pass
             return {"ok": True, "status": status}
 
         @app.post("/api/control/collection")
@@ -244,9 +251,9 @@ def create_app(
                     state.observe_right_state = "FILLED"
                     state.observe_right_effective = "투입"
                 elif action == "frying_discharge_left":
-                    state.pot1_status = "DISCHARGE"
+                    state._set_discharge_with_idle_timer(1, reason="web_quick")
                 elif action == "frying_discharge_right":
-                    state.pot2_status = "DISCHARGE"
+                    state._set_discharge_with_idle_timer(2, reason="web_quick")
 
                 state._publish_mqtt_status()
                 sent.append({"topic": topic_status, "message": "state_publish"})

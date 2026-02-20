@@ -751,6 +751,7 @@ class Jetson1Web:
 
         self.vibration_process = None
         self.vibration_status = "IDLE"
+        self.last_vibration_event = {"event": "INIT", "status": "IDLE", "timestamp": None}
         self.child_processes = []
 
         self.mqtt_message_log = deque(maxlen=int(config.get("mqtt_log_maxlen", 200)))
@@ -1089,6 +1090,7 @@ class Jetson1Web:
 
     def start_vibration_check(self):
         if self.vibration_process is not None:
+            self._set_vibration_event("SKIPPED_ALREADY_RUNNING", self.vibration_status)
             self._log_ops_event("vibration_check_skipped", reason="already_running", status=self.vibration_status)
             return
         base_dir = REPO_ROOT
@@ -1099,6 +1101,7 @@ class Jetson1Web:
         if not os.path.exists(vibration_script):
             print(f"[진동] 오류: {vibration_script} 파일이 없습니다")
             self.vibration_status = "ERROR"
+            self._set_vibration_event("FAILED_SCRIPT_MISSING", self.vibration_status)
             self._log_ops_event("vibration_check_failed", reason="script_missing", script=vibration_script)
             return
 
@@ -1118,6 +1121,7 @@ class Jetson1Web:
                     text=True,
                 )
                 self.child_processes.append(self.vibration_process)
+                self._set_vibration_event("STARTED", "MEASURING")
                 self._log_ops_event(
                     "vibration_check_started",
                     pid=self.vibration_process.pid,
@@ -1131,6 +1135,7 @@ class Jetson1Web:
                     with open(result_file, "r", encoding="utf-8") as f:
                         result = json.load(f)
                     self.vibration_status = result.get("status", "ERROR")
+                    self._set_vibration_event("COMPLETED", self.vibration_status)
                     self._log_ops_event(
                         "vibration_check_completed",
                         status=self.vibration_status,
@@ -1138,6 +1143,7 @@ class Jetson1Web:
                     )
                 else:
                     self.vibration_status = "ERROR"
+                    self._set_vibration_event("FAILED_RESULT_MISSING", self.vibration_status)
                     self._log_ops_event(
                         "vibration_check_failed",
                         reason="result_missing",
@@ -1145,9 +1151,11 @@ class Jetson1Web:
                     )
             except subprocess.TimeoutExpired:
                 self.vibration_status = "ERROR"
+                self._set_vibration_event("FAILED_TIMEOUT", self.vibration_status)
                 self._log_ops_event("vibration_check_failed", reason="timeout")
             except Exception as e:
                 self.vibration_status = "ERROR"
+                self._set_vibration_event("FAILED_EXCEPTION", self.vibration_status)
                 self._log_ops_event("vibration_check_failed", reason="exception", error=str(e))
             finally:
                 if self.vibration_process in self.child_processes:
@@ -1155,6 +1163,7 @@ class Jetson1Web:
                 self.vibration_process = None
 
         self.vibration_status = "MEASURING"
+        self._set_vibration_event("MEASURING", self.vibration_status)
         threading.Thread(target=run_vibration_check, daemon=True).start()
 
     def stop_vibration_check(self):
@@ -1178,6 +1187,7 @@ class Jetson1Web:
             self.child_processes.remove(self.vibration_process)
         self.vibration_process = None
         self.vibration_status = "IDLE"
+        self._set_vibration_event("STOPPED", self.vibration_status)
         self._log_ops_event("vibration_check_stopped", pid=stopped_pid, status=self.vibration_status)
 
     def start_stirfry_pot1_recording(self):
@@ -1369,6 +1379,13 @@ class Jetson1Web:
             if self.debug_print:
                 print(f"[Relay 로그] 저장 실패: {e}")
 
+    def _set_vibration_event(self, event: str, status: str) -> None:
+        self.last_vibration_event = {
+            "event": event,
+            "status": status,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
     def build_status(self, person_detected_override: Optional[bool] = None) -> dict:
         person = self.person_worker
         mqtt_connected = False
@@ -1416,7 +1433,10 @@ class Jetson1Web:
             "motion_detected": person.motion_detected if person else False,
             "yolo_confidence": person.last_confidence if person else 0.0,
             "relay_enabled": self.relay_enabled,
-            "vibration": {"status": self.vibration_status},
+            "vibration": {
+                "status": self.vibration_status,
+                "last_event": self.last_vibration_event,
+            },
             "recording": {
                 "pot1": self.stirfry_pot1_recording,
                 "pot2": self.stirfry_pot2_recording,

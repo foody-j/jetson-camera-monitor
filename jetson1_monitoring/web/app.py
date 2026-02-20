@@ -81,6 +81,10 @@ def create_app(cameras: Dict[int, object], state: object, config: dict) -> FastA
         status = str(payload.get("status", "")).upper()
         if status:
             state.vibration_status = status
+            try:
+                state._set_vibration_event("MANUAL_STATUS_SET", status)
+            except Exception:
+                pass
         return {"ok": True, "status": status}
 
     @app.post("/api/control/recording")

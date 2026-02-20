@@ -277,6 +277,11 @@
 
                 let header = `MQTT: ${data.mqtt.connected ? 'Connected' : 'Disconnected'} | ` +
                     `Updated: ${new Date(data.timestamp * 1000).toLocaleTimeString()}`;
+                if (data.vibration && data.vibration.last_event && data.vibration.last_event.event) {
+                    const ve = data.vibration.last_event;
+                    const veTs = ve.timestamp ? ve.timestamp.split(' ').pop() : '-';
+                    header += ` | VibEvent: ${ve.event}(${ve.status || '-'}) @ ${veTs}`;
+                }
 
                 if (data.system && data.system.disk) {
                     const disk = data.system.disk;

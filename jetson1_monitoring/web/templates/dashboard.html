@@ -217,6 +217,11 @@
                     `Mode: ${data.mode} | Person: ${data.person_detected ? 'YES' : 'NO'} | Motion: ${data.motion_detected ? 'YES' : 'NO'} | ` +
                     `Relay: ${data.relay_enabled ? 'ON' : 'OFF'} | Vibration: ${data.vibration ? data.vibration.status : 'N/A'} | ` +
                     `Updated: ${ts.toLocaleTimeString()}`;
+                if (data.vibration && data.vibration.last_event && data.vibration.last_event.event) {
+                    const ve = data.vibration.last_event;
+                    const veTs = ve.timestamp ? ve.timestamp.split(' ').pop() : '-';
+                    header += ` | VibEvent: ${ve.event}(${ve.status || '-'}) @ ${veTs}`;
+                }
                 if (data.person_detected_forced !== null && data.person_detected_forced !== undefined) {
                     header += ` | PersonForced: ${data.person_detected_forced ? 'TRUE' : 'FALSE'}`;
                 }
