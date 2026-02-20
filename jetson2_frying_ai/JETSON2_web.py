@@ -1101,7 +1101,9 @@ class Jetson2Web:
         self.mqtt_message_log = deque(maxlen=int(config.get("mqtt_log_maxlen", 200)))
         self.mqtt_log_dir = os.path.join(SCRIPT_DIR, "mqtt_logs")
         self.ops_log_dir = os.path.join(SCRIPT_DIR, "ops_logs")
+        self.relay_log_dir = os.path.join(SCRIPT_DIR, "relay_logs")
         self._ops_log_lock = threading.Lock()
+        self._relay_log_lock = threading.Lock()
 
     def _init_cameras(self) -> None:
         cam_width = self.config.get("camera_width", 1920)
@@ -1225,9 +1227,11 @@ class Jetson2Web:
                 print("[GPIO] Relay ON (continuous)")
             self.relay_enabled = True
             self._log_ops_event("relay_on", mode=self.relay_mode)
+            self._log_relay_event("ON", mode=self.relay_mode)
         except Exception as e:
             print(f"[GPIO] Relay ON 실패: {e}")
             self._log_ops_event("relay_on_error", error=str(e))
+            self._log_relay_event("ON_ERROR", error=str(e))
 
     def relay_turn_off(self, force: bool = False) -> None:
         if not _GPIO_AVAILABLE:
@@ -1247,9 +1251,11 @@ class Jetson2Web:
                 print("[GPIO] Relay OFF (continuous)")
             self.relay_enabled = False
             self._log_ops_event("relay_off", mode=self.relay_mode, force=force)
+            self._log_relay_event("OFF", mode=self.relay_mode, force=force)
         except Exception as e:
             print(f"[GPIO] Relay OFF 실패: {e}")
             self._log_ops_event("relay_off_error", error=str(e), force=force)
+            self._log_relay_event("OFF_ERROR", error=str(e), force=force)
 
     def on_pot1_food_type(self, client, userdata, message):
         self._log_mqtt_message(message.topic, message.payload)
@@ -2301,6 +2307,24 @@ class Jetson2Web:
         except Exception as e:
             if self.debug_print:
                 print(f"[OPS 로그] 저장 실패: {e}")
+
+    def _log_relay_event(self, action: str, **data) -> None:
+        ts = datetime.now()
+        date_str = ts.strftime("%Y-%m-%d")
+        full_ts = ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        extras = ", ".join(f"{k}={v}" for k, v in data.items()) if data else ""
+        line = f"[{full_ts}] action={action}"
+        if extras:
+            line = f"{line}, {extras}"
+        try:
+            os.makedirs(self.relay_log_dir, exist_ok=True)
+            path = os.path.join(self.relay_log_dir, f"relay_{date_str}.log")
+            with self._relay_log_lock:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write(line + "\n")
+        except Exception as e:
+            if self.debug_print:
+                print(f"[Relay 로그] 저장 실패: {e}")
 
     def _publish_mqtt_status(self) -> None:
         if not self.mqtt_client:

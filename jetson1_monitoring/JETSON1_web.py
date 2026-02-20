@@ -733,7 +733,9 @@ class Jetson1Web:
         self.mqtt_message_log = deque(maxlen=int(config.get("mqtt_log_maxlen", 200)))
         self.mqtt_log_dir = os.path.join(SCRIPT_DIR, "mqtt_logs")
         self.ops_log_dir = os.path.join(SCRIPT_DIR, "ops_logs")
+        self.relay_log_dir = os.path.join(SCRIPT_DIR, "relay_logs")
         self._ops_log_lock = threading.Lock()
+        self._relay_log_lock = threading.Lock()
 
         self.cameras: Dict[int, Optional[CameraWorker]] = {}
         self._init_cameras()
@@ -871,9 +873,11 @@ class Jetson1Web:
             if publish_to_jetson2:
                 self.publish_relay_status("ON")
             self._log_ops_event("relay_on", mode=self.relay_mode, publish_to_jetson2=publish_to_jetson2)
+            self._log_relay_event("ON", mode=self.relay_mode, publish_to_jetson2=publish_to_jetson2)
         except Exception as e:
             print(f"[GPIO] Relay ON 실패: {e}")
             self._log_ops_event("relay_on_error", error=str(e))
+            self._log_relay_event("ON_ERROR", error=str(e))
 
     def relay_turn_off(self) -> None:
         if not _GPIO_AVAILABLE:
@@ -892,9 +896,11 @@ class Jetson1Web:
             self.relay_enabled = False
             self.publish_relay_status("OFF")
             self._log_ops_event("relay_off", mode=self.relay_mode)
+            self._log_relay_event("OFF", mode=self.relay_mode)
         except Exception as e:
             print(f"[GPIO] Relay OFF 실패: {e}")
             self._log_ops_event("relay_off_error", error=str(e))
+            self._log_relay_event("OFF_ERROR", error=str(e))
 
     def send_off_pulse(self) -> None:
         if not _GPIO_AVAILABLE:
@@ -908,9 +914,11 @@ class Jetson1Web:
             self.publish_relay_status("OFF")
             self.publish_robot_control("OFF")
             self._log_ops_event("relay_off_pulse", mode=self.relay_mode)
+            self._log_relay_event("OFF_PULSE", mode=self.relay_mode)
         except Exception as e:
             print(f"[GPIO] OFF 펄스 실패: {e}")
             self._log_ops_event("relay_off_pulse_error", error=str(e))
+            self._log_relay_event("OFF_PULSE_ERROR", error=str(e))
 
     def publish_relay_status(self, status: str) -> None:
         if not self.mqtt_client:
@@ -1291,6 +1299,24 @@ class Jetson1Web:
         except Exception as e:
             if self.debug_print:
                 print(f"[OPS 로그] 저장 실패: {e}")
+
+    def _log_relay_event(self, action: str, **data) -> None:
+        ts = datetime.now()
+        date_str = ts.strftime("%Y-%m-%d")
+        full_ts = ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        extras = ", ".join(f"{k}={v}" for k, v in data.items()) if data else ""
+        line = f"[{full_ts}] action={action}"
+        if extras:
+            line = f"{line}, {extras}"
+        try:
+            os.makedirs(self.relay_log_dir, exist_ok=True)
+            path = os.path.join(self.relay_log_dir, f"relay_{date_str}.log")
+            with self._relay_log_lock:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write(line + "\n")
+        except Exception as e:
+            if self.debug_print:
+                print(f"[Relay 로그] 저장 실패: {e}")
 
     def build_status(self, person_detected_override: Optional[bool] = None) -> dict:
         person = self.person_worker
