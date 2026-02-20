@@ -402,6 +402,7 @@ class PersonDetectionWorker(threading.Thread):
             if frame is None:
                 time.sleep(0.01)
                 continue
+            self.frame_idx += 1
             now = datetime.now()
             self._update_mode(now)
 
@@ -575,11 +576,13 @@ class PersonDetectionWorker(threading.Thread):
         clean = cv2.morphologyEx(thr, cv2.MORPH_OPEN, self.kernel, iterations=1)
         contours, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         motion = False
+        motion_boxes = []
         for cnt in contours:
             area = cv2.contourArea(cnt)
             if area >= self.motion_min_area:
                 motion = True
-                break
+                x, y, w, h = cv2.boundingRect(cnt)
+                motion_boxes.append((x, y, w, h))
         self.motion_detected = motion
         if motion and self.frame_idx > self.warmup_frames:
             now_tick = time.monotonic()
@@ -588,7 +591,19 @@ class PersonDetectionWorker(threading.Thread):
                 or ((now_tick - self.last_snapshot_tick) >= self.snapshot_cooldown_sec)
             )
             if can_save:
-                self._save_snapshot(frame, now)
+                snapshot_frame = frame.copy()
+                for x, y, w, h in motion_boxes:
+                    cv2.rectangle(snapshot_frame, (x, y), (x + w, y + h), (0, 255, 255), 2)
+                cv2.putText(
+                    snapshot_frame,
+                    f"MOTION x{len(motion_boxes)}",
+                    (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.9,
+                    (0, 255, 255),
+                    2,
+                )
+                self._save_snapshot(snapshot_frame, now, motion_box_count=len(motion_boxes))
                 self.last_snapshot_tick = now_tick
         if self._night_motion_state != motion:
             self.parent._log_ops_event("night_motion_changed", motion=motion)
@@ -607,7 +622,7 @@ class PersonDetectionWorker(threading.Thread):
             self.parent.send_off_pulse()
             self.last_off_pulse = now
 
-    def _save_snapshot(self, frame: np.ndarray, timestamp: datetime) -> None:
+    def _save_snapshot(self, frame: np.ndarray, timestamp: datetime, motion_box_count: int = 0) -> None:
         try:
             day_dir = timestamp.strftime("%Y%m%d")
             ts_name = timestamp.strftime("%H%M%S_%f")[:-3]
@@ -619,20 +634,27 @@ class PersonDetectionWorker(threading.Thread):
             out_dir = os.path.join(base_dir, day_dir)
             os.makedirs(out_dir, mode=0o755, exist_ok=True)
             out_path = os.path.join(out_dir, f"{ts_name}.jpg")
-            cv2.imwrite(out_path, frame)
+            ok = cv2.imwrite(out_path, frame)
+            if not ok:
+                print(f"[Night Snapshot] save failed: {out_path}")
+                return
 
             self.snapshot_count += 1
             self.last_snapshot_path = out_path
             self.last_snapshot_time = timestamp
             self.night_snapshot_saved_once = True
+            print(
+                f"[Night Snapshot] saved {timestamp.strftime('%Y-%m-%d %H:%M:%S')} "
+                f"path={out_path} boxes={motion_box_count}"
+            )
             self.parent._log_ops_event(
                 "night_snapshot_saved",
                 image_path=out_path,
                 count=self.snapshot_count,
+                motion_boxes=motion_box_count,
             )
         except Exception as e:
-            if self.parent.debug_print:
-                print(f"[Night Snapshot] save failed: {e}")
+            print(f"[Night Snapshot] save failed: {e}")
 
 
 class PersonDataCollectionWorker(threading.Thread):
