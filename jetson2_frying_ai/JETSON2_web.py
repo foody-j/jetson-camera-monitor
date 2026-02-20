@@ -2265,6 +2265,11 @@ class Jetson2Web:
 
     def start_vibration_check(self):
         if self.vibration_process is not None:
+            try:
+                running_pid = self.vibration_process.pid
+            except Exception:
+                running_pid = "unknown"
+            print(f"[진동] 시작 스킵: 이미 실행 중(pid={running_pid}) status={self.vibration_status}")
             return
         base_dir = os.path.dirname(os.path.abspath(SCRIPT_DIR))
         vibration_script = os.path.join(base_dir, "test_vibration_pymodbus3_finalrev.py")
@@ -2277,6 +2282,7 @@ class Jetson2Web:
             return
 
         def run_vibration_check():
+            cmd = []
             try:
                 env = os.environ.copy()
                 env["VIB_UNIT_IDS"] = "0x50,0x51,0x52"
@@ -2293,23 +2299,47 @@ class Jetson2Web:
                     text=True,
                 )
                 self.child_processes.append(self.vibration_process)
+                print(
+                    "[진동] 프로세스 시작 "
+                    f"pid={self.vibration_process.pid} cmd={' '.join(cmd)} "
+                    f"baseline={'Y' if os.path.exists(baseline_file) else 'N'}"
+                )
                 stdout, _ = self.vibration_process.communicate(timeout=30)
                 exit_code = self.vibration_process.returncode
+                tail_lines = [line for line in (stdout or "").strip().splitlines() if line][-5:]
+                for line in tail_lines:
+                    print(f"[진동][stdout] {line}")
                 if exit_code == 0 and os.path.exists(result_file):
                     with open(result_file, "r", encoding="utf-8") as f:
                         result = json.load(f)
                     status = result.get("status", "ERROR")
                     self.vibration_status = status
+                    print(f"[진동] 완료: exit={exit_code} status={status} result={result_file}")
                 else:
                     self.vibration_status = "ERROR"
-            except Exception:
+                    print(
+                        f"[진동] 실패: exit={exit_code} result_exists={os.path.exists(result_file)} "
+                        f"status={self.vibration_status}"
+                    )
+            except subprocess.TimeoutExpired:
+                print("[진동] 타임아웃(30초): 프로세스 강제 종료")
+                try:
+                    self.vibration_process.kill()
+                    self.vibration_process.wait(timeout=2)
+                except Exception:
+                    pass
+                self.vibration_status = "ERROR"
+            except Exception as e:
+                print(f"[진동] 예외: {e}")
                 self.vibration_status = "ERROR"
             finally:
                 if self.vibration_process in self.child_processes:
                     self.child_processes.remove(self.vibration_process)
                 self.vibration_process = None
+                print(f"[진동] 상태 갱신: {self.vibration_status}")
 
         self.vibration_status = "MEASURING"
+        print("[진동] 측정 시작 요청 수락: status=MEASURING")
         threading.Thread(target=run_vibration_check, daemon=True).start()
 
     def stop_vibration_check(self):
