@@ -2520,7 +2520,11 @@ class Jetson2Web:
     def _get_effective_observe_state(self, raw_status: str, oil_temp: float) -> str:
         """FILLED + 유온 170°C 이상이면 '투입', 아니면 raw_status 그대로 반환"""
         투입_temp = float(self.config.get("observe_투입_temp_threshold", 170.0))
-        if raw_status == "FILLED" and oil_temp >= 투입_temp:
+        try:
+            oil_temp_value = float(oil_temp)
+        except (TypeError, ValueError):
+            oil_temp_value = float("-inf")
+        if raw_status == "FILLED" and oil_temp_value >= 투입_temp:
             return "투입"
         return raw_status
 
