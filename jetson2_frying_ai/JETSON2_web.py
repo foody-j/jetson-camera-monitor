@@ -1017,6 +1017,7 @@ class Jetson2Web:
         self.vibration_status = "IDLE"
         self.last_vibration_event = {"event": "INIT", "status": "IDLE", "timestamp": None}
         self._last_chk_vibration = False
+        self._last_vibration_request = False
 
         self.relay_enabled = False
         self.relay_mode = config.get("relay_mode", "pulse")
@@ -1536,21 +1537,24 @@ class Jetson2Web:
                 chk_vibration = True
                 break
 
+        chk_rising = seen_device and chk_vibration and not self._last_chk_vibration
+        req_rising = bool(vibration_request) and not self._last_vibration_request
+
         if seen_device and chk_vibration != self._last_chk_vibration:
-            self._last_chk_vibration = chk_vibration
             if chk_vibration:
                 print("[로봇상태] ChkVibration=True 감지")
             else:
                 print("[로봇상태] ChkVibration=False 감지")
-                self.stop_vibration_check()
+        self._last_chk_vibration = chk_vibration if seen_device else self._last_chk_vibration
+        self._last_vibration_request = bool(vibration_request)
 
-        if seen_device and chk_vibration:
+        if chk_rising:
             if self.vibration_test_mode:
                 self.vibration_status = "NORMAL"
                 self._set_vibration_event("TEST_MODE_NORMAL", self.vibration_status)
             else:
                 self.start_vibration_check()
-        elif vibration_request:
+        elif req_rising:
             if self.vibration_test_mode:
                 self.vibration_status = "NORMAL"
                 self._set_vibration_event("TEST_MODE_NORMAL", self.vibration_status)
