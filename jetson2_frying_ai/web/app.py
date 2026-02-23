@@ -152,11 +152,10 @@ def create_app(
         async def vibration_status(payload: dict = Body(...)):
             status = str(payload.get("status", "")).upper()
             if status:
-                state.vibration_status = status
                 try:
-                    state._set_vibration_event("MANUAL_STATUS_SET", status)
+                    state._set_vibration_status(status, "MANUAL_STATUS_SET")
                 except Exception:
-                    pass
+                    state.vibration_status = status
             return {"ok": True, "status": status}
 
         @app.post("/api/control/collection")

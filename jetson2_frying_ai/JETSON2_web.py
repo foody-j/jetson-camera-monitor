@@ -1016,6 +1016,8 @@ class Jetson2Web:
         self.observe_right_effective = None
         self.vibration_status = "IDLE"
         self.last_vibration_event = {"event": "INIT", "status": "IDLE", "timestamp": None}
+        self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
+        self.vibration_abnormal_timer = None
         self._last_chk_vibration = False
         self._last_vibration_request = False
 
@@ -1550,14 +1552,12 @@ class Jetson2Web:
 
         if chk_rising:
             if self.vibration_test_mode:
-                self.vibration_status = "NORMAL"
-                self._set_vibration_event("TEST_MODE_NORMAL", self.vibration_status)
+                self._set_vibration_status("NORMAL", "TEST_MODE_NORMAL")
             else:
                 self.start_vibration_check()
         elif req_rising:
             if self.vibration_test_mode:
-                self.vibration_status = "NORMAL"
-                self._set_vibration_event("TEST_MODE_NORMAL", self.vibration_status)
+                self._set_vibration_status("NORMAL", "TEST_MODE_NORMAL")
             else:
                 self.start_vibration_check()
 
@@ -2292,8 +2292,7 @@ class Jetson2Web:
 
         if not os.path.exists(vibration_script):
             print(f"[진동] 오류: {vibration_script} 파일이 없습니다")
-            self.vibration_status = "ERROR"
-            self._set_vibration_event("FAILED_SCRIPT_MISSING", self.vibration_status)
+            self._set_vibration_status("ERROR", "FAILED_SCRIPT_MISSING")
             self._log_ops_event("vibration_check_failed", reason="script_missing", script=vibration_script)
             return
 
@@ -2336,8 +2335,7 @@ class Jetson2Web:
                     with open(result_file, "r", encoding="utf-8") as f:
                         result = json.load(f)
                     status = result.get("status", "ERROR")
-                    self.vibration_status = status
-                    self._set_vibration_event("COMPLETED", self.vibration_status)
+                    self._set_vibration_status(status, "COMPLETED")
                     print(f"[진동] 완료: exit={exit_code} status={status} result={result_file}")
                     self._log_ops_event(
                         "vibration_check_completed",
@@ -2346,8 +2344,7 @@ class Jetson2Web:
                         result_file=result_file,
                     )
                 else:
-                    self.vibration_status = "ERROR"
-                    self._set_vibration_event("FAILED_NONZERO_OR_NO_RESULT", self.vibration_status)
+                    self._set_vibration_status("ERROR", "FAILED_NONZERO_OR_NO_RESULT")
                     print(
                         f"[진동] 실패: exit={exit_code} result_exists={os.path.exists(result_file)} "
                         f"status={self.vibration_status}"
@@ -2365,13 +2362,11 @@ class Jetson2Web:
                     self.vibration_process.wait(timeout=2)
                 except Exception:
                     pass
-                self.vibration_status = "ERROR"
-                self._set_vibration_event("FAILED_TIMEOUT", self.vibration_status)
+                self._set_vibration_status("ERROR", "FAILED_TIMEOUT")
                 self._log_ops_event("vibration_check_failed", reason="timeout")
             except Exception as e:
                 print(f"[진동] 예외: {e}")
-                self.vibration_status = "ERROR"
-                self._set_vibration_event("FAILED_EXCEPTION", self.vibration_status)
+                self._set_vibration_status("ERROR", "FAILED_EXCEPTION")
                 self._log_ops_event("vibration_check_failed", reason="exception", error=str(e))
             finally:
                 if self.vibration_process in self.child_processes:
@@ -2379,8 +2374,7 @@ class Jetson2Web:
                 self.vibration_process = None
                 print(f"[진동] 상태 갱신: {self.vibration_status}")
 
-        self.vibration_status = "MEASURING"
-        self._set_vibration_event("MEASURING", self.vibration_status)
+        self._set_vibration_status("MEASURING", "MEASURING")
         print("[진동] 측정 시작 요청 수락: status=MEASURING")
         threading.Thread(target=run_vibration_check, daemon=True).start()
 
@@ -2404,8 +2398,7 @@ class Jetson2Web:
         if self.vibration_process in self.child_processes:
             self.child_processes.remove(self.vibration_process)
         self.vibration_process = None
-        self.vibration_status = "IDLE"
-        self._set_vibration_event("STOPPED", self.vibration_status)
+        self._set_vibration_status("IDLE", "STOPPED")
         self._log_ops_event("vibration_check_stopped", pid=stopped_pid, status=self.vibration_status)
 
     def _log_mqtt_message(self, topic: str, payload) -> None:
@@ -2474,6 +2467,44 @@ class Jetson2Web:
             "status": status,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
+
+    def _cancel_vibration_abnormal_timer(self) -> None:
+        if self.vibration_abnormal_timer is not None:
+            try:
+                self.vibration_abnormal_timer.cancel()
+            except Exception:
+                pass
+            self.vibration_abnormal_timer = None
+
+    def _schedule_vibration_abnormal_reset(self) -> None:
+        self._cancel_vibration_abnormal_timer()
+        delay = max(0.1, float(self.vibration_abnormal_hold_sec))
+
+        def _reset_to_idle():
+            self.vibration_abnormal_timer = None
+            if self.vibration_status != "ABNORMAL":
+                return
+            self.vibration_status = "IDLE"
+            self._set_vibration_event("ABNORMAL_AUTO_RESET", "IDLE")
+            self._log_ops_event(
+                "vibration_status_auto_reset",
+                from_status="ABNORMAL",
+                to_status="IDLE",
+                delay_sec=delay,
+            )
+
+        self.vibration_abnormal_timer = threading.Timer(delay, _reset_to_idle)
+        self.vibration_abnormal_timer.daemon = True
+        self.vibration_abnormal_timer.start()
+
+    def _set_vibration_status(self, status: str, event: Optional[str] = None) -> None:
+        self.vibration_status = status
+        if event:
+            self._set_vibration_event(event, status)
+        if status == "ABNORMAL":
+            self._schedule_vibration_abnormal_reset()
+        else:
+            self._cancel_vibration_abnormal_timer()
 
     def _publish_mqtt_status(self) -> None:
         if not self.mqtt_client:
