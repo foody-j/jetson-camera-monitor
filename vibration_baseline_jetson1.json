@@ -131,6 +131,7 @@
     "freq_y_low": 0.0,
     "freq_y_high": 240.0,
     "freq_z_low": 0.0,
-    "freq_z_high": 144.3
+    "freq_z_high": 144.3,
+    "min_exceed_duration_sec": 0.5
   }
 }

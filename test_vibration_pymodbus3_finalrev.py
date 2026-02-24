@@ -486,6 +486,21 @@ collector_thread.start()
 def _check_against_baseline(baseline: dict) -> dict:
     """수집된 버퍼를 베이스라인 threshold와 비교하여 결과 dict 반환"""
     thresholds = baseline.get("thresholds", {})
+    min_exceed_duration_sec = float(thresholds.get("min_exceed_duration_sec", 0.5))
+    sample_rate = max(1.0, float(SAMPLE_RATE_HINT_PER_UNIT))
+
+    def _longest_run_sec(values, threshold, op):
+        run = 0
+        best = 0
+        for v in values:
+            ok = (v > threshold) if op == ">" else (v < threshold)
+            if ok:
+                run += 1
+                if run > best:
+                    best = run
+            else:
+                run = 0
+        return best / sample_rate
     single_uid_ignore_raw = thresholds.get("single_uid_ignore_uids", [])
     single_uid_ignore = set()
     if isinstance(single_uid_ignore_raw, list):
@@ -623,8 +638,30 @@ def _check_against_baseline(baseline: dict) -> dict:
 
     for key, val, label in checks:
         limit = thresholds.get(key)
-        if limit is not None and val > limit:
-            alerts.append(f"{label} 초과: {val:.1f} > {limit:.1f}")
+        if limit is None or val <= limit:
+            continue
+        duration_hit = False
+        for uid in UNIT_IDS:
+            x_vals, y_vals, z_vals = per_uid_vel.get(uid, ([], [], []))
+            if key == "vel_x_3sigma":
+                series = [abs(v) for v in x_vals]
+            elif key == "vel_y_3sigma":
+                series = [abs(v) for v in y_vals]
+            elif key == "vel_z_3sigma":
+                series = [abs(v) for v in z_vals]
+            else:
+                n = min(len(x_vals), len(y_vals), len(z_vals))
+                series = [
+                    float(np.sqrt(x_vals[i] ** 2 + y_vals[i] ** 2 + z_vals[i] ** 2))
+                    for i in range(n)
+                ]
+            if _longest_run_sec(series, float(limit), ">") >= min_exceed_duration_sec:
+                duration_hit = True
+                break
+        if duration_hit:
+            alerts.append(
+                f"{label} 초과: {val:.1f} > {limit:.1f} (연속 {min_exceed_duration_sec:.1f}s)"
+            )
             triggered_metrics[key] = float(limit)
             metric_operators[key] = ">"
 
@@ -642,13 +679,22 @@ def _check_against_baseline(baseline: dict) -> dict:
         exceed_uids = []
         for uid_key, uid_measured in measured_per_uid.items():
             uid_val = float(uid_measured.get(measured_key, 0.0))
-            if uid_val > float(limit):
+            uid_int = int(uid_key, 16)
+            _, _, _ = per_uid_vel.get(uid_int, ([], [], []))
+            fx_vals, fy_vals, fz_vals = per_uid_freq.get(uid_int, ([], [], []))
+            if measured_key == "freq_x_p99":
+                series = fx_vals
+            elif measured_key == "freq_y_p99":
+                series = fy_vals
+            else:
+                series = fz_vals
+            if uid_val > float(limit) and _longest_run_sec(series, float(limit), ">") >= min_exceed_duration_sec:
                 exceed_uids.append(uid_key)
         if len(exceed_uids) >= freq_high_min_uid_count:
             val = float(measured.get(measured_key, 0.0))
             alerts.append(
                 f"{label} 초과({len(exceed_uids)}UID): {val:.1f} > {float(limit):.1f} "
-                f"(uids={','.join(exceed_uids)})"
+                f"(uids={','.join(exceed_uids)}, 연속 {min_exceed_duration_sec:.1f}s)"
             )
             triggered_metrics[key] = float(limit)
             metric_operators[key] = ">"
@@ -671,28 +717,54 @@ def _check_against_baseline(baseline: dict) -> dict:
             uid_val = float(uid_measured.get(measured_key, 0.0))
             if uid_val > max_uid_val:
                 max_uid_val = uid_val
-            if uid_val > float(limit):
+            uid_int = int(uid_key, 16)
+            fx_vals, fy_vals, fz_vals = per_uid_freq.get(uid_int, ([], [], []))
+            if measured_key == "freq_x_p99":
+                series = fx_vals
+            elif measured_key == "freq_y_p99":
+                series = fy_vals
+            else:
+                series = fz_vals
+            if uid_val > float(limit) and _longest_run_sec(series, float(limit), ">") >= min_exceed_duration_sec:
                 exceed_uids.append(uid_key)
         if exceed_uids:
             alerts.append(
                 f"{label} 초과({len(exceed_uids)}UID): {max_uid_val:.1f} > {float(limit):.1f} "
-                f"(uids={','.join(exceed_uids)})"
+                f"(uids={','.join(exceed_uids)}, 연속 {min_exceed_duration_sec:.1f}s)"
             )
             triggered_metrics[key] = float(limit)
             metric_operators[key] = ">"
     # burst(max) 보조 판정: p99에서 안 걸려도 짧고 강한 충격은 감지
     burst_checks = [
-        ("freq_x_high_burst", measured["freq_x_max"], thresholds.get("freq_x_high"), "FREQ_X high burst"),
-        ("freq_y_high_burst", measured["freq_y_max"], thresholds.get("freq_y_high"), "FREQ_Y high burst"),
-        ("freq_z_high_burst", measured["freq_z_max"], thresholds.get("freq_z_high"), "FREQ_Z high burst"),
+        ("freq_x_high_burst", "freq_x_max", thresholds.get("freq_x_high"), "FREQ_X high burst"),
+        ("freq_y_high_burst", "freq_y_max", thresholds.get("freq_y_high"), "FREQ_Y high burst"),
+        ("freq_z_high_burst", "freq_z_max", thresholds.get("freq_z_high"), "FREQ_Z high burst"),
     ]
-    for _, max_val, base_limit, label in burst_checks:
+    for metric_key, measured_key, base_limit, label in burst_checks:
         if base_limit is None:
             continue
         burst_limit = float(base_limit) * float(freq_high_burst_ratio)
-        if float(max_val) > burst_limit:
-            alerts.append(f"{label} 초과: {float(max_val):.1f} > {burst_limit:.1f}")
-            metric_key = label.replace(" ", "_").lower()
+        exceed_uids = []
+        max_uid_val = 0.0
+        for uid_key, uid_measured in measured_per_uid.items():
+            uid_val = float(uid_measured.get(measured_key, 0.0))
+            if uid_val > max_uid_val:
+                max_uid_val = uid_val
+            uid_int = int(uid_key, 16)
+            fx_vals, fy_vals, fz_vals = per_uid_freq.get(uid_int, ([], [], []))
+            if measured_key == "freq_x_max":
+                series = fx_vals
+            elif measured_key == "freq_y_max":
+                series = fy_vals
+            else:
+                series = fz_vals
+            if uid_val > burst_limit and _longest_run_sec(series, burst_limit, ">") >= min_exceed_duration_sec:
+                exceed_uids.append(uid_key)
+        if exceed_uids:
+            alerts.append(
+                f"{label} 초과({len(exceed_uids)}UID): {float(max_uid_val):.1f} > {burst_limit:.1f} "
+                f"(uids={','.join(exceed_uids)}, 연속 {min_exceed_duration_sec:.1f}s)"
+            )
             triggered_metrics[metric_key] = float(burst_limit)
             metric_operators[metric_key] = ">"
 
@@ -703,8 +775,22 @@ def _check_against_baseline(baseline: dict) -> dict:
     ]
     for key, val, label in freq_low_checks:
         limit = thresholds.get(key)
-        if limit is not None and val < limit:
-            alerts.append(f"{label} 미만: {val:.1f} < {limit:.1f}")
+        if limit is None or val >= limit:
+            continue
+        duration_hit = False
+        for uid in UNIT_IDS:
+            fx_vals, fy_vals, fz_vals = per_uid_freq.get(uid, ([], [], []))
+            if key == "freq_x_low":
+                series = fx_vals
+            elif key == "freq_y_low":
+                series = fy_vals
+            else:
+                series = fz_vals
+            if _longest_run_sec(series, float(limit), "<") >= min_exceed_duration_sec:
+                duration_hit = True
+                break
+        if duration_hit:
+            alerts.append(f"{label} 미만: {val:.1f} < {limit:.1f} (연속 {min_exceed_duration_sec:.1f}s)")
             triggered_metrics[key] = float(limit)
             metric_operators[key] = "<"
 
