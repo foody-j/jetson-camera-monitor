@@ -4,6 +4,9 @@ Jetson1 진동 판정 규칙 분석 및 개선
 - run 단위 feature 계산
 - confusion matrix 출력
 - 조합 규칙 개선
+
+NOTE: 현재 운영 환경에서는 UID 0x55 (Y축 고장)를 제외하고 UID 0x53, 0x54만 사용.
+      이 스크립트는 과거 데이터 분석용으로 UID55 포함 데이터도 읽을 수 있음.
 """
 import pandas as pd
 import numpy as np

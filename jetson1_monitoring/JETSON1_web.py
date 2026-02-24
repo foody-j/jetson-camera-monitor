@@ -1117,7 +1117,7 @@ class Jetson1Web:
                     print("[진동] 대기 완료, 측정 시작")
 
                 env = os.environ.copy()
-                env["VIB_UNIT_IDS"] = "0x53,0x54,0x55"
+                env["VIB_UNIT_IDS"] = "0x53,0x54"  # 0x55 Y축 고장으로 제외
                 graph_mode = bool(self.config.get("vibration_graph_debug", False))
                 if graph_mode:
                     cmd = ["python3", vibration_script, "--duration", str(self.config.get("vibration_graph_duration_sec", 30))]

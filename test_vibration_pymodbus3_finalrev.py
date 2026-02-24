@@ -73,7 +73,7 @@ def _parse_unit_ids(env_val: str):
             pass
     return ids or None
 
-UNIT_IDS = _parse_unit_ids(os.getenv("VIB_UNIT_IDS")) or [0x53, 0x54, 0x55]  # 환경에 맞게 수정
+UNIT_IDS = _parse_unit_ids(os.getenv("VIB_UNIT_IDS")) or [0x53, 0x54]  # 0x55 Y축 고장으로 제외
 PARITY = 'N'
 STOPBITS = 1
 BYTESIZE = 8
@@ -922,12 +922,12 @@ def _check_against_baseline(baseline: dict) -> dict:
         # Upper bounds (진동 과다)
         uid53_max = float(thresholds.get("uid53_vel_mag_max", thresholds.get("uid53_vel_mag_thresh", 8000)))
         uid54_max = float(thresholds.get("uid54_vel_mag_max", thresholds.get("uid54_vel_mag_thresh", 37000)))
-        uid55_max = float(thresholds.get("uid55_vel_mag_max", thresholds.get("uid55_vel_mag_thresh", 30500)))
+        uid55_max = float(thresholds.get("uid55_vel_mag_max", thresholds.get("uid55_vel_mag_thresh", 30500)))  # 미사용 (Y축 고장)
 
         # Lower bounds (센서 고장/접촉불량)
         uid53_min = float(thresholds.get("uid53_vel_mag_min", 5000))
         uid54_min = float(thresholds.get("uid54_vel_mag_min", 25000))
-        uid55_min = float(thresholds.get("uid55_vel_mag_min", 12000))
+        uid55_min = float(thresholds.get("uid55_vel_mag_min", 12000))  # 미사용 (Y축 고장)
 
         combo_alerts = []
         for uid in UNIT_IDS:
