@@ -119,13 +119,13 @@
   },
   "thresholds": {
     "velocity_magnitude_p99": 33587.705981895364,
-    "velocity_magnitude_3sigma": 33000.0,
+    "velocity_magnitude_3sigma": 39000.0,
     "vel_x_p99": 16280.0,
-    "vel_x_3sigma": 14500.0,
+    "vel_x_3sigma": 20000.0,
     "vel_y_p99": 22042.0,
-    "vel_y_3sigma": 17000.0,
+    "vel_y_3sigma": 24000.0,
     "vel_z_p99": 19118.5,
-    "vel_z_3sigma": 15000.0,
+    "vel_z_3sigma": 23000.0,
     "freq_x_low": 0.0,
     "freq_x_high": 410.0,
     "freq_x_high_min_uid_count": 1,
@@ -133,7 +133,7 @@
     "freq_y_high": 410.0,
     "freq_y_high_min_uid_count": 1,
     "freq_z_low": 0.0,
-    "freq_z_high": 130.0,
+    "freq_z_high": 250.0,
     "freq_z_high_min_uid_count": 1,
     "min_exceed_duration_sec": 0.2
   }
