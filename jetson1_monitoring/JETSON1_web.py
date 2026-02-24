@@ -755,6 +755,7 @@ class Jetson1Web:
         self.last_vibration_result = {}
         self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
         self.vibration_abnormal_timer = None
+        self.last_vibration_check_time = 0  # 쿨다운용
         self.child_processes = []
 
         self.mqtt_message_log = deque(maxlen=int(config.get("mqtt_log_maxlen", 200)))
@@ -1092,10 +1093,21 @@ class Jetson1Web:
             self.stop_vibration_check()
 
     def start_vibration_check(self):
+        # 쿨다운 체크 (10초 이내 재실행 방지)
+        cooldown_sec = 10.0
+        elapsed = time.time() - self.last_vibration_check_time
+        if elapsed < cooldown_sec:
+            print(f"[진동] 쿨다운 중 (마지막 실행 후 {elapsed:.1f}초, 대기 필요: {cooldown_sec - elapsed:.1f}초)")
+            self._set_vibration_event("SKIPPED_COOLDOWN", self.vibration_status)
+            self._log_ops_event("vibration_check_skipped", reason="cooldown", elapsed=elapsed)
+            return
+
         if self.vibration_process is not None:
             self._set_vibration_event("SKIPPED_ALREADY_RUNNING", self.vibration_status)
             self._log_ops_event("vibration_check_skipped", reason="already_running", status=self.vibration_status)
             return
+
+        self.last_vibration_check_time = time.time()
         base_dir = REPO_ROOT
         vibration_script = os.path.join(base_dir, "test_vibration_pymodbus3_finalrev.py")
         baseline_file = os.path.join(base_dir, "vibration_baseline_jetson1.json")
