@@ -489,13 +489,22 @@ def _check_against_baseline(baseline: dict) -> dict:
     alerts = []
     total_samples = 0
 
-    # 전체 센서 velocity 합산
+    # 전체 센서 velocity 합산 + 센서별 velocity 저장
     all_vel = [[], [], []]
+    per_uid_vel = {}
     for uid in UNIT_IDS:
-        n = len(buf_vel[uid][0])
+        x_vals = list(buf_vel[uid][0])
+        y_vals = list(buf_vel[uid][1])
+        z_vals = list(buf_vel[uid][2])
+        n = min(len(x_vals), len(y_vals), len(z_vals))
         total_samples += n
-        for i in range(3):
-            all_vel[i].extend(list(buf_vel[uid][i]))
+        x_vals = x_vals[:n]
+        y_vals = y_vals[:n]
+        z_vals = z_vals[:n]
+        per_uid_vel[uid] = (x_vals, y_vals, z_vals)
+        all_vel[0].extend(x_vals)
+        all_vel[1].extend(y_vals)
+        all_vel[2].extend(z_vals)
 
     if total_samples == 0:
         return {"status": "ERROR", "reason": "수집된 샘플 없음", "timestamp": datetime.now().isoformat()}
@@ -513,6 +522,27 @@ def _check_against_baseline(baseline: dict) -> dict:
         "vel_y_p99": float(np.percentile(np.abs(all_vel[1]), 99)) if all_vel[1] else 0.0,
         "vel_z_p99": float(np.percentile(np.abs(all_vel[2]), 99)) if all_vel[2] else 0.0,
     }
+    measured_per_uid = {}
+    for uid in UNIT_IDS:
+        x_vals, y_vals, z_vals = per_uid_vel.get(uid, ([], [], []))
+        if not x_vals:
+            measured_per_uid[f"0x{uid:02X}"] = {
+                "velocity_magnitude_p99": 0.0,
+                "vel_x_p99": 0.0,
+                "vel_y_p99": 0.0,
+                "vel_z_p99": 0.0,
+            }
+            continue
+        x_arr = np.array(x_vals)
+        y_arr = np.array(y_vals)
+        z_arr = np.array(z_vals)
+        mag_uid = np.sqrt(x_arr**2 + y_arr**2 + z_arr**2)
+        measured_per_uid[f"0x{uid:02X}"] = {
+            "velocity_magnitude_p99": float(np.percentile(np.abs(mag_uid), 99)),
+            "vel_x_p99": float(np.percentile(np.abs(x_arr), 99)),
+            "vel_y_p99": float(np.percentile(np.abs(y_arr), 99)),
+            "vel_z_p99": float(np.percentile(np.abs(z_arr), 99)),
+        }
 
     # 3sigma threshold 비교
     checks = [
@@ -527,6 +557,44 @@ def _check_against_baseline(baseline: dict) -> dict:
         if limit is not None and val > limit:
             alerts.append(f"{label} 초과: {val:.1f} > {limit:.1f}")
 
+    metric_to_label = {
+        "velocity_magnitude_3sigma": "속도 크기(3σ)",
+        "vel_x_3sigma": "X축 속도(3σ)",
+        "vel_y_3sigma": "Y축 속도(3σ)",
+        "vel_z_3sigma": "Z축 속도(3σ)",
+    }
+    metric_to_measured_key = {
+        "velocity_magnitude_3sigma": "velocity_magnitude_p99",
+        "vel_x_3sigma": "vel_x_p99",
+        "vel_y_3sigma": "vel_y_p99",
+        "vel_z_3sigma": "vel_z_p99",
+    }
+    culprit_details = []
+    for metric_key, measured_key in metric_to_measured_key.items():
+        limit = thresholds.get(metric_key)
+        if limit is None:
+            continue
+        if measured.get(measured_key, 0.0) <= limit:
+            continue
+        culprit_uid = None
+        culprit_val = -1.0
+        for uid_key, uid_measured in measured_per_uid.items():
+            uid_val = float(uid_measured.get(measured_key, 0.0))
+            if uid_val > culprit_val:
+                culprit_val = uid_val
+                culprit_uid = uid_key
+        if culprit_uid is None:
+            continue
+        culprit_details.append(
+            {
+                "metric": metric_key,
+                "label": metric_to_label.get(metric_key, metric_key),
+                "threshold": float(limit),
+                "value": float(culprit_val),
+                "culprit_uid": culprit_uid,
+            }
+        )
+
     status = "ABNORMAL" if alerts else "NORMAL"
     result = {
         "status": status,
@@ -534,11 +602,19 @@ def _check_against_baseline(baseline: dict) -> dict:
         "total_samples": total_samples,
         "unit_ids": [f"0x{u:02X}" for u in UNIT_IDS],
         "measured": measured,
+        "measured_per_uid": measured_per_uid,
         "alerts": alerts,
+        "culprit_details": culprit_details,
     }
     print(f"[진동 체크] 결과: {status}")
     for a in alerts:
         print(f"  ⚠ {a}")
+    for detail in culprit_details:
+        print(
+            "  [원인] "
+            f"{detail['label']} UID {detail['culprit_uid']}: "
+            f"{detail['value']:.1f} > {detail['threshold']:.1f}"
+        )
     return result
 
 

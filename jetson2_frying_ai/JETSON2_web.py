@@ -2453,7 +2453,7 @@ class Jetson2Web:
                 stdout, _ = self.vibration_process.communicate(timeout=30)
                 exit_code = self.vibration_process.returncode
                 stdout_lines = [line for line in (stdout or "").strip().splitlines() if line]
-                key_tokens = ("CSV", "[결과 저장]", "[진동 체크]", "[베이스라인]")
+                key_tokens = ("CSV", "[결과 저장]", "[진동 체크]", "[베이스라인]", "[원인]", "⚠")
                 important_lines = [line for line in stdout_lines if any(token in line for token in key_tokens)]
                 if important_lines:
                     for line in important_lines:
@@ -2467,6 +2467,7 @@ class Jetson2Web:
                     raw_status = str(result.get("status", "ERROR")).upper()
                     alerts = result.get("alerts", [])
                     alert_count = len(alerts) if isinstance(alerts, list) else 0
+                    culprit_details = result.get("culprit_details", [])
                     final_status = raw_status
                     if raw_status == "ABNORMAL":
                         if alert_count >= max(1, self.vibration_abnormal_min_alerts):
@@ -2484,6 +2485,23 @@ class Jetson2Web:
                         f"[진동] 완료: exit={exit_code} raw={raw_status} final={final_status} "
                         f"alerts={alert_count} streak={self.vibration_abnormal_streak} result={result_file}"
                     )
+                    if isinstance(culprit_details, list):
+                        for detail in culprit_details:
+                            if not isinstance(detail, dict):
+                                continue
+                            label = detail.get("label", detail.get("metric", "unknown"))
+                            uid = detail.get("culprit_uid", "unknown")
+                            value = detail.get("value", 0.0)
+                            threshold = detail.get("threshold", 0.0)
+                            try:
+                                value_s = f"{float(value):.1f}"
+                                threshold_s = f"{float(threshold):.1f}"
+                            except Exception:
+                                value_s = str(value)
+                                threshold_s = str(threshold)
+                            print(
+                                f"[진동][원인] {label} UID {uid}: {value_s} > {threshold_s}"
+                            )
                     self._log_ops_event(
                         "vibration_check_completed",
                         exit_code=exit_code,
@@ -2491,6 +2509,7 @@ class Jetson2Web:
                         raw_status=raw_status,
                         alerts_count=alert_count,
                         abnormal_streak=self.vibration_abnormal_streak,
+                        culprit_details=culprit_details if isinstance(culprit_details, list) else [],
                         result_file=result_file,
                     )
                 else:
