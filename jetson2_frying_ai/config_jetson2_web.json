@@ -43,7 +43,7 @@
   "observe_left_cls_model": "observe_ai/pt_left_final/best_fe_l.pt",
   "observe_right_cls_model": "observe_ai/pt_right_final/best_fe_r.pt",
   "observe_roi_cam2": [307, 766, 531, 503],
-  "observe_roi_cam3": [362, 1040, 834, 448],
+  "observe_roi_cam3": [362, 1000, 834, 488],
   "observe_infer_fps": 1,
   "observe_autostart": true,
   "observe_img_size_seg": 320,
