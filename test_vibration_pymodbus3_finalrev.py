@@ -902,12 +902,18 @@ def _check_against_baseline(baseline: dict) -> dict:
             }
         )
 
-    # Combo rule (UID-specific velocity thresholds)
+    # Combo rule (UID-specific velocity thresholds - upper and lower bounds)
     combo_rule_enabled = thresholds.get("combo_rule_enabled", False)
     if combo_rule_enabled:
-        uid53_thresh = float(thresholds.get("uid53_vel_mag_thresh", 8000))
-        uid54_thresh = float(thresholds.get("uid54_vel_mag_thresh", 37000))
-        uid55_thresh = float(thresholds.get("uid55_vel_mag_thresh", 30500))
+        # Upper bounds (진동 과다)
+        uid53_max = float(thresholds.get("uid53_vel_mag_max", thresholds.get("uid53_vel_mag_thresh", 8000)))
+        uid54_max = float(thresholds.get("uid54_vel_mag_max", thresholds.get("uid54_vel_mag_thresh", 37000)))
+        uid55_max = float(thresholds.get("uid55_vel_mag_max", thresholds.get("uid55_vel_mag_thresh", 30500)))
+
+        # Lower bounds (센서 고장/접촉불량)
+        uid53_min = float(thresholds.get("uid53_vel_mag_min", 5000))
+        uid54_min = float(thresholds.get("uid54_vel_mag_min", 25000))
+        uid55_min = float(thresholds.get("uid55_vel_mag_min", 12000))
 
         combo_alerts = []
         for uid in UNIT_IDS:
@@ -917,18 +923,26 @@ def _check_against_baseline(baseline: dict) -> dict:
 
             vel_mag = float(measured_per_uid[uid_key].get("velocity_magnitude_p99", 0.0))
 
-            # UID별 threshold 체크
-            thresh = None
+            # UID별 상한/하한 체크
+            max_thresh = None
+            min_thresh = None
             if uid == 0x53:
-                thresh = uid53_thresh
+                max_thresh = uid53_max
+                min_thresh = uid53_min
             elif uid == 0x54:
-                thresh = uid54_thresh
+                max_thresh = uid54_max
+                min_thresh = uid54_min
             elif uid == 0x55:
-                thresh = uid55_thresh
+                max_thresh = uid55_max
+                min_thresh = uid55_min
 
-            if thresh and vel_mag > thresh:
+            if max_thresh and vel_mag > max_thresh:
                 combo_alerts.append(
-                    f"{uid_key} velocity 초과: {vel_mag:.0f} > {thresh:.0f} mm/s"
+                    f"{uid_key} velocity 과다: {vel_mag:.0f} > {max_thresh:.0f} mm/s"
+                )
+            elif min_thresh and vel_mag < min_thresh:
+                combo_alerts.append(
+                    f"{uid_key} velocity 부족(센서이상): {vel_mag:.0f} < {min_thresh:.0f} mm/s"
                 )
 
         if combo_alerts:

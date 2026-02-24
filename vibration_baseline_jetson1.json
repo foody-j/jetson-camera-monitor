@@ -136,10 +136,16 @@
     "freq_z_high": 442.31000000000006,
     "freq_z_high_min_uid_count": 1,
     "min_exceed_duration_sec": 0.5,
-    "_comment_combo_rule": "UID-specific velocity rule: Any sensor exceeds UID threshold (95%ile-based)",
+    "_comment_combo_rule": "UID-specific velocity rule: upper/lower bounds (95%ile/5%ile)",
     "combo_rule_enabled": true,
     "uid53_vel_mag_thresh": 8000,
     "uid54_vel_mag_thresh": 37000,
-    "uid55_vel_mag_thresh": 30500
+    "uid55_vel_mag_thresh": 30500,
+    "uid53_vel_mag_max": 8000,
+    "uid54_vel_mag_max": 37000,
+    "uid55_vel_mag_max": 30500,
+    "uid53_vel_mag_min": 5000,
+    "uid54_vel_mag_min": 25000,
+    "uid55_vel_mag_min": 12000
   }
 }

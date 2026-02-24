@@ -88,25 +88,45 @@ def apply_current_rule(df, baseline):
     return predictions
 
 def apply_combo_rule(df, thresholds):
-    """조합 규칙 적용 - velocity 기반, 완화된 threshold"""
+    """조합 규칙 적용 - velocity 기반, 상한/하한 threshold"""
     predictions = []
     details = []
 
-    # UID별 threshold (정상 95%ile 기준으로 낮춤)
-    uid53_thresh = 8000    # 정상 95%ile = 7667, 비정상 max = 24826
-    uid54_thresh = 37000   # 정상 95%ile = 36825, 비정상 max = 43140
-    uid55_thresh = 30500   # 정상 95%ile = 30322, 비정상 max = 31564
+    # UID별 상한 threshold (정상 95%ile)
+    uid53_max = 8000    # 정상 95%ile = 7667
+    uid54_max = 37000   # 정상 95%ile = 36825
+    uid55_max = 30500   # 정상 95%ile = 30322
+
+    # UID별 하한 threshold (정상 5%ile) - 센서 고장/접촉불량 감지
+    uid53_min = 5000    # 정상 5%ile = 5186
+    uid54_min = 25000   # 정상 5%ile = 25920
+    uid55_min = 12000   # 정상 5%ile = 12870
 
     for _, row in df.iterrows():
         abnormal = False
+        reason = []
 
-        # 규칙1: 어느 센서든 1개 이상 초과 (완화)
-        if row['uid53_vel_mag_p99'] > uid53_thresh:
+        # 규칙1: 상한 초과 (진동 과다)
+        if row['uid53_vel_mag_p99'] > uid53_max:
             abnormal = True
-        if row['uid54_vel_mag_p99'] > uid54_thresh:
+            reason.append(f"UID53 HIGH")
+        if row['uid54_vel_mag_p99'] > uid54_max:
             abnormal = True
-        if row['uid55_vel_mag_p99'] > uid55_thresh:
+            reason.append(f"UID54 HIGH")
+        if row['uid55_vel_mag_p99'] > uid55_max:
             abnormal = True
+            reason.append(f"UID55 HIGH")
+
+        # 규칙2: 하한 미달 (센서 고장/접촉불량)
+        if row['uid53_vel_mag_p99'] < uid53_min:
+            abnormal = True
+            reason.append(f"UID53 LOW")
+        if row['uid54_vel_mag_p99'] < uid54_min:
+            abnormal = True
+            reason.append(f"UID54 LOW")
+        if row['uid55_vel_mag_p99'] < uid55_min:
+            abnormal = True
+            reason.append(f"UID55 LOW")
 
         predictions.append('ABNORMAL' if abnormal else 'NORMAL')
         details.append({
@@ -115,7 +135,8 @@ def apply_combo_rule(df, thresholds):
             'prediction': 'ABNORMAL' if abnormal else 'NORMAL',
             'uid53_vel': row['uid53_vel_mag_p99'],
             'uid54_vel': row['uid54_vel_mag_p99'],
-            'uid55_vel': row['uid55_vel_mag_p99']
+            'uid55_vel': row['uid55_vel_mag_p99'],
+            'reason': ', '.join(reason) if reason else 'OK'
         })
 
     return predictions, details
@@ -228,12 +249,15 @@ def main():
     # 7. 베이스라인 업데이트
     print("\n[6] 베이스라인 파일 업데이트...")
     baseline['thresholds'] = new_thresholds
-    baseline['thresholds']['_comment_combo_rule'] = "UID-specific velocity rule: Any sensor exceeds UID threshold (95%ile-based)"
+    baseline['thresholds']['_comment_combo_rule'] = "UID-specific velocity rule: upper/lower bounds (95%ile/5%ile)"
     baseline['thresholds']['combo_rule_enabled'] = True
     baseline['thresholds']['min_exceed_duration_sec'] = 0.5
-    baseline['thresholds']['uid53_vel_mag_thresh'] = 8000
-    baseline['thresholds']['uid54_vel_mag_thresh'] = 37000
-    baseline['thresholds']['uid55_vel_mag_thresh'] = 30500
+    baseline['thresholds']['uid53_vel_mag_max'] = 8000
+    baseline['thresholds']['uid54_vel_mag_max'] = 37000
+    baseline['thresholds']['uid55_vel_mag_max'] = 30500
+    baseline['thresholds']['uid53_vel_mag_min'] = 5000
+    baseline['thresholds']['uid54_vel_mag_min'] = 25000
+    baseline['thresholds']['uid55_vel_mag_min'] = 12000
 
     with open('vibration_baseline_jetson1.json', 'w') as f:
         json.dump(baseline, f, indent=2, ensure_ascii=False)
@@ -243,19 +267,19 @@ def main():
     # 8. 규칙 설명 출력
     print("\n[7] 최종 규칙")
     print("="*60)
-    print("조합 규칙 (velocity 기반, UID별 threshold, OR 조건):")
-    print("  - 어느 센서든 1개 이상 UID별 threshold 초과시 ABNORMAL")
-    print("\nUID별 Threshold (정상 95%ile 기준, 오탐 최소화):")
+    print("조합 규칙 (velocity 기반, UID별 상한/하한 threshold):")
+    print("  - 상한 초과: 진동 과다 감지")
+    print("  - 하한 미달: 센서 고장/접촉불량 감지")
+    print("\nUID별 상한 Threshold (정상 95%ile):")
     print(f"  UID53: 8,000 mm/s (정상 95%ile: 7,667)")
     print(f"  UID54: 37,000 mm/s (정상 95%ile: 36,825)")
     print(f"  UID55: 30,500 mm/s (정상 95%ile: 30,322)")
+    print("\nUID별 하한 Threshold (정상 5%ile):")
+    print(f"  UID53: 5,000 mm/s (정상 5%ile: 5,186)")
+    print(f"  UID54: 25,000 mm/s (정상 5%ile: 25,920)")
+    print(f"  UID55: 12,000 mm/s (정상 5%ile: 12,870)")
     print(f"\nFREQ (참고용, min_uid_count=1):")
     print(f"  FREQ_X/Y/Z: {new_thresholds['freq_x_high']:.1f} Hz")
-    print(f"\n성능 지표:")
-    print(f"  정확도: 84.3% (86/102 runs)")
-    print(f"  오탐률: 11.4% (10/88 정상 runs)")
-    print(f"  재현율: 57.1% (8/14 비정상 runs)")
-    print(f"  정밀도: 44.4% (8/18 ABNORMAL 판정)")
 
     print("\n완료!")
 
