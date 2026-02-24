@@ -163,6 +163,7 @@
         "vel_z_3sigma": 14000.0,
         "freq_x_high": 220.0,
         "freq_y_high": 120.0,
+        "freq_y_high_min_uid_count": 1,
         "freq_z_high": 90.0,
         "min_exceed_duration_sec": 0.5
       }

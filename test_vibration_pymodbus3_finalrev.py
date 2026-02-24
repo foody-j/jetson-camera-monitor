@@ -706,6 +706,8 @@ def _check_against_baseline(baseline: dict) -> dict:
         limit = thresholds.get(key)
         if limit is None:
             continue
+        min_uid_count = int(thresholds.get(f"{key}_min_uid_count", freq_high_min_uid_count))
+        min_uid_count = max(1, min_uid_count)
         exceed_uids = []
         for uid_key, uid_measured in measured_per_uid.items():
             uid_val = float(uid_measured.get(measured_key, 0.0))
@@ -720,7 +722,7 @@ def _check_against_baseline(baseline: dict) -> dict:
                 series = fz_vals
             if uid_val > float(limit) and _longest_run_sec(series, float(limit), ">") >= min_exceed_duration_sec:
                 exceed_uids.append(uid_key)
-        if len(exceed_uids) >= freq_high_min_uid_count:
+        if len(exceed_uids) >= min_uid_count:
             val = float(measured.get(measured_key, 0.0))
             alerts.append(
                 f"{label} 초과({len(exceed_uids)}UID): {val:.1f} > {float(limit):.1f} "
