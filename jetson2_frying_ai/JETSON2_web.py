@@ -884,10 +884,14 @@ class ObserveAIWorker(threading.Thread):
                         }
                     )
                 if status != self._last_status:
+                    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     if top1_name is None:
-                        print(f"[Observe AI] cam{self.cam_id} status -> {status}")
+                        print(f"[{ts}] [Observe AI] cam{self.cam_id} status -> {status}")
                     else:
-                        print(f"[Observe AI] cam{self.cam_id} status -> {status} (top1={top1_name}, prob={prob:.2f})")
+                        print(
+                            f"[{ts}] [Observe AI] cam{self.cam_id} status -> {status} "
+                            f"(top1={top1_name}, prob={prob:.2f})"
+                        )
                     if self.event_logger:
                         self.event_logger(
                             "observe_status_change",
@@ -907,7 +911,8 @@ class ObserveAIWorker(threading.Thread):
                 self._update_overlay(frame, in_mask)
                 self._update_snapshot(frame, in_mask, status, prob, top1_name)
             except Exception as e:
-                print(f"[Observe AI] cam{self.cam_id} error: {e}")
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(f"[{ts}] [Observe AI] cam{self.cam_id} error: {e}")
                 if self.event_logger:
                     self.event_logger("observe_error", cam_id=self.cam_id, error=str(e))
 
