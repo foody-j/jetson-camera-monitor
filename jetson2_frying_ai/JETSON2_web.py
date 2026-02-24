@@ -2264,12 +2264,16 @@ class Jetson2Web:
         self._log_mqtt_message(message.topic, message.payload)
         try:
             raw_message = message.payload.decode("utf-8")
-            data = json.loads(raw_message)
-            relay_status = data.get("relay_status", "").upper()
+            relay_status = ""
+            try:
+                data = json.loads(raw_message)
+                relay_status = str(data.get("relay_status", "")).upper()
+            except json.JSONDecodeError:
+                relay_status = raw_message.upper().strip()
             if relay_status == "ON":
                 self.relay_turn_on()
             elif relay_status == "OFF":
-                self.relay_turn_off()
+                self.relay_turn_off(force=True)
         except Exception as e:
             print(f"[릴레이 동기화] 오류: {e}")
 
