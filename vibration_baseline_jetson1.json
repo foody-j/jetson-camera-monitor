@@ -57,7 +57,7 @@
       "std": 5194.32280569206,
       "p95": 13588.653166267119,
       "p99": 23928.868348721626,
-      "threshold_3sigma": 36000.0
+      "threshold_3sigma": 39000.0
     }
   },
   "displacement": {
@@ -119,7 +119,7 @@
   },
   "thresholds": {
     "velocity_magnitude_p99": 23928.868348721626,
-    "velocity_magnitude_3sigma": 36000.0,
+    "velocity_magnitude_3sigma": 39000.0,
     "vel_x_p99": 3283.7699999999977,
     "vel_x_3sigma": 21000.0,
     "vel_y_p99": 17884.0,
