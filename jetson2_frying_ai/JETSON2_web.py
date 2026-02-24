@@ -808,51 +808,55 @@ class ObserveAIWorker(threading.Thread):
                             right_indices = [
                                 i for i in in_indices if ((boxes_xyxy[i][0] + boxes_xyxy[i][2]) * 0.5) >= split_x
                             ]
-                            pool = right_indices if right_indices else in_indices
-                            best_in = max(pool, key=lambda i: boxes_xyxy[i][0])  # x1 max
+                            # cam3는 우측 후보가 없으면 선택하지 않는다(좌측 오선택 방지).
+                            if not right_indices:
+                                in_indices = []
+                            else:
+                                best_in = max(right_indices, key=lambda i: boxes_xyxy[i][0])  # x1 max
                         else:
                             best_in = max(in_indices, key=lambda i: confs[i])
-                        x1, y1, x2, y2 = boxes_xyxy[best_in]
+                        if in_indices:
+                            x1, y1, x2, y2 = boxes_xyxy[best_in]
 
-                        x1 = _clamp_int(x1 - bbox_pad, 0, W - 1)
-                        y1 = _clamp_int(y1 - bbox_pad, 0, H - 1)
-                        x2 = _clamp_int(x2 + bbox_pad, 0, W - 1)
-                        y2 = _clamp_int(y2 + bbox_pad, 0, H - 1)
+                            x1 = _clamp_int(x1 - bbox_pad, 0, W - 1)
+                            y1 = _clamp_int(y1 - bbox_pad, 0, H - 1)
+                            x2 = _clamp_int(x2 + bbox_pad, 0, W - 1)
+                            y2 = _clamp_int(y2 + bbox_pad, 0, H - 1)
 
-                        bw = x2 - x1
-                        bh = y2 - y1
-                        mx = int(bw * inner_margin)
-                        my = int(bh * inner_margin)
-                        ix1 = _clamp_int(x1 + mx, 0, W - 1)
-                        iy1 = _clamp_int(y1 + my, 0, H - 1)
-                        ix2 = _clamp_int(x2 - mx, 0, W - 1)
-                        iy2 = _clamp_int(y2 - my, 0, H - 1)
+                            bw = x2 - x1
+                            bh = y2 - y1
+                            mx = int(bw * inner_margin)
+                            my = int(bh * inner_margin)
+                            ix1 = _clamp_int(x1 + mx, 0, W - 1)
+                            iy1 = _clamp_int(y1 + my, 0, H - 1)
+                            ix2 = _clamp_int(x2 - mx, 0, W - 1)
+                            iy2 = _clamp_int(y2 - my, 0, H - 1)
 
-                        if ix2 > ix1 and iy2 > iy1:
-                            inner = frame[iy1:iy2, ix1:ix2].copy()
-                            inner_sq = _square_crop(inner)
-                            inner_sq = cv2.resize(inner_sq, (cls_imgsz, cls_imgsz), interpolation=cv2.INTER_AREA)
-                            cls_res = self.cls_model.predict(
-                                inner_sq,
-                                imgsz=cls_imgsz,
-                                conf=0.0,
-                                verbose=False,
-                                device=self.device,
-                            )[0]
-                            top1_idx = int(cls_res.probs.top1)
-                            top1_name = cls_res.names[top1_idx]
-                            prob = float(cls_res.probs.top1conf)
-                            is_filled = (
-                                top1_name.lower() == self.config.get("positive_label", "filled").lower()
-                                and prob >= filled_prob_min
-                            )
-                            detected = True
+                            if ix2 > ix1 and iy2 > iy1:
+                                inner = frame[iy1:iy2, ix1:ix2].copy()
+                                inner_sq = _square_crop(inner)
+                                inner_sq = cv2.resize(inner_sq, (cls_imgsz, cls_imgsz), interpolation=cv2.INTER_AREA)
+                                cls_res = self.cls_model.predict(
+                                    inner_sq,
+                                    imgsz=cls_imgsz,
+                                    conf=0.0,
+                                    verbose=False,
+                                    device=self.device,
+                                )[0]
+                                top1_idx = int(cls_res.probs.top1)
+                                top1_name = cls_res.names[top1_idx]
+                                prob = float(cls_res.probs.top1conf)
+                                is_filled = (
+                                    top1_name.lower() == self.config.get("positive_label", "filled").lower()
+                                    and prob >= filled_prob_min
+                                )
+                                detected = True
 
-                            if seg_res.masks is not None and len(seg_res.masks.data) > best_in:
-                                m = seg_res.masks.data[best_in].cpu().numpy().astype(np.uint8)
-                                if m.max() <= 1:
-                                    m = m * 255
-                                in_mask = cv2.resize(m, (W, H), interpolation=cv2.INTER_NEAREST)
+                                if seg_res.masks is not None and len(seg_res.masks.data) > best_in:
+                                    m = seg_res.masks.data[best_in].cpu().numpy().astype(np.uint8)
+                                    if m.max() <= 1:
+                                        m = m * 255
+                                    in_mask = cv2.resize(m, (W, H), interpolation=cv2.INTER_NEAREST)
 
                 status = "NO_BASKET"
                 filled_stable = False
