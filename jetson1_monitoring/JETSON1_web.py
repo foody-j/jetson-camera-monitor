@@ -756,6 +756,8 @@ class Jetson1Web:
         self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
         self.vibration_abnormal_timer = None
         self.last_vibration_check_time = 0  # 쿨다운용
+        self.last_chk_vibration = False  # 상태 변화 감지용
+        self.last_vibration_request = False  # 상태 변화 감지용
         self.child_processes = []
 
         self.mqtt_message_log = deque(maxlen=int(config.get("mqtt_log_maxlen", 200)))
@@ -1035,16 +1037,21 @@ class Jetson1Web:
                 chk_vibration = True
                 break
 
-        if seen_device and chk_vibration:
+        # 상태 변화 감지 (False → True 일 때만 실행)
+        if seen_device and chk_vibration and not self.last_chk_vibration:
             if self.config.get("vibration_test_mode", False):
                 self._set_vibration_status("NORMAL", "TEST_MODE_NORMAL")
             else:
                 self.start_vibration_check()
-        elif vibration_request:
+        elif vibration_request and not self.last_vibration_request:
             if self.config.get("vibration_test_mode", False):
                 self._set_vibration_status("NORMAL", "TEST_MODE_NORMAL")
             else:
                 self.start_vibration_check()
+
+        # 상태 저장
+        self.last_chk_vibration = chk_vibration if seen_device else False
+        self.last_vibration_request = vibration_request
 
         for pot_data in status_list:
             if str(pot_data.get("DeviceNum", "")) != "1":
