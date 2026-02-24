@@ -486,6 +486,18 @@ collector_thread.start()
 def _check_against_baseline(baseline: dict) -> dict:
     """수집된 버퍼를 베이스라인 threshold와 비교하여 결과 dict 반환"""
     thresholds = baseline.get("thresholds", {})
+    single_uid_ignore_raw = thresholds.get("single_uid_ignore_uids", [])
+    single_uid_ignore = set()
+    if isinstance(single_uid_ignore_raw, list):
+        for x in single_uid_ignore_raw:
+            try:
+                s = str(x).strip().upper()
+                if s.startswith("0X"):
+                    single_uid_ignore.add(s)
+                elif s:
+                    single_uid_ignore.add(f"0X{int(s):02X}")
+            except Exception:
+                continue
     # freq high 판정:
     # - p99는 단일 센서 노이즈 오탐 방지를 위해 2개 이상 UID 동시 초과일 때만 경보
     # - burst(max)는 짧은 충격(툭툭) 복원을 위해 유지하되 비율을 높여 오탐 완화
@@ -654,6 +666,8 @@ def _check_against_baseline(baseline: dict) -> dict:
         exceed_uids = []
         max_uid_val = 0.0
         for uid_key, uid_measured in measured_per_uid.items():
+            if uid_key.upper() in single_uid_ignore:
+                continue
             uid_val = float(uid_measured.get(measured_key, 0.0))
             if uid_val > max_uid_val:
                 max_uid_val = uid_val
