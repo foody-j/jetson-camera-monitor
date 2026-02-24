@@ -479,6 +479,20 @@ print("[시작] 수집 스레드 시작")
 collector_thread = threading.Thread(target=collector_loop, daemon=True)
 collector_thread.start()
 
+# 센서 안정화 대기 (측정 품질 향상)
+MEASUREMENT_WARMUP_SEC = 3.0
+if args.headless and args.check:
+    print(f"[준비] 센서 안정화 대기 {MEASUREMENT_WARMUP_SEC}초...")
+    time.sleep(MEASUREMENT_WARMUP_SEC)
+    # 버퍼 초기화 (warmup 데이터 제거)
+    for uid in UNIT_IDS:
+        buf_time[uid].clear()
+        buf_acc[uid] = [deque(maxlen=maxlen), deque(maxlen=maxlen), deque(maxlen=maxlen)]
+        buf_vel[uid] = [deque(maxlen=maxlen), deque(maxlen=maxlen), deque(maxlen=maxlen)]
+        buf_disp[uid] = [deque(maxlen=maxlen), deque(maxlen=maxlen), deque(maxlen=maxlen)]
+        buf_freq[uid] = [deque(maxlen=maxlen), deque(maxlen=maxlen), deque(maxlen=maxlen)]
+    print(f"[준비] 안정화 완료, 측정 시작")
+
 
 # =========================
 # 베이스라인 비교 및 결과 저장
