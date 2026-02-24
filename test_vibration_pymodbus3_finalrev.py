@@ -486,6 +486,9 @@ collector_thread.start()
 def _check_against_baseline(baseline: dict) -> dict:
     """수집된 버퍼를 베이스라인 threshold와 비교하여 결과 dict 반환"""
     thresholds = baseline.get("thresholds", {})
+    # freq high 판정에서 p99를 기본으로 쓰되, 짧은 충격(툭툭) 검출을 위해
+    # max가 임계치 대비 충분히 크면 버스트로 판정한다.
+    freq_high_burst_ratio = 1.35
     alerts = []
     total_samples = 0
 
@@ -608,7 +611,7 @@ def _check_against_baseline(baseline: dict) -> dict:
             alerts.append(f"{label} 초과: {val:.1f} > {limit:.1f}")
 
     # 주파수 임계값 비교 (high/low)
-    # high는 단발 스파이크 오탐 방지를 위해 max 대신 p99를 사용
+    # high는 p99 기반 + burst(max) 보조 판정
     freq_checks = [
         ("freq_x_high", measured["freq_x_p99"], "FREQ_X high"),
         ("freq_y_high", measured["freq_y_p99"], "FREQ_Y high"),
@@ -618,6 +621,18 @@ def _check_against_baseline(baseline: dict) -> dict:
         limit = thresholds.get(key)
         if limit is not None and val > limit:
             alerts.append(f"{label} 초과: {val:.1f} > {limit:.1f}")
+    # burst(max) 보조 판정: p99에서 안 걸려도 짧고 강한 충격은 감지
+    burst_checks = [
+        ("freq_x_high_burst", measured["freq_x_max"], thresholds.get("freq_x_high"), "FREQ_X high burst"),
+        ("freq_y_high_burst", measured["freq_y_max"], thresholds.get("freq_y_high"), "FREQ_Y high burst"),
+        ("freq_z_high_burst", measured["freq_z_max"], thresholds.get("freq_z_high"), "FREQ_Z high burst"),
+    ]
+    for _, max_val, base_limit, label in burst_checks:
+        if base_limit is None:
+            continue
+        burst_limit = float(base_limit) * float(freq_high_burst_ratio)
+        if float(max_val) > burst_limit:
+            alerts.append(f"{label} 초과: {float(max_val):.1f} > {burst_limit:.1f}")
 
     freq_low_checks = [
         ("freq_x_low", measured["freq_x_min"], "FREQ_X low"),
@@ -640,6 +655,9 @@ def _check_against_baseline(baseline: dict) -> dict:
         "freq_x_low": "FREQ_X low",
         "freq_y_low": "FREQ_Y low",
         "freq_z_low": "FREQ_Z low",
+        "freq_x_high_burst": "FREQ_X high burst",
+        "freq_y_high_burst": "FREQ_Y high burst",
+        "freq_z_high_burst": "FREQ_Z high burst",
     }
     metric_to_measured_key = {
         "velocity_magnitude_3sigma": "velocity_magnitude_p99",
@@ -652,6 +670,9 @@ def _check_against_baseline(baseline: dict) -> dict:
         "freq_x_low": "freq_x_min",
         "freq_y_low": "freq_y_min",
         "freq_z_low": "freq_z_min",
+        "freq_x_high_burst": "freq_x_max",
+        "freq_y_high_burst": "freq_y_max",
+        "freq_z_high_burst": "freq_z_max",
     }
     culprit_details = []
     for metric_key, measured_key in metric_to_measured_key.items():
@@ -660,6 +681,13 @@ def _check_against_baseline(baseline: dict) -> dict:
             continue
         measured_val = float(measured.get(measured_key, 0.0))
         is_low_metric = metric_key.endswith("_low")
+        is_burst_metric = metric_key.endswith("_high_burst")
+        if is_burst_metric:
+            base_key = metric_key.replace("_high_burst", "_high")
+            base_limit = thresholds.get(base_key)
+            if base_limit is None:
+                continue
+            limit = float(base_limit) * float(freq_high_burst_ratio)
         is_violation = measured_val < float(limit) if is_low_metric else measured_val > float(limit)
         if not is_violation:
             continue
