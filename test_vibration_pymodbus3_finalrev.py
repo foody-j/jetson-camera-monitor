@@ -486,10 +486,14 @@ collector_thread.start()
 def _check_against_baseline(baseline: dict) -> dict:
     """수집된 버퍼를 베이스라인 threshold와 비교하여 결과 dict 반환"""
     thresholds = baseline.get("thresholds", {})
-    # freq high 판정에서 p99를 기본으로 쓰되, 짧은 충격(툭툭) 검출을 위해
-    # max가 임계치 대비 충분히 크면 버스트로 판정한다.
-    freq_high_burst_ratio = 1.35
+    # freq high 판정:
+    # - p99는 단일 센서 노이즈 오탐 방지를 위해 2개 이상 UID 동시 초과일 때만 경보
+    # - burst(max)는 짧은 충격(툭툭) 복원을 위해 유지하되 비율을 높여 오탐 완화
+    freq_high_min_uid_count = 2
+    freq_high_burst_ratio = 1.8
     alerts = []
+    triggered_metrics = {}
+    metric_operators = {}
     total_samples = 0
 
     # 전체 센서 velocity/frequency 합산 + 센서별 저장
@@ -609,18 +613,33 @@ def _check_against_baseline(baseline: dict) -> dict:
         limit = thresholds.get(key)
         if limit is not None and val > limit:
             alerts.append(f"{label} 초과: {val:.1f} > {limit:.1f}")
+            triggered_metrics[key] = float(limit)
+            metric_operators[key] = ">"
 
     # 주파수 임계값 비교 (high/low)
     # high는 p99 기반 + burst(max) 보조 판정
     freq_checks = [
-        ("freq_x_high", measured["freq_x_p99"], "FREQ_X high"),
-        ("freq_y_high", measured["freq_y_p99"], "FREQ_Y high"),
-        ("freq_z_high", measured["freq_z_p99"], "FREQ_Z high"),
+        ("freq_x_high", "freq_x_p99", "FREQ_X high"),
+        ("freq_y_high", "freq_y_p99", "FREQ_Y high"),
+        ("freq_z_high", "freq_z_p99", "FREQ_Z high"),
     ]
-    for key, val, label in freq_checks:
+    for key, measured_key, label in freq_checks:
         limit = thresholds.get(key)
-        if limit is not None and val > limit:
-            alerts.append(f"{label} 초과: {val:.1f} > {limit:.1f}")
+        if limit is None:
+            continue
+        exceed_uids = []
+        for uid_key, uid_measured in measured_per_uid.items():
+            uid_val = float(uid_measured.get(measured_key, 0.0))
+            if uid_val > float(limit):
+                exceed_uids.append(uid_key)
+        if len(exceed_uids) >= freq_high_min_uid_count:
+            val = float(measured.get(measured_key, 0.0))
+            alerts.append(
+                f"{label} 초과({len(exceed_uids)}UID): {val:.1f} > {float(limit):.1f} "
+                f"(uids={','.join(exceed_uids)})"
+            )
+            triggered_metrics[key] = float(limit)
+            metric_operators[key] = ">"
     # burst(max) 보조 판정: p99에서 안 걸려도 짧고 강한 충격은 감지
     burst_checks = [
         ("freq_x_high_burst", measured["freq_x_max"], thresholds.get("freq_x_high"), "FREQ_X high burst"),
@@ -633,6 +652,9 @@ def _check_against_baseline(baseline: dict) -> dict:
         burst_limit = float(base_limit) * float(freq_high_burst_ratio)
         if float(max_val) > burst_limit:
             alerts.append(f"{label} 초과: {float(max_val):.1f} > {burst_limit:.1f}")
+            metric_key = label.replace(" ", "_").lower()
+            triggered_metrics[metric_key] = float(burst_limit)
+            metric_operators[metric_key] = ">"
 
     freq_low_checks = [
         ("freq_x_low", measured["freq_x_min"], "FREQ_X low"),
@@ -643,6 +665,8 @@ def _check_against_baseline(baseline: dict) -> dict:
         limit = thresholds.get(key)
         if limit is not None and val < limit:
             alerts.append(f"{label} 미만: {val:.1f} < {limit:.1f}")
+            triggered_metrics[key] = float(limit)
+            metric_operators[key] = "<"
 
     metric_to_label = {
         "velocity_magnitude_3sigma": "속도 크기(3σ)",
@@ -676,11 +700,14 @@ def _check_against_baseline(baseline: dict) -> dict:
     }
     culprit_details = []
     for metric_key, measured_key in metric_to_measured_key.items():
-        limit = thresholds.get(metric_key)
+        if metric_key not in triggered_metrics:
+            continue
+        limit = triggered_metrics.get(metric_key)
         if limit is None:
             continue
         measured_val = float(measured.get(measured_key, 0.0))
-        is_low_metric = metric_key.endswith("_low")
+        operator = metric_operators.get(metric_key, ">")
+        is_low_metric = operator == "<"
         is_burst_metric = metric_key.endswith("_high_burst")
         if is_burst_metric:
             base_key = metric_key.replace("_high_burst", "_high")
@@ -707,7 +734,7 @@ def _check_against_baseline(baseline: dict) -> dict:
                 "threshold": float(limit),
                 "value": float(culprit_val),
                 "culprit_uid": culprit_uid,
-                "operator": "<" if is_low_metric else ">",
+                "operator": operator,
             }
         )
 
