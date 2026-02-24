@@ -902,6 +902,38 @@ def _check_against_baseline(baseline: dict) -> dict:
             }
         )
 
+    # Combo rule (UID-specific velocity thresholds)
+    combo_rule_enabled = thresholds.get("combo_rule_enabled", False)
+    if combo_rule_enabled:
+        uid53_thresh = float(thresholds.get("uid53_vel_mag_thresh", 8000))
+        uid54_thresh = float(thresholds.get("uid54_vel_mag_thresh", 37000))
+        uid55_thresh = float(thresholds.get("uid55_vel_mag_thresh", 30500))
+
+        combo_alerts = []
+        for uid in UNIT_IDS:
+            uid_key = f"0x{uid:02X}"
+            if uid_key not in measured_per_uid:
+                continue
+
+            vel_mag = float(measured_per_uid[uid_key].get("velocity_magnitude_p99", 0.0))
+
+            # UID별 threshold 체크
+            thresh = None
+            if uid == 0x53:
+                thresh = uid53_thresh
+            elif uid == 0x54:
+                thresh = uid54_thresh
+            elif uid == 0x55:
+                thresh = uid55_thresh
+
+            if thresh and vel_mag > thresh:
+                combo_alerts.append(
+                    f"{uid_key} velocity 초과: {vel_mag:.0f} > {thresh:.0f} mm/s"
+                )
+
+        if combo_alerts:
+            alerts.extend(combo_alerts)
+
     status = "ABNORMAL" if alerts else "NORMAL"
     result = {
         "status": status,
