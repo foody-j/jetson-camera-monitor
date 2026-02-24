@@ -802,7 +802,14 @@ class ObserveAIWorker(threading.Thread):
                         # cam3(오른쪽 버킷 카메라)는 왼쪽 경계(x1)가 가장 오른쪽인 박스를 선택한다.
                         # 넓은 박스가 좌측을 많이 덮어도 우측 버킷을 더 안정적으로 고른다.
                         if self.cam_id == self.config.get("observe_right_camera_index", 3):
-                            best_in = max(in_indices, key=lambda i: boxes_xyxy[i][0])  # x1 max
+                            right_ratio = float(self.config.get("observe_cam3_right_min_ratio", 0.5))
+                            right_ratio = max(0.0, min(1.0, right_ratio))
+                            split_x = W * right_ratio
+                            right_indices = [
+                                i for i in in_indices if ((boxes_xyxy[i][0] + boxes_xyxy[i][2]) * 0.5) >= split_x
+                            ]
+                            pool = right_indices if right_indices else in_indices
+                            best_in = max(pool, key=lambda i: boxes_xyxy[i][0])  # x1 max
                         else:
                             best_in = max(in_indices, key=lambda i: confs[i])
                         x1, y1, x2, y2 = boxes_xyxy[best_in]

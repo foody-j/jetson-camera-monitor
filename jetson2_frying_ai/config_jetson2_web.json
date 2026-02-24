@@ -53,6 +53,7 @@
   "observe_bbox_pad": 2,
   "observe_filled_prob_min": 0.995,
   "observe_vote_min_samples": 3,
+  "observe_cam3_right_min_ratio": 0.5,
 
   "// 공통 AI 설정": "",
   "img_size_seg": 640,
