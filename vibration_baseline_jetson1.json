@@ -1,5 +1,5 @@
 {
-  "system": "Jetson1 (볶음, 젯슨1 정상 재학습)",
+  "system": "Jetson1 (볶음, jetson1_monitoring/젯슨1 정상 재학습)",
   "total_samples": 54726,
   "acceleration": {
     "X": {
@@ -127,11 +127,11 @@
     "vel_z_p99": 19118.5,
     "vel_z_3sigma": 11865.682962413546,
     "freq_x_low": 0.0,
-    "freq_x_high": 480.0,
+    "freq_x_high": 401.3,
     "freq_y_low": 0.0,
-    "freq_y_high": 480.0,
+    "freq_y_high": 401.3,
     "freq_z_low": 0.0,
-    "freq_z_high": 480.0,
-    "_comment": "Updated freq thresholds based on actual max values (402.8 Hz) + 20% margin for all axes"
+    "freq_z_high": 149.1,
+    "min_exceed_duration_sec": 0.5
   }
 }
