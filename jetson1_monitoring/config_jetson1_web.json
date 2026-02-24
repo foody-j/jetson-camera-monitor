@@ -87,6 +87,7 @@
   "recording_delay_after_discharge": 20,
 
   "vibration_test_mode": false,
+  "vibration_stabilization_delay_sec": 10.0,
 
   "person_data_collection_enabled": true,
   "person_collection_start_time": "08:30",
