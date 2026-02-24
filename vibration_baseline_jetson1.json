@@ -34,7 +34,7 @@
       "median": 0.0,
       "p95": 754.7499999999964,
       "p99": 3283.7699999999977,
-      "threshold_3sigma": 23000.0
+      "threshold_3sigma": 21000.0
     },
     "Y": {
       "mean": 1735.6087827426811,
@@ -57,7 +57,7 @@
       "std": 5194.32280569206,
       "p95": 13588.653166267119,
       "p99": 23928.868348721626,
-      "threshold_3sigma": 40000.0
+      "threshold_3sigma": 36000.0
     }
   },
   "displacement": {
@@ -119,9 +119,9 @@
   },
   "thresholds": {
     "velocity_magnitude_p99": 23928.868348721626,
-    "velocity_magnitude_3sigma": 40000.0,
+    "velocity_magnitude_3sigma": 36000.0,
     "vel_x_p99": 3283.7699999999977,
-    "vel_x_3sigma": 23000.0,
+    "vel_x_3sigma": 21000.0,
     "vel_y_p99": 17884.0,
     "vel_y_3sigma": 25000.0,
     "vel_z_p99": 15960.0,
