@@ -128,7 +128,7 @@
     "vel_z_3sigma": 3766.603741186975,
     "freq_x_low": 0.0,
     "freq_x_high": 380.0,
-    "freq_x_single_uid_high": 330.0,
+    "freq_x_single_uid_high": 380.0,
     "freq_y_low": 0.0,
     "freq_y_high": 140.0,
     "freq_y_single_uid_high": 180.0,
