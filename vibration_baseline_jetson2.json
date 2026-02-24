@@ -127,11 +127,11 @@
     "vel_z_p99": 6098.0,
     "vel_z_3sigma": 3766.603741186975,
     "freq_x_low": 0.0,
-    "freq_x_high": 250.0,
+    "freq_x_high": 380.0,
     "freq_y_low": 0.0,
-    "freq_y_high": 110.0,
+    "freq_y_high": 140.0,
     "freq_z_low": 0.0,
-    "freq_z_high": 65.0,
+    "freq_z_high": 260.0,
     "_comment": "Lowered thresholds to detect abnormal vibration (tooling impact): normal max=278.9/395.6Hz, abnormal max=375.8Hz"
   }
 }
