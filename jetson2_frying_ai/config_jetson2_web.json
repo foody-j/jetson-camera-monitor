@@ -29,6 +29,8 @@
   "frying_seg_imgsz": [640, 448],
   "frying_seg_conf": 0.05,
   "frying_seg_mask_thresh": 0.2,
+  "frying_cpp_postprocess_enabled": false,
+  "frying_cpp_postprocess_lib": "cpp_frying_core/build/libfrying_postprocess.so",
   "frying_infer_fps": 2,
   "frying_log_interval_sec": 10,
 
@@ -126,8 +128,8 @@
   "relay_mode": "pulse",
   "auto_relay_enabled": false,
   "vibration_test_mode": false,
-  "vibration_abnormal_min_alerts": 2,
-  "vibration_abnormal_confirm_runs": 2,
+  "vibration_abnormal_min_alerts": 1,
+  "vibration_abnormal_confirm_runs": 1,
 
   "// AI Mode": "",
   "ai_mode_enabled": false,
