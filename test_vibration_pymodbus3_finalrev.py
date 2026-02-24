@@ -485,7 +485,10 @@ collector_thread.start()
 # =========================
 def _check_against_baseline(baseline: dict) -> dict:
     """수집된 버퍼를 베이스라인 threshold와 비교하여 결과 dict 반환"""
-    thresholds = baseline.get("thresholds", {})
+    thresholds_default = baseline.get("thresholds", {})
+    thresholds = dict(thresholds_default)
+    threshold_profiles = baseline.get("threshold_profiles", [])
+    active_threshold_profile = "default"
     min_exceed_duration_sec = float(thresholds.get("min_exceed_duration_sec", 0.5))
     sample_rate = max(1.0, float(SAMPLE_RATE_HINT_PER_UNIT))
 
@@ -577,6 +580,33 @@ def _check_against_baseline(baseline: dict) -> dict:
         "freq_y_min": float(np.min(all_freq[1])) if all_freq[1] else 0.0,
         "freq_z_min": float(np.min(all_freq[2])) if all_freq[2] else 0.0,
     }
+
+    # Profile-based threshold selection (optional)
+    if isinstance(threshold_profiles, list):
+        fx_p99 = float(measured.get("freq_x_p99", 0.0))
+        for profile in threshold_profiles:
+            if not isinstance(profile, dict):
+                continue
+            selector = profile.get("selector", {})
+            if not isinstance(selector, dict):
+                continue
+            min_v = selector.get("freq_x_p99_min", None)
+            max_v = selector.get("freq_x_p99_max", None)
+            matched = True
+            if min_v is not None and fx_p99 < float(min_v):
+                matched = False
+            if max_v is not None and fx_p99 > float(max_v):
+                matched = False
+            if not matched:
+                continue
+            prof_th = profile.get("thresholds", {})
+            if isinstance(prof_th, dict):
+                merged = dict(thresholds_default)
+                merged.update(prof_th)
+                thresholds = merged
+                active_threshold_profile = str(profile.get("name", "profile"))
+                print(f"[진동 체크] threshold profile={active_threshold_profile} (freq_x_p99={fx_p99:.1f})")
+            break
     measured_per_uid = {}
     for uid in UNIT_IDS:
         x_vals, y_vals, z_vals = per_uid_vel.get(uid, ([], [], []))
@@ -876,6 +906,7 @@ def _check_against_baseline(baseline: dict) -> dict:
         "timestamp": datetime.now().isoformat(),
         "total_samples": total_samples,
         "unit_ids": [f"0x{u:02X}" for u in UNIT_IDS],
+        "active_threshold_profile": active_threshold_profile,
         "measured": measured,
         "measured_per_uid": measured_per_uid,
         "alerts": alerts,

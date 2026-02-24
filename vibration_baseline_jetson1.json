@@ -133,5 +133,39 @@
     "freq_z_low": 0.0,
     "freq_z_high": 144.3,
     "min_exceed_duration_sec": 0.5
-  }
+  },
+  "threshold_profiles": [
+    {
+      "name": "no_load_high_freq",
+      "selector": {
+        "freq_x_p99_min": 300.0
+      },
+      "thresholds": {
+        "velocity_magnitude_3sigma": 39000.0,
+        "vel_x_3sigma": 21000.0,
+        "vel_y_3sigma": 25000.0,
+        "vel_z_3sigma": 23000.0,
+        "freq_x_high": 401.3,
+        "freq_y_high": 240.0,
+        "freq_z_high": 144.3,
+        "min_exceed_duration_sec": 0.5
+      }
+    },
+    {
+      "name": "load_low_freq",
+      "selector": {
+        "freq_x_p99_max": 250.0
+      },
+      "thresholds": {
+        "velocity_magnitude_3sigma": 30000.0,
+        "vel_x_3sigma": 20000.0,
+        "vel_y_3sigma": 16000.0,
+        "vel_z_3sigma": 14000.0,
+        "freq_x_high": 220.0,
+        "freq_y_high": 120.0,
+        "freq_z_high": 90.0,
+        "min_exceed_duration_sec": 0.5
+      }
+    }
+  ]
 }
