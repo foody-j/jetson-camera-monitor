@@ -869,40 +869,23 @@ class ObserveAIWorker(threading.Thread):
                     else:
                         in_indices = [i for i in range(len(cls_ids)) if _is_in_class(names[int(cls_ids[i])])]
                         if in_indices:
-                            # cam3(오른쪽 버킷 카메라)는 왼쪽 경계(x1)가 가장 오른쪽인 박스를 선택한다.
-                            # 넓은 박스가 좌측을 많이 덮어도 우측 버킷을 더 안정적으로 고른다.
-                            if self.cam_id == self.config.get("observe_right_camera_index", 3):
-                                right_ratio = float(self.config.get("observe_cam3_right_min_ratio", 0.5))
-                                right_ratio = max(0.0, min(1.0, right_ratio))
-                                split_x = W * right_ratio
-                                right_indices = [
-                                    i for i in in_indices if ((boxes_xyxy[i][0] + boxes_xyxy[i][2]) * 0.5) >= split_x
-                                ]
-                                # cam3는 우측 후보가 없으면 선택하지 않는다(좌측 오선택 방지).
-                                if not right_indices:
-                                    in_indices = []
-                                else:
-                                    best_in = max(right_indices, key=lambda i: boxes_xyxy[i][0])  # x1 max
-                            else:
-                                best_in = max(in_indices, key=lambda i: confs[i])
-                            if in_indices:
-                                x1, y1, x2, y2 = boxes_xyxy[best_in]
+                            # Restore default behavior: pick highest-confidence "in" box for every camera.
+                            best_in = max(in_indices, key=lambda i: confs[i])
+                            x1, y1, x2, y2 = boxes_xyxy[best_in]
 
-                                x1 = _clamp_int(x1 - bbox_pad, 0, W - 1)
-                                y1 = _clamp_int(y1 - bbox_pad, 0, H - 1)
-                                x2 = _clamp_int(x2 + bbox_pad, 0, W - 1)
-                                y2 = _clamp_int(y2 + bbox_pad, 0, H - 1)
+                            x1 = _clamp_int(x1 - bbox_pad, 0, W - 1)
+                            y1 = _clamp_int(y1 - bbox_pad, 0, H - 1)
+                            x2 = _clamp_int(x2 + bbox_pad, 0, W - 1)
+                            y2 = _clamp_int(y2 + bbox_pad, 0, H - 1)
 
-                                bw = x2 - x1
-                                bh = y2 - y1
-                                mx = int(bw * inner_margin)
-                                my = int(bh * inner_margin)
-                                ix1 = _clamp_int(x1 + mx, 0, W - 1)
-                                iy1 = _clamp_int(y1 + my, 0, H - 1)
-                                ix2 = _clamp_int(x2 - mx, 0, W - 1)
-                                iy2 = _clamp_int(y2 - my, 0, H - 1)
-                            else:
-                                ix2 = ix1 = iy2 = iy1 = 0
+                            bw = x2 - x1
+                            bh = y2 - y1
+                            mx = int(bw * inner_margin)
+                            my = int(bh * inner_margin)
+                            ix1 = _clamp_int(x1 + mx, 0, W - 1)
+                            iy1 = _clamp_int(y1 + my, 0, H - 1)
+                            ix2 = _clamp_int(x2 - mx, 0, W - 1)
+                            iy2 = _clamp_int(y2 - my, 0, H - 1)
                         else:
                             ix2 = ix1 = iy2 = iy1 = 0
 
