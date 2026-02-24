@@ -1123,7 +1123,7 @@ class Jetson1Web:
                     cmd = ["python3", vibration_script, "--duration", str(self.config.get("vibration_graph_duration_sec", 30))]
                     print("[진동] 그래프 디버그 모드 실행")
                 else:
-                    cmd = ["python3", vibration_script, "--headless", "--check", "--duration", "20"]
+                    cmd = ["python3", vibration_script, "--headless", "--check", "--duration", "5"]
                     if os.path.exists(baseline_file):
                         cmd.extend(["--baseline", baseline_file])
                 self.vibration_process = subprocess.Popen(
@@ -1142,7 +1142,7 @@ class Jetson1Web:
                     baseline_exists=os.path.exists(baseline_file),
                     unit_ids=env.get("VIB_UNIT_IDS", ""),
                 )
-                stdout, _ = self.vibration_process.communicate(timeout=40)
+                stdout, _ = self.vibration_process.communicate(timeout=30)
                 if stdout:
                     print(stdout)
                 if os.path.exists(result_file):

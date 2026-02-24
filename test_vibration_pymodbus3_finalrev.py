@@ -480,7 +480,7 @@ collector_thread = threading.Thread(target=collector_loop, daemon=True)
 collector_thread.start()
 
 # 센서 안정화 대기 (측정 품질 향상)
-MEASUREMENT_WARMUP_SEC = 3.0
+MEASUREMENT_WARMUP_SEC = 2.0
 if args.headless and args.check:
     print(f"[준비] 센서 안정화 대기 {MEASUREMENT_WARMUP_SEC}초...")
     time.sleep(MEASUREMENT_WARMUP_SEC)
