@@ -34,7 +34,7 @@
       "median": 0.0,
       "p95": 6916.0,
       "p99": 9577.0,
-      "threshold_3sigma": 9577.0
+      "threshold_3sigma": 8664.596262372675
     },
     "Y": {
       "mean": 352.5457027540361,
@@ -42,7 +42,7 @@
       "median": 0.0,
       "p95": 2929.6499999999996,
       "p99": 3156.0,
-      "threshold_3sigma": 3156.0
+      "threshold_3sigma": 3062.119698999164
     },
     "Z": {
       "mean": 331.4309710351377,
@@ -50,14 +50,14 @@
       "median": 0.0,
       "p95": 3155.2999999999993,
       "p99": 6098.0,
-      "threshold_3sigma": 6098.0
+      "threshold_3sigma": 3766.603741186975
     },
     "MAGNITUDE": {
       "mean": 1447.4757445539622,
       "std": 2819.069939906012,
       "p95": 7627.546918898631,
       "p99": 11095.27778600116,
-      "threshold_3sigma": 11095.27778600116
+      "threshold_3sigma": 9904.685564271998
     }
   },
   "displacement": {
@@ -119,18 +119,19 @@
   },
   "thresholds": {
     "velocity_magnitude_p99": 11095.27778600116,
-    "velocity_magnitude_3sigma": 11095.27778600116,
+    "velocity_magnitude_3sigma": 9904.685564271998,
     "vel_x_p99": 9577.0,
-    "vel_x_3sigma": 9577.0,
+    "vel_x_3sigma": 8664.596262372675,
     "vel_y_p99": 3156.0,
-    "vel_y_3sigma": 3156.0,
+    "vel_y_3sigma": 3062.119698999164,
     "vel_z_p99": 6098.0,
-    "vel_z_3sigma": 6098.0,
+    "vel_z_3sigma": 3766.603741186975,
     "freq_x_low": 0.0,
-    "freq_x_high": 209.2,
+    "freq_x_high": 450.0,
     "freq_y_low": 0.0,
-    "freq_y_high": 112.0,
+    "freq_y_high": 290.0,
     "freq_z_low": 0.0,
-    "freq_z_high": 70.3
+    "freq_z_high": 300.0,
+    "_comment": "Updated thresholds based on actual normal data analysis (95%ile + 20% margin)"
   }
 }
