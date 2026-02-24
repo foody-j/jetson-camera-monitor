@@ -799,10 +799,10 @@ class ObserveAIWorker(threading.Thread):
 
                     in_indices = [i for i in range(len(cls_ids)) if _is_in_class(names[int(cls_ids[i])])]
                     if in_indices:
-                        # cam3(오른쪽 버킷 카메라)는 가장 오른쪽 박스를 우선 선택해
-                        # 좌/우 버킷이 동시에 보일 때 오른쪽 버킷을 안정적으로 추적한다.
+                        # cam3(오른쪽 버킷 카메라)는 왼쪽 경계(x1)가 가장 오른쪽인 박스를 선택한다.
+                        # 넓은 박스가 좌측을 많이 덮어도 우측 버킷을 더 안정적으로 고른다.
                         if self.cam_id == self.config.get("observe_right_camera_index", 3):
-                            best_in = max(in_indices, key=lambda i: boxes_xyxy[i][2])  # x2 max
+                            best_in = max(in_indices, key=lambda i: boxes_xyxy[i][0])  # x1 max
                         else:
                             best_in = max(in_indices, key=lambda i: confs[i])
                         x1, y1, x2, y2 = boxes_xyxy[best_in]
