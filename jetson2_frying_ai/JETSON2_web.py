@@ -766,6 +766,8 @@ class ObserveAIWorker(threading.Thread):
                 seg_conf = float(self.config.get("observe_conf_seg", self.config.get("conf_seg", 0.5)))
                 inner_margin = float(self.config.get("observe_inner_margin", 0.15))
                 bbox_pad = int(self.config.get("observe_bbox_pad", 10))
+                filled_prob_min = float(self.config.get("observe_filled_prob_min", 0.0))
+                min_vote_samples = int(self.config.get("observe_vote_min_samples", 1))
 
                 seg_res = self.seg_model.predict(
                     frame,
@@ -833,7 +835,10 @@ class ObserveAIWorker(threading.Thread):
                             top1_idx = int(cls_res.probs.top1)
                             top1_name = cls_res.names[top1_idx]
                             prob = float(cls_res.probs.top1conf)
-                            is_filled = top1_name.lower() == self.config.get("positive_label", "filled").lower()
+                            is_filled = (
+                                top1_name.lower() == self.config.get("positive_label", "filled").lower()
+                                and prob >= filled_prob_min
+                            )
                             detected = True
 
                             if seg_res.masks is not None and len(seg_res.masks.data) > best_in:
@@ -846,7 +851,10 @@ class ObserveAIWorker(threading.Thread):
                 filled_stable = False
                 if detected:
                     self.votes.append(is_filled)
-                    filled_stable = sum(self.votes) >= (len(self.votes) // 2 + 1)
+                    filled_stable = (
+                        len(self.votes) >= max(1, min_vote_samples)
+                        and sum(self.votes) >= (len(self.votes) // 2 + 1)
+                    )
                     status = "FILLED" if filled_stable else "EMPTY"
                 else:
                     self.votes.clear()

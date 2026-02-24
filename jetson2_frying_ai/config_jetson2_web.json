@@ -51,6 +51,8 @@
   "observe_conf_seg": 0.40,
   "observe_inner_margin": 0.30,
   "observe_bbox_pad": 2,
+  "observe_filled_prob_min": 0.995,
+  "observe_vote_min_samples": 3,
 
   "// 공통 AI 설정": "",
   "img_size_seg": 640,
