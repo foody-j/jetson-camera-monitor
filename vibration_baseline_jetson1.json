@@ -128,10 +128,13 @@
     "vel_z_3sigma": 15000.0,
     "freq_x_low": 0.0,
     "freq_x_high": 401.3,
+    "freq_x_high_min_uid_count": 1,
     "freq_y_low": 0.0,
     "freq_y_high": 401.3,
+    "freq_y_high_min_uid_count": 1,
     "freq_z_low": 0.0,
     "freq_z_high": 130.0,
+    "freq_z_high_min_uid_count": 1,
     "min_exceed_duration_sec": 0.1
   }
 }
