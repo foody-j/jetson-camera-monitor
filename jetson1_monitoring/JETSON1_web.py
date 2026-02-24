@@ -1135,7 +1135,7 @@ class Jetson1Web:
                     baseline_exists=os.path.exists(baseline_file),
                     unit_ids=env.get("VIB_UNIT_IDS", ""),
                 )
-                stdout, _ = self.vibration_process.communicate(timeout=15)
+                stdout, _ = self.vibration_process.communicate(timeout=10)
                 if stdout:
                     print(stdout)
                 if os.path.exists(result_file):
