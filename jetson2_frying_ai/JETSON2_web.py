@@ -444,6 +444,11 @@ class FryingAIWorker(threading.Thread):
             conf=config.get("frying_seg_conf", 0.2),
             mask_threshold=config.get("frying_seg_mask_thresh", 0.3),
             device=device,
+            frying_cpp_postprocess_enabled=bool(config.get("frying_cpp_postprocess_enabled", False)),
+            frying_cpp_postprocess_lib=config.get(
+                "frying_cpp_postprocess_lib",
+                "cpp_frying_core/build/libfrying_postprocess.so",
+            ),
         )
         pot_name = "POT1" if pot_id == 0 else "POT2"
         self.tracker = LiftEventTracker(pot_name, config)
@@ -2447,9 +2452,15 @@ class Jetson2Web:
                 self._set_vibration_event("STARTED", "MEASURING")
                 stdout, _ = self.vibration_process.communicate(timeout=30)
                 exit_code = self.vibration_process.returncode
-                tail_lines = [line for line in (stdout or "").strip().splitlines() if line][-5:]
-                for line in tail_lines:
-                    print(f"[진동][stdout] {line}")
+                stdout_lines = [line for line in (stdout or "").strip().splitlines() if line]
+                key_tokens = ("CSV", "[결과 저장]", "[진동 체크]", "[베이스라인]")
+                important_lines = [line for line in stdout_lines if any(token in line for token in key_tokens)]
+                if important_lines:
+                    for line in important_lines:
+                        print(f"[진동][stdout] {line}")
+                else:
+                    for line in stdout_lines[-8:]:
+                        print(f"[진동][stdout] {line}")
                 if exit_code == 0 and os.path.exists(result_file):
                     with open(result_file, "r", encoding="utf-8") as f:
                         result = json.load(f)
