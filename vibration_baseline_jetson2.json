@@ -135,9 +135,6 @@
     "freq_z_low": 0.0,
     "freq_z_high": 260.0,
     "freq_z_single_uid_high": 220.0,
-    "single_uid_ignore_uids": [
-      "0x51"
-    ],
     "_comment": "Lowered thresholds to detect abnormal vibration (tooling impact): normal max=278.9/395.6Hz, abnormal max=375.8Hz"
   }
 }
