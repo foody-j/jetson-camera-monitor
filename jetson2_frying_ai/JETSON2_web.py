@@ -41,6 +41,15 @@ from src.communication.mqtt_client import MQTTClient
 from src.core.system_info import SystemInfo
 from web.app import create_app
 
+CPP_OBS_PY_DIR = os.path.join(SCRIPT_DIR, "cpp_observe_postprocess", "python")
+if os.path.isdir(CPP_OBS_PY_DIR) and CPP_OBS_PY_DIR not in sys.path:
+    sys.path.insert(0, CPP_OBS_PY_DIR)
+
+try:
+    from observe_postprocess import ObservePostprocessCpp
+except Exception:
+    ObservePostprocessCpp = None
+
 try:
     import torch
     from ultralytics import YOLO
@@ -731,6 +740,24 @@ class ObserveAIWorker(threading.Thread):
         self._last_mask = None
         self._last_metrics = {}
         self._last_status = None
+        self.observe_cpp_postprocess_enabled = bool(self.config.get("observe_cpp_postprocess_enabled", False))
+        self.cpp_postprocess = None
+        if self.observe_cpp_postprocess_enabled:
+            if ObservePostprocessCpp is None:
+                print(f"[Observe AI] cam{self.cam_id} C++ postprocess unavailable, fallback to Python")
+            else:
+                try:
+                    lib_path = self.config.get(
+                        "observe_cpp_postprocess_lib",
+                        "cpp_observe_postprocess/build/libobserve_postprocess.so",
+                    )
+                    if not os.path.isabs(lib_path):
+                        lib_path = os.path.join(SCRIPT_DIR, lib_path)
+                    self.cpp_postprocess = ObservePostprocessCpp(lib_path=lib_path)
+                    print(f"[Observe AI] cam{self.cam_id} C++ postprocess enabled: {lib_path}")
+                except Exception as e:
+                    print(f"[Observe AI] cam{self.cam_id} C++ postprocess init failed: {e}")
+                    self.cpp_postprocess = None
 
     def _resolve_model_path(self, path: str) -> str:
         if os.path.isabs(path):
@@ -792,71 +819,113 @@ class ObserveAIWorker(threading.Thread):
                     confs = seg_res.boxes.conf.cpu().numpy()
                     cls_ids = seg_res.boxes.cls.cpu().numpy().astype(int)
                     names = seg_res.names
+                    best_in = None
 
                     def _is_in_class(name: str) -> bool:
                         name_lower = (name or "").lower()
                         return name_lower == "in" or "in" in name_lower
 
-                    in_indices = [i for i in range(len(cls_ids)) if _is_in_class(names[int(cls_ids[i])])]
-                    if in_indices:
-                        # cam3(오른쪽 버킷 카메라)는 왼쪽 경계(x1)가 가장 오른쪽인 박스를 선택한다.
-                        # 넓은 박스가 좌측을 많이 덮어도 우측 버킷을 더 안정적으로 고른다.
-                        if self.cam_id == self.config.get("observe_right_camera_index", 3):
-                            right_ratio = float(self.config.get("observe_cam3_right_min_ratio", 0.5))
-                            right_ratio = max(0.0, min(1.0, right_ratio))
-                            split_x = W * right_ratio
-                            right_indices = [
-                                i for i in in_indices if ((boxes_xyxy[i][0] + boxes_xyxy[i][2]) * 0.5) >= split_x
-                            ]
-                            # cam3는 우측 후보가 없으면 선택하지 않는다(좌측 오선택 방지).
-                            if not right_indices:
-                                in_indices = []
-                            else:
-                                best_in = max(right_indices, key=lambda i: boxes_xyxy[i][0])  # x1 max
-                        else:
-                            best_in = max(in_indices, key=lambda i: confs[i])
+                    use_cpp = self.cpp_postprocess is not None
+                    selected_box = None
+                    if use_cpp:
+                        try:
+                            selected_box = self.cpp_postprocess.select_inner_box(
+                                boxes_xyxy=boxes_xyxy,
+                                confs=confs,
+                                cls_ids=cls_ids,
+                                names=names,
+                                cam_id=self.cam_id,
+                                right_cam_id=int(self.config.get("observe_right_camera_index", 3)),
+                                right_min_ratio=float(self.config.get("observe_cam3_right_min_ratio", 0.5)),
+                                frame_w=W,
+                                frame_h=H,
+                                bbox_pad=bbox_pad,
+                                inner_margin=inner_margin,
+                            )
+                        except Exception as e:
+                            print(f"[Observe AI] cam{self.cam_id} C++ postprocess error: {e}")
+                            selected_box = None
+
+                    if selected_box is not None:
+                        x1, y1, x2, y2 = selected_box["bbox"]
+                        ix1, iy1, ix2, iy2 = selected_box["inner_bbox"]
+                        # Keep mask overlay behavior by mapping selected padded bbox back to source index.
+                        if seg_res.masks is not None and len(seg_res.masks.data) > 0:
+                            best_dist = None
+                            for i in range(len(cls_ids)):
+                                px1 = _clamp_int(boxes_xyxy[i][0] - bbox_pad, 0, W - 1)
+                                py1 = _clamp_int(boxes_xyxy[i][1] - bbox_pad, 0, H - 1)
+                                px2 = _clamp_int(boxes_xyxy[i][2] + bbox_pad, 0, W - 1)
+                                py2 = _clamp_int(boxes_xyxy[i][3] + bbox_pad, 0, H - 1)
+                                dist = abs(px1 - x1) + abs(py1 - y1) + abs(px2 - x2) + abs(py2 - y2)
+                                if best_dist is None or dist < best_dist:
+                                    best_dist = dist
+                                    best_in = i
+                    else:
+                        in_indices = [i for i in range(len(cls_ids)) if _is_in_class(names[int(cls_ids[i])])]
                         if in_indices:
-                            x1, y1, x2, y2 = boxes_xyxy[best_in]
+                            # cam3(오른쪽 버킷 카메라)는 왼쪽 경계(x1)가 가장 오른쪽인 박스를 선택한다.
+                            # 넓은 박스가 좌측을 많이 덮어도 우측 버킷을 더 안정적으로 고른다.
+                            if self.cam_id == self.config.get("observe_right_camera_index", 3):
+                                right_ratio = float(self.config.get("observe_cam3_right_min_ratio", 0.5))
+                                right_ratio = max(0.0, min(1.0, right_ratio))
+                                split_x = W * right_ratio
+                                right_indices = [
+                                    i for i in in_indices if ((boxes_xyxy[i][0] + boxes_xyxy[i][2]) * 0.5) >= split_x
+                                ]
+                                # cam3는 우측 후보가 없으면 선택하지 않는다(좌측 오선택 방지).
+                                if not right_indices:
+                                    in_indices = []
+                                else:
+                                    best_in = max(right_indices, key=lambda i: boxes_xyxy[i][0])  # x1 max
+                            else:
+                                best_in = max(in_indices, key=lambda i: confs[i])
+                            if in_indices:
+                                x1, y1, x2, y2 = boxes_xyxy[best_in]
 
-                            x1 = _clamp_int(x1 - bbox_pad, 0, W - 1)
-                            y1 = _clamp_int(y1 - bbox_pad, 0, H - 1)
-                            x2 = _clamp_int(x2 + bbox_pad, 0, W - 1)
-                            y2 = _clamp_int(y2 + bbox_pad, 0, H - 1)
+                                x1 = _clamp_int(x1 - bbox_pad, 0, W - 1)
+                                y1 = _clamp_int(y1 - bbox_pad, 0, H - 1)
+                                x2 = _clamp_int(x2 + bbox_pad, 0, W - 1)
+                                y2 = _clamp_int(y2 + bbox_pad, 0, H - 1)
 
-                            bw = x2 - x1
-                            bh = y2 - y1
-                            mx = int(bw * inner_margin)
-                            my = int(bh * inner_margin)
-                            ix1 = _clamp_int(x1 + mx, 0, W - 1)
-                            iy1 = _clamp_int(y1 + my, 0, H - 1)
-                            ix2 = _clamp_int(x2 - mx, 0, W - 1)
-                            iy2 = _clamp_int(y2 - my, 0, H - 1)
+                                bw = x2 - x1
+                                bh = y2 - y1
+                                mx = int(bw * inner_margin)
+                                my = int(bh * inner_margin)
+                                ix1 = _clamp_int(x1 + mx, 0, W - 1)
+                                iy1 = _clamp_int(y1 + my, 0, H - 1)
+                                ix2 = _clamp_int(x2 - mx, 0, W - 1)
+                                iy2 = _clamp_int(y2 - my, 0, H - 1)
+                            else:
+                                ix2 = ix1 = iy2 = iy1 = 0
+                        else:
+                            ix2 = ix1 = iy2 = iy1 = 0
 
-                            if ix2 > ix1 and iy2 > iy1:
-                                inner = frame[iy1:iy2, ix1:ix2].copy()
-                                inner_sq = _square_crop(inner)
-                                inner_sq = cv2.resize(inner_sq, (cls_imgsz, cls_imgsz), interpolation=cv2.INTER_AREA)
-                                cls_res = self.cls_model.predict(
-                                    inner_sq,
-                                    imgsz=cls_imgsz,
-                                    conf=0.0,
-                                    verbose=False,
-                                    device=self.device,
-                                )[0]
-                                top1_idx = int(cls_res.probs.top1)
-                                top1_name = cls_res.names[top1_idx]
-                                prob = float(cls_res.probs.top1conf)
-                                is_filled = (
-                                    top1_name.lower() == self.config.get("positive_label", "filled").lower()
-                                    and prob >= filled_prob_min
-                                )
-                                detected = True
+                    if ix2 > ix1 and iy2 > iy1:
+                        inner = frame[iy1:iy2, ix1:ix2].copy()
+                        inner_sq = _square_crop(inner)
+                        inner_sq = cv2.resize(inner_sq, (cls_imgsz, cls_imgsz), interpolation=cv2.INTER_AREA)
+                        cls_res = self.cls_model.predict(
+                            inner_sq,
+                            imgsz=cls_imgsz,
+                            conf=0.0,
+                            verbose=False,
+                            device=self.device,
+                        )[0]
+                        top1_idx = int(cls_res.probs.top1)
+                        top1_name = cls_res.names[top1_idx]
+                        prob = float(cls_res.probs.top1conf)
+                        is_filled = (
+                            top1_name.lower() == self.config.get("positive_label", "filled").lower()
+                            and prob >= filled_prob_min
+                        )
+                        detected = True
 
-                                if seg_res.masks is not None and len(seg_res.masks.data) > best_in:
-                                    m = seg_res.masks.data[best_in].cpu().numpy().astype(np.uint8)
-                                    if m.max() <= 1:
-                                        m = m * 255
-                                    in_mask = cv2.resize(m, (W, H), interpolation=cv2.INTER_NEAREST)
+                        if best_in is not None and seg_res.masks is not None and len(seg_res.masks.data) > best_in:
+                            m = seg_res.masks.data[best_in].cpu().numpy().astype(np.uint8)
+                            if m.max() <= 1:
+                                m = m * 255
+                            in_mask = cv2.resize(m, (W, H), interpolation=cv2.INTER_NEAREST)
 
                 status = "NO_BASKET"
                 filled_stable = False
