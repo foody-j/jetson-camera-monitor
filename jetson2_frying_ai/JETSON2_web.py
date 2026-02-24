@@ -1042,6 +1042,7 @@ class Jetson2Web:
         self.last_vibration_event = {"event": "INIT", "status": "IDLE", "timestamp": None}
         self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
         self.vibration_abnormal_timer = None
+        self._last_robot_process_type = {"0": None, "1": None}
         self._last_chk_vibration = False
         self._last_vibration_request = False
 
@@ -1629,6 +1630,19 @@ class Jetson2Web:
                 "rt_dir": rt_dir,
                 "rb_status": rb_status,
             }
+
+            prev_process_type = self._last_robot_process_type.get(pot_num)
+            if prev_process_type != process_type:
+                self._last_robot_process_type[pot_num] = process_type
+                pot_label = "left" if pot_num == "0" else ("right" if pot_num == "1" else pot_num)
+                print(f"[로봇상태] pot={pot_label} ProcessType={process_type} RBstatus={rb_status}")
+                self._log_ops_event(
+                    "robot_process_type_changed",
+                    pot=pot_label,
+                    process_type=process_type,
+                    rb_status=rb_status,
+                    recipe=recipe,
+                )
 
             is_cleaning = "청소" in recipe if recipe else False
 
