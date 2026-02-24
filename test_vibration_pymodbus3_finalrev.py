@@ -489,22 +489,34 @@ def _check_against_baseline(baseline: dict) -> dict:
     alerts = []
     total_samples = 0
 
-    # 전체 센서 velocity 합산 + 센서별 velocity 저장
+    # 전체 센서 velocity/frequency 합산 + 센서별 저장
     all_vel = [[], [], []]
+    all_freq = [[], [], []]
     per_uid_vel = {}
+    per_uid_freq = {}
     for uid in UNIT_IDS:
         x_vals = list(buf_vel[uid][0])
         y_vals = list(buf_vel[uid][1])
         z_vals = list(buf_vel[uid][2])
+        fx_vals = list(buf_freq[uid][0])
+        fy_vals = list(buf_freq[uid][1])
+        fz_vals = list(buf_freq[uid][2])
         n = min(len(x_vals), len(y_vals), len(z_vals))
         total_samples += n
         x_vals = x_vals[:n]
         y_vals = y_vals[:n]
         z_vals = z_vals[:n]
+        fx_vals = fx_vals[:n]
+        fy_vals = fy_vals[:n]
+        fz_vals = fz_vals[:n]
         per_uid_vel[uid] = (x_vals, y_vals, z_vals)
+        per_uid_freq[uid] = (fx_vals, fy_vals, fz_vals)
         all_vel[0].extend(x_vals)
         all_vel[1].extend(y_vals)
         all_vel[2].extend(z_vals)
+        all_freq[0].extend(fx_vals)
+        all_freq[1].extend(fy_vals)
+        all_freq[2].extend(fz_vals)
 
     if total_samples == 0:
         return {"status": "ERROR", "reason": "수집된 샘플 없음", "timestamp": datetime.now().isoformat()}
@@ -521,6 +533,12 @@ def _check_against_baseline(baseline: dict) -> dict:
         "vel_x_p99": float(np.percentile(np.abs(all_vel[0]), 99)) if all_vel[0] else 0.0,
         "vel_y_p99": float(np.percentile(np.abs(all_vel[1]), 99)) if all_vel[1] else 0.0,
         "vel_z_p99": float(np.percentile(np.abs(all_vel[2]), 99)) if all_vel[2] else 0.0,
+        "freq_x_max": float(np.max(all_freq[0])) if all_freq[0] else 0.0,
+        "freq_y_max": float(np.max(all_freq[1])) if all_freq[1] else 0.0,
+        "freq_z_max": float(np.max(all_freq[2])) if all_freq[2] else 0.0,
+        "freq_x_min": float(np.min(all_freq[0])) if all_freq[0] else 0.0,
+        "freq_y_min": float(np.min(all_freq[1])) if all_freq[1] else 0.0,
+        "freq_z_min": float(np.min(all_freq[2])) if all_freq[2] else 0.0,
     }
     measured_per_uid = {}
     for uid in UNIT_IDS:
@@ -543,6 +561,29 @@ def _check_against_baseline(baseline: dict) -> dict:
             "vel_y_p99": float(np.percentile(np.abs(y_arr), 99)),
             "vel_z_p99": float(np.percentile(np.abs(z_arr), 99)),
         }
+        fx_vals, fy_vals, fz_vals = per_uid_freq.get(uid, ([], [], []))
+        if fx_vals:
+            measured_per_uid[f"0x{uid:02X}"].update(
+                {
+                    "freq_x_max": float(np.max(fx_vals)),
+                    "freq_y_max": float(np.max(fy_vals)),
+                    "freq_z_max": float(np.max(fz_vals)),
+                    "freq_x_min": float(np.min(fx_vals)),
+                    "freq_y_min": float(np.min(fy_vals)),
+                    "freq_z_min": float(np.min(fz_vals)),
+                }
+            )
+        else:
+            measured_per_uid[f"0x{uid:02X}"].update(
+                {
+                    "freq_x_max": 0.0,
+                    "freq_y_max": 0.0,
+                    "freq_z_max": 0.0,
+                    "freq_x_min": 0.0,
+                    "freq_y_min": 0.0,
+                    "freq_z_min": 0.0,
+                }
+            )
 
     # 3sigma threshold 비교
     checks = [
@@ -557,30 +598,66 @@ def _check_against_baseline(baseline: dict) -> dict:
         if limit is not None and val > limit:
             alerts.append(f"{label} 초과: {val:.1f} > {limit:.1f}")
 
+    # 주파수 임계값 비교 (high/low)
+    freq_checks = [
+        ("freq_x_high", measured["freq_x_max"], "FREQ_X high"),
+        ("freq_y_high", measured["freq_y_max"], "FREQ_Y high"),
+        ("freq_z_high", measured["freq_z_max"], "FREQ_Z high"),
+    ]
+    for key, val, label in freq_checks:
+        limit = thresholds.get(key)
+        if limit is not None and val > limit:
+            alerts.append(f"{label} 초과: {val:.1f} > {limit:.1f}")
+
+    freq_low_checks = [
+        ("freq_x_low", measured["freq_x_min"], "FREQ_X low"),
+        ("freq_y_low", measured["freq_y_min"], "FREQ_Y low"),
+        ("freq_z_low", measured["freq_z_min"], "FREQ_Z low"),
+    ]
+    for key, val, label in freq_low_checks:
+        limit = thresholds.get(key)
+        if limit is not None and val < limit:
+            alerts.append(f"{label} 미만: {val:.1f} < {limit:.1f}")
+
     metric_to_label = {
         "velocity_magnitude_3sigma": "속도 크기(3σ)",
         "vel_x_3sigma": "X축 속도(3σ)",
         "vel_y_3sigma": "Y축 속도(3σ)",
         "vel_z_3sigma": "Z축 속도(3σ)",
+        "freq_x_high": "FREQ_X high",
+        "freq_y_high": "FREQ_Y high",
+        "freq_z_high": "FREQ_Z high",
+        "freq_x_low": "FREQ_X low",
+        "freq_y_low": "FREQ_Y low",
+        "freq_z_low": "FREQ_Z low",
     }
     metric_to_measured_key = {
         "velocity_magnitude_3sigma": "velocity_magnitude_p99",
         "vel_x_3sigma": "vel_x_p99",
         "vel_y_3sigma": "vel_y_p99",
         "vel_z_3sigma": "vel_z_p99",
+        "freq_x_high": "freq_x_max",
+        "freq_y_high": "freq_y_max",
+        "freq_z_high": "freq_z_max",
+        "freq_x_low": "freq_x_min",
+        "freq_y_low": "freq_y_min",
+        "freq_z_low": "freq_z_min",
     }
     culprit_details = []
     for metric_key, measured_key in metric_to_measured_key.items():
         limit = thresholds.get(metric_key)
         if limit is None:
             continue
-        if measured.get(measured_key, 0.0) <= limit:
+        measured_val = float(measured.get(measured_key, 0.0))
+        is_low_metric = metric_key.endswith("_low")
+        is_violation = measured_val < float(limit) if is_low_metric else measured_val > float(limit)
+        if not is_violation:
             continue
         culprit_uid = None
-        culprit_val = -1.0
+        culprit_val = float("inf") if is_low_metric else -1.0
         for uid_key, uid_measured in measured_per_uid.items():
             uid_val = float(uid_measured.get(measured_key, 0.0))
-            if uid_val > culprit_val:
+            if (not is_low_metric and uid_val > culprit_val) or (is_low_metric and uid_val < culprit_val):
                 culprit_val = uid_val
                 culprit_uid = uid_key
         if culprit_uid is None:
@@ -592,6 +669,7 @@ def _check_against_baseline(baseline: dict) -> dict:
                 "threshold": float(limit),
                 "value": float(culprit_val),
                 "culprit_uid": culprit_uid,
+                "operator": "<" if is_low_metric else ">",
             }
         )
 
@@ -613,7 +691,7 @@ def _check_against_baseline(baseline: dict) -> dict:
         print(
             "  [원인] "
             f"{detail['label']} UID {detail['culprit_uid']}: "
-            f"{detail['value']:.1f} > {detail['threshold']:.1f}"
+            f"{detail['value']:.1f} {detail.get('operator', '>')} {detail['threshold']:.1f}"
         )
     return result
 
