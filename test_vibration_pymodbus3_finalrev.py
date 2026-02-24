@@ -640,6 +640,32 @@ def _check_against_baseline(baseline: dict) -> dict:
             )
             triggered_metrics[key] = float(limit)
             metric_operators[key] = ">"
+
+    # 단일 UID 강한 초과 예외: 한 센서만 강하게 튀는 경우(예: UID 0x51)도 검출
+    single_uid_overrides = [
+        ("freq_x_single_uid_high", "freq_x_p99", "FREQ_X single high"),
+        ("freq_y_single_uid_high", "freq_y_p99", "FREQ_Y single high"),
+        ("freq_z_single_uid_high", "freq_z_p99", "FREQ_Z single high"),
+    ]
+    for key, measured_key, label in single_uid_overrides:
+        limit = thresholds.get(key)
+        if limit is None:
+            continue
+        exceed_uids = []
+        max_uid_val = 0.0
+        for uid_key, uid_measured in measured_per_uid.items():
+            uid_val = float(uid_measured.get(measured_key, 0.0))
+            if uid_val > max_uid_val:
+                max_uid_val = uid_val
+            if uid_val > float(limit):
+                exceed_uids.append(uid_key)
+        if exceed_uids:
+            alerts.append(
+                f"{label} 초과({len(exceed_uids)}UID): {max_uid_val:.1f} > {float(limit):.1f} "
+                f"(uids={','.join(exceed_uids)})"
+            )
+            triggered_metrics[key] = float(limit)
+            metric_operators[key] = ">"
     # burst(max) 보조 판정: p99에서 안 걸려도 짧고 강한 충격은 감지
     burst_checks = [
         ("freq_x_high_burst", measured["freq_x_max"], thresholds.get("freq_x_high"), "FREQ_X high burst"),
@@ -682,6 +708,9 @@ def _check_against_baseline(baseline: dict) -> dict:
         "freq_x_high_burst": "FREQ_X high burst",
         "freq_y_high_burst": "FREQ_Y high burst",
         "freq_z_high_burst": "FREQ_Z high burst",
+        "freq_x_single_uid_high": "FREQ_X single high",
+        "freq_y_single_uid_high": "FREQ_Y single high",
+        "freq_z_single_uid_high": "FREQ_Z single high",
     }
     metric_to_measured_key = {
         "velocity_magnitude_3sigma": "velocity_magnitude_p99",
@@ -697,6 +726,9 @@ def _check_against_baseline(baseline: dict) -> dict:
         "freq_x_high_burst": "freq_x_max",
         "freq_y_high_burst": "freq_y_max",
         "freq_z_high_burst": "freq_z_max",
+        "freq_x_single_uid_high": "freq_x_p99",
+        "freq_y_single_uid_high": "freq_y_p99",
+        "freq_z_single_uid_high": "freq_z_p99",
     }
     culprit_details = []
     for metric_key, measured_key in metric_to_measured_key.items():
