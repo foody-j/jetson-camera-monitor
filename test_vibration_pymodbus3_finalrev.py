@@ -533,6 +533,9 @@ def _check_against_baseline(baseline: dict) -> dict:
         "vel_x_p99": float(np.percentile(np.abs(all_vel[0]), 99)) if all_vel[0] else 0.0,
         "vel_y_p99": float(np.percentile(np.abs(all_vel[1]), 99)) if all_vel[1] else 0.0,
         "vel_z_p99": float(np.percentile(np.abs(all_vel[2]), 99)) if all_vel[2] else 0.0,
+        "freq_x_p99": float(np.percentile(all_freq[0], 99)) if all_freq[0] else 0.0,
+        "freq_y_p99": float(np.percentile(all_freq[1], 99)) if all_freq[1] else 0.0,
+        "freq_z_p99": float(np.percentile(all_freq[2], 99)) if all_freq[2] else 0.0,
         "freq_x_max": float(np.max(all_freq[0])) if all_freq[0] else 0.0,
         "freq_y_max": float(np.max(all_freq[1])) if all_freq[1] else 0.0,
         "freq_z_max": float(np.max(all_freq[2])) if all_freq[2] else 0.0,
@@ -565,6 +568,9 @@ def _check_against_baseline(baseline: dict) -> dict:
         if fx_vals:
             measured_per_uid[f"0x{uid:02X}"].update(
                 {
+                    "freq_x_p99": float(np.percentile(fx_vals, 99)),
+                    "freq_y_p99": float(np.percentile(fy_vals, 99)),
+                    "freq_z_p99": float(np.percentile(fz_vals, 99)),
                     "freq_x_max": float(np.max(fx_vals)),
                     "freq_y_max": float(np.max(fy_vals)),
                     "freq_z_max": float(np.max(fz_vals)),
@@ -576,6 +582,9 @@ def _check_against_baseline(baseline: dict) -> dict:
         else:
             measured_per_uid[f"0x{uid:02X}"].update(
                 {
+                    "freq_x_p99": 0.0,
+                    "freq_y_p99": 0.0,
+                    "freq_z_p99": 0.0,
                     "freq_x_max": 0.0,
                     "freq_y_max": 0.0,
                     "freq_z_max": 0.0,
@@ -599,10 +608,11 @@ def _check_against_baseline(baseline: dict) -> dict:
             alerts.append(f"{label} 초과: {val:.1f} > {limit:.1f}")
 
     # 주파수 임계값 비교 (high/low)
+    # high는 단발 스파이크 오탐 방지를 위해 max 대신 p99를 사용
     freq_checks = [
-        ("freq_x_high", measured["freq_x_max"], "FREQ_X high"),
-        ("freq_y_high", measured["freq_y_max"], "FREQ_Y high"),
-        ("freq_z_high", measured["freq_z_max"], "FREQ_Z high"),
+        ("freq_x_high", measured["freq_x_p99"], "FREQ_X high"),
+        ("freq_y_high", measured["freq_y_p99"], "FREQ_Y high"),
+        ("freq_z_high", measured["freq_z_p99"], "FREQ_Z high"),
     ]
     for key, val, label in freq_checks:
         limit = thresholds.get(key)
@@ -636,9 +646,9 @@ def _check_against_baseline(baseline: dict) -> dict:
         "vel_x_3sigma": "vel_x_p99",
         "vel_y_3sigma": "vel_y_p99",
         "vel_z_3sigma": "vel_z_p99",
-        "freq_x_high": "freq_x_max",
-        "freq_y_high": "freq_y_max",
-        "freq_z_high": "freq_z_max",
+        "freq_x_high": "freq_x_p99",
+        "freq_y_high": "freq_y_p99",
+        "freq_z_high": "freq_z_p99",
         "freq_x_low": "freq_x_min",
         "freq_y_low": "freq_y_min",
         "freq_z_low": "freq_z_min",
