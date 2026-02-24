@@ -1109,13 +1109,6 @@ class Jetson1Web:
 
         def run_vibration_check():
             try:
-                # 기계 작동 안정화 대기 (MQTT 트리거 직후 idle 구간 회피)
-                stabilization_delay = float(self.config.get("vibration_stabilization_delay_sec", 10.0))
-                if stabilization_delay > 0:
-                    print(f"[진동] 기계 작동 안정화 대기 {stabilization_delay:.1f}초...")
-                    time.sleep(stabilization_delay)
-                    print("[진동] 대기 완료, 측정 시작")
-
                 env = os.environ.copy()
                 env["VIB_UNIT_IDS"] = "0x53,0x54"  # 0x55 Y축 고장으로 제외
                 graph_mode = bool(self.config.get("vibration_graph_debug", False))
