@@ -235,6 +235,11 @@ def main():
     # 데이터 디렉토리
     datasets = [
         {
+            "name": "Jetson1 (볶음, 젯슨1 정상 재학습)",
+            "dir": "/home/yjk/jetson-food-ai/jetson1_monitoring/젯슨1 정상",
+            "output": "vibration_baseline_jetson1.json"
+        },
+        {
             "name": "Jetson2 (튀김, 젯슨2정상 재학습)",
             "dir": "/home/yjk/jetson-food-ai/jetson2_frying_ai/젯슨2정상",
             "output": "vibration_baseline_jetson2.json"
