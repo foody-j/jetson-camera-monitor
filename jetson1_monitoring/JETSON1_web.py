@@ -752,6 +752,7 @@ class Jetson1Web:
         self.vibration_process = None
         self.vibration_status = "IDLE"
         self.last_vibration_event = {"event": "INIT", "status": "IDLE", "timestamp": None}
+        self.last_vibration_result = {}
         self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
         self.vibration_abnormal_timer = None
         self.child_processes = []
@@ -1110,9 +1111,14 @@ class Jetson1Web:
             try:
                 env = os.environ.copy()
                 env["VIB_UNIT_IDS"] = "0x53,0x54,0x55"
-                cmd = ["python3", vibration_script, "--headless", "--check", "--duration", "10"]
-                if os.path.exists(baseline_file):
-                    cmd.extend(["--baseline", baseline_file])
+                graph_mode = bool(self.config.get("vibration_graph_debug", False))
+                if graph_mode:
+                    cmd = ["python3", vibration_script, "--duration", str(self.config.get("vibration_graph_duration_sec", 30))]
+                    print("[진동] 그래프 디버그 모드 실행")
+                else:
+                    cmd = ["python3", vibration_script, "--headless", "--check", "--duration", "10"]
+                    if os.path.exists(baseline_file):
+                        cmd.extend(["--baseline", baseline_file])
                 self.vibration_process = subprocess.Popen(
                     cmd,
                     cwd=base_dir,
@@ -1135,13 +1141,58 @@ class Jetson1Web:
                 if os.path.exists(result_file):
                     with open(result_file, "r", encoding="utf-8") as f:
                         result = json.load(f)
+                    self.last_vibration_result = {
+                        "status": str(result.get("status", "ERROR")).upper(),
+                        "timestamp": result.get("timestamp"),
+                        "alerts": result.get("alerts", []),
+                        "culprit_details": result.get("culprit_details", []),
+                        "measured": result.get("measured", {}),
+                    }
                     self._set_vibration_status(result.get("status", "ERROR"), "COMPLETED")
+                    measured = self.last_vibration_result.get("measured", {})
+                    if isinstance(measured, dict):
+                        print(
+                            "[진동][요약] "
+                            f"freq_p99=({measured.get('freq_x_p99', 0):.1f},"
+                            f"{measured.get('freq_y_p99', 0):.1f},"
+                            f"{measured.get('freq_z_p99', 0):.1f}) "
+                            f"vel_p99=({measured.get('vel_x_p99', 0):.1f},"
+                            f"{measured.get('vel_y_p99', 0):.1f},"
+                            f"{measured.get('vel_z_p99', 0):.1f})"
+                        )
+                    alerts = self.last_vibration_result.get("alerts", [])
+                    if isinstance(alerts, list) and alerts:
+                        print(f"[진동][요약] alerts={len(alerts)} first={alerts[0]}")
                     self._log_ops_event(
                         "vibration_check_completed",
                         status=self.vibration_status,
+                        raw_status=self.last_vibration_result.get("status", self.vibration_status),
+                        alerts_count=len(self.last_vibration_result.get("alerts", []))
+                        if isinstance(self.last_vibration_result.get("alerts", []), list)
+                        else 0,
                         result_file=result_file,
                     )
                 else:
+                    if graph_mode:
+                        self.last_vibration_result = {
+                            "status": "GRAPH_DONE" if self.vibration_process.returncode == 0 else "ERROR",
+                            "timestamp": datetime.now().isoformat(),
+                            "alerts": [],
+                            "culprit_details": [],
+                            "measured": {},
+                            "mode": "graph_debug",
+                        }
+                        self._set_vibration_status("NORMAL" if self.vibration_process.returncode == 0 else "ERROR", "COMPLETED")
+                        self._log_ops_event(
+                            "vibration_check_completed",
+                            status=self.vibration_status,
+                            raw_status=self.last_vibration_result.get("status", self.vibration_status),
+                            alerts_count=0,
+                            result_file=result_file,
+                            mode="graph_debug",
+                        )
+                        return
+                    self.last_vibration_result = {}
                     self._set_vibration_status("ERROR", "FAILED_RESULT_MISSING")
                     self._log_ops_event(
                         "vibration_check_failed",
@@ -1149,9 +1200,11 @@ class Jetson1Web:
                         result_file=result_file,
                     )
             except subprocess.TimeoutExpired:
+                self.last_vibration_result = {}
                 self._set_vibration_status("ERROR", "FAILED_TIMEOUT")
                 self._log_ops_event("vibration_check_failed", reason="timeout")
             except Exception as e:
+                self.last_vibration_result = {}
                 self._set_vibration_status("ERROR", "FAILED_EXCEPTION")
                 self._log_ops_event("vibration_check_failed", reason="exception", error=str(e))
             finally:
@@ -1469,6 +1522,7 @@ class Jetson1Web:
             "vibration": {
                 "status": self.vibration_status,
                 "last_event": self.last_vibration_event,
+                "last_result": self.last_vibration_result,
             },
             "recording": {
                 "pot1": self.stirfry_pot1_recording,
