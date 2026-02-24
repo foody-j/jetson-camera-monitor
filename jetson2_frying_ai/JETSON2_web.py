@@ -1041,7 +1041,10 @@ class Jetson2Web:
         self.vibration_status = "IDLE"
         self.last_vibration_event = {"event": "INIT", "status": "IDLE", "timestamp": None}
         self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
+        self.vibration_abnormal_min_alerts = int(config.get("vibration_abnormal_min_alerts", 2))
+        self.vibration_abnormal_confirm_runs = int(config.get("vibration_abnormal_confirm_runs", 2))
         self.vibration_abnormal_timer = None
+        self.vibration_abnormal_streak = 0
         self._last_robot_process_type = {"0": None, "1": None}
         self._last_chk_vibration = False
         self._last_vibration_request = False
@@ -2376,16 +2379,37 @@ class Jetson2Web:
                 if exit_code == 0 and os.path.exists(result_file):
                     with open(result_file, "r", encoding="utf-8") as f:
                         result = json.load(f)
-                    status = result.get("status", "ERROR")
-                    self._set_vibration_status(status, "COMPLETED")
-                    print(f"[진동] 완료: exit={exit_code} status={status} result={result_file}")
+                    raw_status = str(result.get("status", "ERROR")).upper()
+                    alerts = result.get("alerts", [])
+                    alert_count = len(alerts) if isinstance(alerts, list) else 0
+                    final_status = raw_status
+                    if raw_status == "ABNORMAL":
+                        if alert_count >= max(1, self.vibration_abnormal_min_alerts):
+                            self.vibration_abnormal_streak += 1
+                        else:
+                            self.vibration_abnormal_streak = 0
+                        if self.vibration_abnormal_streak >= max(1, self.vibration_abnormal_confirm_runs):
+                            final_status = "ABNORMAL"
+                        else:
+                            final_status = "NORMAL"
+                    else:
+                        self.vibration_abnormal_streak = 0
+                    self._set_vibration_status(final_status, "COMPLETED")
+                    print(
+                        f"[진동] 완료: exit={exit_code} raw={raw_status} final={final_status} "
+                        f"alerts={alert_count} streak={self.vibration_abnormal_streak} result={result_file}"
+                    )
                     self._log_ops_event(
                         "vibration_check_completed",
                         exit_code=exit_code,
-                        status=status,
+                        status=final_status,
+                        raw_status=raw_status,
+                        alerts_count=alert_count,
+                        abnormal_streak=self.vibration_abnormal_streak,
                         result_file=result_file,
                     )
                 else:
+                    self.vibration_abnormal_streak = 0
                     self._set_vibration_status("ERROR", "FAILED_NONZERO_OR_NO_RESULT")
                     print(
                         f"[진동] 실패: exit={exit_code} result_exists={os.path.exists(result_file)} "
@@ -2404,10 +2428,12 @@ class Jetson2Web:
                     self.vibration_process.wait(timeout=2)
                 except Exception:
                     pass
+                self.vibration_abnormal_streak = 0
                 self._set_vibration_status("ERROR", "FAILED_TIMEOUT")
                 self._log_ops_event("vibration_check_failed", reason="timeout")
             except Exception as e:
                 print(f"[진동] 예외: {e}")
+                self.vibration_abnormal_streak = 0
                 self._set_vibration_status("ERROR", "FAILED_EXCEPTION")
                 self._log_ops_event("vibration_check_failed", reason="exception", error=str(e))
             finally:
