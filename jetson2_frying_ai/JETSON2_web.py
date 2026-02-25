@@ -385,9 +385,11 @@ class CameraWorker(threading.Thread):
 
         roi = None
         if self.cam_id == self.config.get("observe_left_camera_index", 2):
-            roi = self.config.get("observe_roi_cam2")
+            if bool(self.config.get("web_use_roi_cam2", False)):
+                roi = self.config.get("observe_roi_cam2")
         elif self.cam_id == self.config.get("observe_right_camera_index", 3):
-            roi = self.config.get("observe_roi_cam3")
+            if bool(self.config.get("web_use_roi_cam3", False)):
+                roi = self.config.get("observe_roi_cam3")
         frame_for_preview = _apply_roi(frame, roi)
 
         h, w = frame_for_preview.shape[:2]
