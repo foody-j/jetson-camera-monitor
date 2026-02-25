@@ -14,6 +14,12 @@ from datetime import datetime
 from collections import deque
 
 import numpy as np
+try:
+    import torch
+    import torch.nn as nn
+    _TORCH_AVAILABLE = True
+except Exception:
+    _TORCH_AVAILABLE = False
 from pymodbus.client import ModbusSerialClient  # pymodbus 3.x
 from pymodbus.exceptions import ModbusIOException
 from serial import SerialException
@@ -35,6 +41,12 @@ parser.add_argument("--result", type=str, default=None,
                     help="결과 JSON 저장 경로 (기본: 실행 디렉토리/vibration_result.json)")
 parser.add_argument("--summary-plot", type=str, default=None,
                     help="요약 그래프 PNG 저장 경로 (기본: ~/data/vibration_data/<timestamp>_summary.png)")
+parser.add_argument("--cnn-model", type=str, default=None,
+                    help="CNN 모델(.pt) 경로")
+parser.add_argument("--cnn-threshold", type=float, default=None,
+                    help="CNN 비정상 임계값 (기본: 모델 저장값 또는 0.5)")
+parser.add_argument("--cnn-main", action="store_true",
+                    help="CNN 판정을 메인 status로 사용")
 args = parser.parse_args()
 
 import matplotlib
@@ -596,6 +608,96 @@ def _check_against_baseline(baseline: dict) -> dict:
     if total_samples == 0:
         return {"status": "ERROR", "reason": "수집된 샘플 없음", "timestamp": datetime.now().isoformat()}
 
+    def _resample_1d(arr, seq_len):
+        arr = np.asarray(arr, dtype=np.float32)
+        if arr.size == 0:
+            return np.zeros(seq_len, dtype=np.float32)
+        if arr.size == seq_len:
+            return arr
+        x_old = np.linspace(0.0, 1.0, num=arr.size, endpoint=True)
+        x_new = np.linspace(0.0, 1.0, num=seq_len, endpoint=True)
+        return np.interp(x_new, x_old, arr).astype(np.float32)
+
+    def _infer_cnn(per_uid_vel_local, per_uid_freq_local):
+        if not args.cnn_model:
+            return None
+        if not _TORCH_AVAILABLE:
+            return {"enabled": False, "error": "torch_unavailable"}
+        if not os.path.exists(args.cnn_model):
+            return {"enabled": False, "error": "model_missing", "model_path": args.cnn_model}
+
+        class _SmallVibrationCNN(nn.Module):
+            def __init__(self, in_ch):
+                super().__init__()
+                self.net = nn.Sequential(
+                    nn.Conv1d(in_ch, 32, kernel_size=7, padding=3),
+                    nn.BatchNorm1d(32),
+                    nn.ReLU(inplace=True),
+                    nn.Conv1d(32, 64, kernel_size=5, padding=2),
+                    nn.BatchNorm1d(64),
+                    nn.ReLU(inplace=True),
+                    nn.MaxPool1d(2),
+                    nn.Conv1d(64, 128, kernel_size=5, padding=2),
+                    nn.BatchNorm1d(128),
+                    nn.ReLU(inplace=True),
+                    nn.AdaptiveAvgPool1d(1),
+                )
+                self.head = nn.Linear(128, 1)
+
+            def forward(self, x):
+                x = self.net(x).squeeze(-1)
+                return self.head(x).squeeze(-1)
+
+        try:
+            ckpt = torch.load(args.cnn_model, map_location="cpu", weights_only=False)
+            uid_list = [str(u).upper().replace("0X", "") for u in ckpt.get("uid_list", [])]
+            feature_cols = ckpt.get("feature_cols", [])
+            seq_len = int(ckpt.get("seq_len", 256))
+            threshold = float(args.cnn_threshold) if args.cnn_threshold is not None else float(ckpt.get("threshold", 0.5))
+            mean = np.asarray(ckpt.get("mean", []), dtype=np.float32)
+            std = np.asarray(ckpt.get("std", []), dtype=np.float32)
+            std[std < 1e-6] = 1.0
+
+            if not uid_list or not feature_cols:
+                return {"enabled": False, "error": "invalid_checkpoint", "model_path": args.cnn_model}
+
+            channels = []
+            for uid_hex in uid_list:
+                uid = int(uid_hex, 16)
+                x_vals, y_vals, z_vals = per_uid_vel_local.get(uid, ([], [], []))
+                fx_vals, fy_vals, fz_vals = per_uid_freq_local.get(uid, ([], [], []))
+                feature_map = {
+                    "VEL_X(mm/s)": np.abs(np.asarray(x_vals, dtype=np.float32)),
+                    "VEL_Y(mm/s)": np.abs(np.asarray(y_vals, dtype=np.float32)),
+                    "VEL_Z(mm/s)": np.abs(np.asarray(z_vals, dtype=np.float32)),
+                    "FREQ_X(Hz)": np.abs(np.asarray(fx_vals, dtype=np.float32)),
+                    "FREQ_Y(Hz)": np.abs(np.asarray(fy_vals, dtype=np.float32)),
+                    "FREQ_Z(Hz)": np.abs(np.asarray(fz_vals, dtype=np.float32)),
+                }
+                for col in feature_cols:
+                    channels.append(_resample_1d(feature_map.get(col, np.zeros(0, dtype=np.float32)), seq_len))
+
+            x = np.stack(channels, axis=0).astype(np.float32)
+            if mean.size == x.shape[0] and std.size == x.shape[0]:
+                x = (x - mean[:, None]) / std[:, None]
+
+            model = _SmallVibrationCNN(in_ch=x.shape[0])
+            model.load_state_dict(ckpt["model_state_dict"])
+            model.eval()
+            with torch.no_grad():
+                xb = torch.from_numpy(x).unsqueeze(0)
+                prob = torch.sigmoid(model(xb)).item()
+            pred = "ABNORMAL" if prob >= threshold else "NORMAL"
+            return {
+                "enabled": True,
+                "model_path": args.cnn_model,
+                "threshold": threshold,
+                "prob_abnormal": float(prob),
+                "pred": pred,
+            }
+        except Exception as e:
+            return {"enabled": False, "error": str(e), "model_path": args.cnn_model}
+
     # velocity magnitude 계산
     mag = [
         np.sqrt(all_vel[0][i]**2 + all_vel[1][i]**2 + all_vel[2][i]**2)
@@ -1081,8 +1183,24 @@ def _check_against_baseline(baseline: dict) -> dict:
             alerts.extend(combo_alerts)
 
     status = "ABNORMAL" if alerts else "NORMAL"
+    decision_source = "rule"
+    cnn_result = _infer_cnn(per_uid_vel, per_uid_freq)
+    if isinstance(cnn_result, dict) and cnn_result.get("enabled"):
+        print(
+            f"[진동][CNN] prob={cnn_result.get('prob_abnormal', 0.0):.3f} "
+            f"thr={cnn_result.get('threshold', 0.5):.2f} pred={cnn_result.get('pred', 'UNKNOWN')}"
+        )
+        if args.cnn_main:
+            status = str(cnn_result.get("pred", status)).upper()
+            decision_source = "cnn_main"
+        else:
+            decision_source = "rule_with_cnn_observer"
+    elif args.cnn_main:
+        decision_source = "rule_fallback_cnn_error"
+
     result = {
         "status": status,
+        "decision_source": decision_source,
         "timestamp": datetime.now().isoformat(),
         "total_samples": total_samples,
         "unit_ids": [f"0x{u:02X}" for u in UNIT_IDS],
@@ -1092,6 +1210,8 @@ def _check_against_baseline(baseline: dict) -> dict:
         "alerts": alerts,
         "culprit_details": culprit_details,
     }
+    if cnn_result is not None:
+        result["cnn"] = cnn_result
     print(f"[진동 체크] 결과: {status}")
     for a in alerts:
         print(f"  ⚠ {a}")

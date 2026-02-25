@@ -1170,6 +1170,15 @@ class Jetson1Web:
                     cmd = ["python3", vibration_script, "--headless", "--check", "--duration", "5"]
                     if os.path.exists(baseline_file):
                         cmd.extend(["--baseline", baseline_file])
+                    if bool(self.config.get("vibration_use_cnn_main", True)):
+                        cnn_model = self.config.get(
+                            "vibration_cnn_model",
+                            os.path.join(base_dir, "models", "vibration_cnn_jetson1_v1.pt"),
+                        )
+                        if cnn_model and os.path.exists(cnn_model):
+                            cmd.extend(["--cnn-model", cnn_model, "--cnn-main"])
+                            if self.config.get("vibration_cnn_threshold") is not None:
+                                cmd.extend(["--cnn-threshold", str(float(self.config.get("vibration_cnn_threshold")))])
                 self.vibration_process = subprocess.Popen(
                     cmd,
                     cwd=base_dir,
@@ -1194,10 +1203,13 @@ class Jetson1Web:
                         result = json.load(f)
                     self.last_vibration_result = {
                         "status": str(result.get("status", "ERROR")).upper(),
+                        "decision_source": result.get("decision_source", "rule"),
                         "timestamp": result.get("timestamp"),
                         "alerts": result.get("alerts", []),
                         "culprit_details": result.get("culprit_details", []),
                         "measured": result.get("measured", {}),
+                        "cnn": result.get("cnn", {}),
+                        "summary_plot": result.get("summary_plot"),
                     }
                     self._set_vibration_status(result.get("status", "ERROR"), "COMPLETED")
                     measured = self.last_vibration_result.get("measured", {})
@@ -1214,6 +1226,14 @@ class Jetson1Web:
                     alerts = self.last_vibration_result.get("alerts", [])
                     if isinstance(alerts, list) and alerts:
                         print(f"[진동][요약] alerts={len(alerts)} first={alerts[0]}")
+                    cnn_info = self.last_vibration_result.get("cnn", {})
+                    if isinstance(cnn_info, dict) and cnn_info.get("enabled"):
+                        print(
+                            f"[진동][CNN] source={self.last_vibration_result.get('decision_source', 'rule')} "
+                            f"pred={cnn_info.get('pred', 'UNKNOWN')} "
+                            f"prob={float(cnn_info.get('prob_abnormal', 0.0)):.3f} "
+                            f"thr={float(cnn_info.get('threshold', 0.5)):.2f}"
+                        )
                     self._log_ops_event(
                         "vibration_check_completed",
                         status=self.vibration_status,
@@ -1601,6 +1621,7 @@ class Jetson1Web:
                 "status": self.vibration_status,
                 "last_event": self.last_vibration_event,
                 "last_result": self.last_vibration_result,
+                "cnn": self.last_vibration_result.get("cnn", {}) if isinstance(self.last_vibration_result, dict) else {},
             },
             "recording": {
                 "pot1": self.stirfry_pot1_recording,

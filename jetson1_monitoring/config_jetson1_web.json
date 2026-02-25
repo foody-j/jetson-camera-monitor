@@ -89,6 +89,9 @@
 
   "vibration_test_mode": false,
   "vibration_stabilization_delay_sec": 0.0,
+  "vibration_use_cnn_main": true,
+  "vibration_cnn_model": "/home/hr_dku_001/jetson-food-ai/models/vibration_cnn_jetson1_v1.pt",
+  "vibration_cnn_threshold": 0.5,
 
   "person_data_collection_enabled": true,
   "person_collection_start_time": "08:30",
