@@ -79,6 +79,19 @@ def _path_exists(path: str) -> bool:
     return os.path.exists(path) or os.path.exists(os.path.join(SCRIPT_DIR, path))
 
 
+def _resolve_existing_path(path: str) -> str:
+    if not path:
+        return ""
+    if os.path.isabs(path):
+        return path if os.path.exists(path) else ""
+    if os.path.exists(path):
+        return os.path.abspath(path)
+    candidate = os.path.join(SCRIPT_DIR, path)
+    if os.path.exists(candidate):
+        return candidate
+    return ""
+
+
 def _acquire_single_instance(lock_name: str) -> None:
     global _LOCK_FD
     lock_path = os.path.join("/tmp", lock_name)
@@ -714,12 +727,13 @@ class ObserveAIWorker(threading.Thread):
 
         self.seg_model_path = seg_model_path
         self.cls_model_path = cls_model_path
+        self.roi = None
         if cam_id == config.get("observe_left_camera_index", 2):
-            self.roi = config.get("observe_roi_cam2")
+            if bool(config.get("observe_use_roi_cam2", True)):
+                self.roi = config.get("observe_roi_cam2")
         elif cam_id == config.get("observe_right_camera_index", 3):
-            self.roi = config.get("observe_roi_cam3")
-        else:
-            self.roi = None
+            if bool(config.get("observe_use_roi_cam3", True)):
+                self.roi = config.get("observe_roi_cam3")
 
         self.device = "cuda" if _YOLO_AVAILABLE and torch.cuda.is_available() else "cpu"
 
@@ -1069,6 +1083,212 @@ class ObserveAIWorker(threading.Thread):
             return frame, mask, metrics
 
 
+def _normalize_polygon(points):
+    if not isinstance(points, list) or len(points) < 3:
+        return None
+    poly = []
+    for p in points:
+        if not isinstance(p, (list, tuple)) or len(p) != 2:
+            continue
+        try:
+            poly.append([float(p[0]), float(p[1])])
+        except Exception:
+            continue
+    if len(poly) < 3:
+        return None
+    return np.array(poly, dtype=np.float32)
+
+
+def _bbox_intersects_zone(x1: float, y1: float, x2: float, y2: float, zone_poly: np.ndarray) -> bool:
+    if zone_poly is None:
+        return False
+    cx = (x1 + x2) / 2.0
+    cy = (y1 + y2) / 2.0
+    if cv2.pointPolygonTest(zone_poly, (cx, cy), False) >= 0:
+        return True
+    corners = [(x1, y1), (x2, y1), (x1, y2), (x2, y2)]
+    for pt in corners:
+        if cv2.pointPolygonTest(zone_poly, pt, False) >= 0:
+            return True
+    return False
+
+
+class HumanSafetyWorker(threading.Thread):
+    """Detect person near basket zone and provide safety gate state."""
+
+    def __init__(
+        self,
+        side: str,
+        cam_id: int,
+        camera_worker: CameraWorker,
+        config: dict,
+        event_logger=None,
+    ):
+        super().__init__(daemon=True)
+        self.side = side
+        self.cam_id = cam_id
+        self.camera = camera_worker
+        self.config = config
+        self.event_logger = event_logger
+        self.running = False
+        self.enabled = True
+        self.result_lock = threading.Lock()
+
+        self.conf_min = float(config.get("human_conf_min", 0.4))
+        self.enter_frames = int(config.get("human_block_enter_frames", 2))
+        self.exit_frames = int(config.get("human_block_exit_frames", 5))
+        self.cooldown_sec = float(config.get("human_block_cooldown_sec", 1.5))
+        self._detect_streak = 0
+        self._clear_streak = 0
+        self._last_detect_ts = 0.0
+
+        zone_key = "human_zone_cam2" if side == "left" else "human_zone_cam3"
+        self.zone_poly = _normalize_polygon(config.get(zone_key, []))
+        self.zone_enabled = self.zone_poly is not None
+
+        self.model = None
+        self.model_loaded = False
+        model_path = str(config.get("human_model_path", "")).strip()
+        self.device = "cuda" if _YOLO_AVAILABLE and torch.cuda.is_available() else "cpu"
+        model_resolved = _resolve_existing_path(model_path)
+        if _YOLO_AVAILABLE and model_resolved:
+            try:
+                self.model = YOLO(model_resolved)
+                if self.device == "cuda":
+                    self.model.to("cuda")
+                self.model_loaded = True
+                print(f"[HumanGate] {self.side} cam{self.cam_id} model loaded: {model_resolved}")
+            except Exception as e:
+                print(f"[HumanGate] {self.side} cam{self.cam_id} model load failed: {e}")
+
+        self.latest_result = {
+            "side": side,
+            "cam_id": cam_id,
+            "gate": "SAFE",
+            "human_detected": False,
+            "confidence": 0.0,
+            "blocked": False,
+            "reason": "zone_disabled" if not self.zone_enabled else ("model_unavailable" if not self.model_loaded else ""),
+            "last_update": 0.0,
+        }
+        self._last_gate = self.latest_result["gate"]
+
+    def run(self):
+        self.running = True
+        infer_interval = 1.0 / max(1, int(self.config.get("human_infer_fps", 3)))
+        last_infer = 0.0
+        fail_safe_block = bool(self.config.get("human_fail_safe_block", False))
+        imgsz = int(self.config.get("human_imgsz", 640))
+
+        while self.running:
+            if not self.enabled:
+                time.sleep(0.05)
+                continue
+            now = time.time()
+            if now - last_infer < infer_interval:
+                time.sleep(0.01)
+                continue
+            last_infer = now
+
+            gate = "SAFE"
+            human_detected = False
+            conf_max = 0.0
+            reason = ""
+
+            if not self.zone_enabled:
+                reason = "zone_disabled"
+            elif not self.model_loaded:
+                reason = "model_unavailable"
+                if fail_safe_block:
+                    gate = "BLOCKED_HUMAN"
+            else:
+                frame = self.camera.get_latest_frame()
+                if frame is None:
+                    reason = "no_frame"
+                else:
+                    try:
+                        res = self.model.predict(
+                            frame,
+                            imgsz=imgsz,
+                            conf=self.conf_min,
+                            classes=[0],  # person
+                            verbose=False,
+                            device=self.device,
+                        )[0]
+                        if res.boxes is not None and len(res.boxes) > 0:
+                            boxes = res.boxes.xyxy.cpu().numpy()
+                            confs = res.boxes.conf.cpu().numpy()
+                            for i in range(len(boxes)):
+                                x1, y1, x2, y2 = boxes[i]
+                                conf = float(confs[i])
+                                if conf > conf_max:
+                                    conf_max = conf
+                                if _bbox_intersects_zone(x1, y1, x2, y2, self.zone_poly):
+                                    human_detected = True
+                                    if conf > conf_max:
+                                        conf_max = conf
+                    except Exception as e:
+                        reason = f"infer_error:{e}"
+                        if fail_safe_block:
+                            gate = "BLOCKED_HUMAN"
+
+                if human_detected:
+                    self._detect_streak += 1
+                    self._clear_streak = 0
+                    self._last_detect_ts = now
+                else:
+                    self._clear_streak += 1
+                    self._detect_streak = 0
+
+                blocked_now = self._last_gate == "BLOCKED_HUMAN"
+                if not blocked_now and self._detect_streak >= max(1, self.enter_frames):
+                    blocked_now = True
+                elif blocked_now:
+                    enough_clear = self._clear_streak >= max(1, self.exit_frames)
+                    cooldown_ok = (now - self._last_detect_ts) >= max(0.1, self.cooldown_sec)
+                    if enough_clear and cooldown_ok:
+                        blocked_now = False
+                gate = "BLOCKED_HUMAN" if blocked_now else "SAFE"
+
+            with self.result_lock:
+                self.latest_result.update(
+                    {
+                        "gate": gate,
+                        "human_detected": human_detected,
+                        "confidence": round(conf_max, 4),
+                        "blocked": gate == "BLOCKED_HUMAN",
+                        "reason": reason,
+                        "last_update": now,
+                    }
+                )
+
+            if gate != self._last_gate:
+                event_name = "human_block_enter" if gate == "BLOCKED_HUMAN" else "human_block_exit"
+                print(
+                    f"[HumanGate][{self.side}] {self._last_gate} -> {gate} "
+                    f"(detected={human_detected}, conf={conf_max:.2f}, reason={reason})"
+                )
+                if self.event_logger:
+                    self.event_logger(
+                        event_name,
+                        side=self.side,
+                        cam_id=self.cam_id,
+                        confidence=round(conf_max, 4),
+                        reason=reason,
+                    )
+                self._last_gate = gate
+
+    def get_result(self) -> dict:
+        with self.result_lock:
+            return dict(self.latest_result)
+
+    def set_enabled(self, enabled: bool) -> None:
+        self.enabled = enabled
+
+    def stop(self) -> None:
+        self.running = False
+
+
 class Jetson2Web:
     """Main controller for headless + web dashboard."""
 
@@ -1084,7 +1304,9 @@ class Jetson2Web:
 
         self.frying_workers: Dict[int, FryingAIWorker] = {}
         self.observe_workers: Dict[int, ObserveAIWorker] = {}
+        self.human_workers: Dict[str, HumanSafetyWorker] = {}
         self._init_ai_workers()
+        self._init_human_workers()
         self.lift_tracker_pot1 = LiftEventTracker("POT1", config)
         self.lift_tracker_pot2 = LiftEventTracker("POT2", config)
 
@@ -1116,6 +1338,14 @@ class Jetson2Web:
         self.observe_right_state = None
         self.observe_left_effective = None   # 투입 판정 포함한 발행 상태
         self.observe_right_effective = None
+        self.human_gate_left = "SAFE"
+        self.human_gate_right = "SAFE"
+        self.human_left_conf = 0.0
+        self.human_right_conf = 0.0
+        self.human_left_reason = ""
+        self.human_right_reason = ""
+        self._last_human_gate_left = None
+        self._last_human_gate_right = None
         self.vibration_status = "IDLE"
         self.last_vibration_event = {"event": "INIT", "status": "IDLE", "timestamp": None}
         self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
@@ -1285,6 +1515,30 @@ class Jetson2Web:
                     right_cls,
                     event_logger=self._log_ops_event,
                 )
+
+    def _init_human_workers(self) -> None:
+        if not bool(self.config.get("human_safety_enabled", False)):
+            return
+        left_cam_id = int(self.config.get("observe_left_camera_index", 2))
+        right_cam_id = int(self.config.get("observe_right_camera_index", 3))
+        left_cam = self.cameras.get(left_cam_id)
+        right_cam = self.cameras.get(right_cam_id)
+        if left_cam is not None:
+            self.human_workers["left"] = HumanSafetyWorker(
+                side="left",
+                cam_id=left_cam_id,
+                camera_worker=left_cam,
+                config=self.config,
+                event_logger=self._log_ops_event,
+            )
+        if right_cam is not None:
+            self.human_workers["right"] = HumanSafetyWorker(
+                side="right",
+                cam_id=right_cam_id,
+                camera_worker=right_cam,
+                config=self.config,
+                event_logger=self._log_ops_event,
+            )
 
     def _init_mqtt(self) -> None:
         if not self.config.get("mqtt_enabled", False):
@@ -2722,6 +2976,18 @@ class Jetson2Web:
                 "left": observe_left,
                 "right": observe_right,
             },
+            "safety_gate": {
+                "left": {
+                    "gate": self.human_gate_left,
+                    "confidence": self.human_left_conf,
+                    "reason": self.human_left_reason,
+                },
+                "right": {
+                    "gate": self.human_gate_right,
+                    "confidence": self.human_right_conf,
+                    "reason": self.human_right_reason,
+                },
+            },
             "vibration": {
                 "status": self.vibration_status,
                 "last_event": self.last_vibration_event,
@@ -2729,7 +2995,7 @@ class Jetson2Web:
             "system": self.system_info.get_dynamic_info() if self.system_info else {},
         }
 
-    def _get_effective_observe_state(self, raw_status: str, oil_temp: float, recipe: str) -> str:
+    def _get_effective_observe_state(self, raw_status: str, oil_temp: float, recipe: str, human_gate: str) -> str:
         """FILLED + 레시피 유효 + 유온 임계 이상이면 '투입', 아니면 raw_status 그대로 반환"""
         투입_temp = float(self.config.get("observe_투입_temp_threshold", 167.0))
         recipe_value = (recipe or "").strip()
@@ -2738,9 +3004,53 @@ class Jetson2Web:
             oil_temp_value = float(oil_temp)
         except (TypeError, ValueError):
             oil_temp_value = float("-inf")
-        if raw_status == "FILLED" and recipe_value and not is_cleaning and oil_temp_value >= 투입_temp:
-            return "투입"
+        if raw_status == "FILLED" and recipe_value and not is_cleaning:
+            if human_gate != "SAFE":
+                return "BLOCKED_HUMAN"
+            if oil_temp_value >= 투입_temp:
+                return "투입"
         return raw_status
+
+    def _sync_human_safety_state(self) -> None:
+        left_worker = self.human_workers.get("left")
+        right_worker = self.human_workers.get("right")
+        if left_worker:
+            lr = left_worker.get_result()
+            self.human_gate_left = str(lr.get("gate", "SAFE") or "SAFE")
+            self.human_left_conf = float(lr.get("confidence", 0.0) or 0.0)
+            self.human_left_reason = str(lr.get("reason", "") or "")
+        else:
+            self.human_gate_left = "SAFE"
+            self.human_left_conf = 0.0
+            self.human_left_reason = "disabled"
+        if right_worker:
+            rr = right_worker.get_result()
+            self.human_gate_right = str(rr.get("gate", "SAFE") or "SAFE")
+            self.human_right_conf = float(rr.get("confidence", 0.0) or 0.0)
+            self.human_right_reason = str(rr.get("reason", "") or "")
+        else:
+            self.human_gate_right = "SAFE"
+            self.human_right_conf = 0.0
+            self.human_right_reason = "disabled"
+
+        if self.human_gate_left != self._last_human_gate_left:
+            self._last_human_gate_left = self.human_gate_left
+            self._log_ops_event(
+                "human_gate_changed",
+                side="left",
+                gate=self.human_gate_left,
+                confidence=round(self.human_left_conf, 4),
+                reason=self.human_left_reason,
+            )
+        if self.human_gate_right != self._last_human_gate_right:
+            self._last_human_gate_right = self.human_gate_right
+            self._log_ops_event(
+                "human_gate_changed",
+                side="right",
+                gate=self.human_gate_right,
+                confidence=round(self.human_right_conf, 4),
+                reason=self.human_right_reason,
+            )
 
     def _sync_observe_state(self) -> None:
         if not self.observe_workers:
@@ -2765,6 +3075,7 @@ class Jetson2Web:
                     left_status,
                     self.temps.get("pot1_oil", 0.0),
                     (self.pot1_robot_status or {}).get("recipe", ""),
+                    self.human_gate_left,
                 )
                 if left_effective != self.observe_left_effective:
                     self.observe_left_effective = left_effective
@@ -2773,6 +3084,14 @@ class Jetson2Web:
                         oil = self.temps.get("pot1_oil", 0.0)
                         recipe = (self.pot1_robot_status or {}).get("recipe", "")
                         print(f"[OBSERVE][left] FILLED -> 투입 (oil={oil:.1f}C, recipe={recipe})")
+                    elif left_effective == "BLOCKED_HUMAN":
+                        self._log_ops_event(
+                            "observe_input_blocked",
+                            side="left",
+                            reason="human",
+                            gate=self.human_gate_left,
+                            confidence=round(self.human_left_conf, 4),
+                        )
 
         if right_worker:
             right_result = right_worker.get_result()
@@ -2791,6 +3110,7 @@ class Jetson2Web:
                     right_status,
                     self.temps.get("pot2_oil", 0.0),
                     (self.pot2_robot_status or {}).get("recipe", ""),
+                    self.human_gate_right,
                 )
                 if right_effective != self.observe_right_effective:
                     self.observe_right_effective = right_effective
@@ -2799,6 +3119,14 @@ class Jetson2Web:
                         oil = self.temps.get("pot2_oil", 0.0)
                         recipe = (self.pot2_robot_status or {}).get("recipe", "")
                         print(f"[OBSERVE][right] FILLED -> 투입 (oil={oil:.1f}C, recipe={recipe})")
+                    elif right_effective == "BLOCKED_HUMAN":
+                        self._log_ops_event(
+                            "observe_input_blocked",
+                            side="right",
+                            reason="human",
+                            gate=self.human_gate_right,
+                            confidence=round(self.human_right_conf, 4),
+                        )
 
     def start(self) -> None:
         print("=" * 60)
@@ -2829,6 +3157,9 @@ class Jetson2Web:
             worker.set_enabled(observe_autostart)
         if observe_autostart:
             self.observe_running = True
+        for worker in self.human_workers.values():
+            worker.start()
+            worker.set_enabled(bool(self.config.get("human_safety_enabled", False)))
 
         if self.config.get("web_enabled", True):
             host = self.config.get("web_host", "0.0.0.0")
@@ -2876,6 +3207,7 @@ class Jetson2Web:
         try:
             while self.running:
                 now = time.time()
+                self._sync_human_safety_state()
                 self._sync_observe_state()
                 self._sync_frying_completion_state()
                 if self.mqtt_client and now - last_mqtt_publish >= mqtt_interval:
@@ -2950,6 +3282,8 @@ class Jetson2Web:
         for worker in self.frying_workers.values():
             worker.stop()
         for worker in self.observe_workers.values():
+            worker.stop()
+        for worker in self.human_workers.values():
             worker.stop()
 
         if self.mqtt_client:
