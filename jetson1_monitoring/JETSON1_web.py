@@ -437,7 +437,7 @@ class PersonDetectionWorker(threading.Thread):
             self._night_person_state = None
             self.parent._log_ops_event("night_summary_reset")
         elif (not self._last_daytime) and daytime:
-            self.last_night_detected_result = bool(self.night_detected_once or self.night_snapshot_saved_once)
+            self.last_night_detected_result = bool(self.night_snapshot_saved_once)
             self.parent._log_ops_event(
                 "night_summary_finalized",
                 detected=self.last_night_detected_result,
@@ -1505,6 +1505,7 @@ class Jetson1Web:
             person_detected_value = bool(self.forced_person_detected)
         elif person:
             is_daytime = person._is_daytime(datetime.now())
+            # Daytime publishes the summarized previous-night result.
             person_detected_value = (
                 bool(person.last_night_detected_result) if is_daytime else bool(person.person_detected)
             )
@@ -1578,10 +1579,7 @@ class Jetson1Web:
     def force_publish_next_day_night_result(self) -> bool:
         if not self.person_worker:
             return False
-        result = bool(
-            self.person_worker.night_detected_once
-            or self.person_worker.night_snapshot_saved_once
-        )
+        result = bool(self.person_worker.night_snapshot_saved_once)
         self.person_worker.last_night_detected_result = result
         # Keep current cycle flags for repeated test clicks during the same night.
         self.person_worker.person_detected = result
