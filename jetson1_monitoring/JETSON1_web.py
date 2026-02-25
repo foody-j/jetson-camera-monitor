@@ -758,9 +758,11 @@ class Jetson1Web:
         self.last_vibration_check_time = 0  # 쿨다운용
         self.last_chk_vibration = False  # 상태 변화 감지용
         self.last_vibration_request = False  # 상태 변화 감지용
+        self._last_robot_recipe = {"0": None, "1": None}
         self.child_processes = []
 
         self.mqtt_message_log = deque(maxlen=int(config.get("mqtt_log_maxlen", 200)))
+        self.ops_event_log = deque(maxlen=int(config.get("ops_log_maxlen", 500)))
         self.mqtt_log_dir = os.path.join(SCRIPT_DIR, "mqtt_logs")
         self.ops_log_dir = os.path.join(SCRIPT_DIR, "ops_logs")
         self.relay_log_dir = os.path.join(SCRIPT_DIR, "relay_logs")
@@ -1059,6 +1061,16 @@ class Jetson1Web:
             pot_num = str(pot_data.get("PTNum", ""))
             recipe = pot_data.get("NowRecipe", "")
             process_type = pot_data.get("ProcessType", "")
+            prev_recipe = self._last_robot_recipe.get(pot_num)
+            if prev_recipe != recipe:
+                self._last_robot_recipe[pot_num] = recipe
+                pot_label = "left" if pot_num == "0" else ("right" if pot_num == "1" else pot_num)
+                self._log_ops_event(
+                    "robot_recipe_changed",
+                    pot=pot_label,
+                    recipe=recipe,
+                    process_type=process_type,
+                )
             robot_meta = {
                 "recipe": recipe,
                 "process_type": process_type,
@@ -1417,6 +1429,7 @@ class Jetson1Web:
             "event": event,
             **data,
         }
+        self.ops_event_log.appendleft(entry)
         try:
             os.makedirs(self.ops_log_dir, exist_ok=True)
             date_str = ts.strftime("%Y-%m-%d")
@@ -1427,6 +1440,29 @@ class Jetson1Web:
         except Exception as e:
             if self.debug_print:
                 print(f"[OPS 로그] 저장 실패: {e}")
+
+    def get_recent_ops_events(self, limit: int = 100) -> list:
+        max_items = max(1, min(int(limit), 1000))
+        if self.ops_event_log:
+            return list(self.ops_event_log)[:max_items]
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        path = os.path.join(self.ops_log_dir, f"ops_{date_str}.jsonl")
+        if not os.path.exists(path):
+            return []
+        tail = deque(maxlen=max_items)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        tail.append(json.loads(line))
+                    except Exception:
+                        continue
+        except Exception:
+            return []
+        return list(reversed(tail))
 
     def _log_relay_event(self, action: str, **data) -> None:
         ts = datetime.now()

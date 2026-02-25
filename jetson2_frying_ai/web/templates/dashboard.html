@@ -46,6 +46,7 @@
             <div class="control-title">MQTT</div>
             <button class="btn" onclick="publishNow()">Publish</button>
             <button class="btn" onclick="toggleMqttLog()">Log</button>
+            <button class="btn" onclick="toggleOpsLog()">Ops</button>
         </div>
         <div class="control-group">
             <div class="control-title">MQTT Quick</div>
@@ -75,6 +76,11 @@
     <div class="mqtt-log" id="mqtt-log" style="display:none;">
         <div class="mqtt-log-title">MQTT 최근 메시지</div>
         <div class="mqtt-log-list" id="mqtt-log-list">-</div>
+    </div>
+
+    <div class="mqtt-log" id="ops-log" style="display:none;">
+        <div class="mqtt-log-title">OPS 이벤트 로그</div>
+        <div class="mqtt-log-list" id="ops-log-list">-</div>
     </div>
 
     <div class="snapshot-panel" id="snapshot-panel" style="display:none;">
@@ -228,6 +234,16 @@
             }
         }
 
+        async function toggleOpsLog() {
+            const box = document.getElementById('ops-log');
+            if (box.style.display === 'none') {
+                box.style.display = 'block';
+                await refreshOpsLog();
+            } else {
+                box.style.display = 'none';
+            }
+        }
+
         async function refreshMqttLog() {
             try {
                 const res = await fetch('/api/mqtt/log');
@@ -239,6 +255,25 @@
                 }).join('') || '-';
             } catch (e) {
                 console.error('MQTT log failed:', e);
+            }
+        }
+
+        async function refreshOpsLog() {
+            try {
+                const res = await fetch('/api/ops/log?limit=30');
+                const data = await res.json();
+                const list = document.getElementById('ops-log-list');
+                list.innerHTML = data.slice(0, 30).map(item => {
+                    const ts = item.timestamp || '-';
+                    const ev = item.event || '-';
+                    const extra = { ...item };
+                    delete extra.timestamp;
+                    delete extra.event;
+                    const payload = JSON.stringify(extra).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    return `<div class="mqtt-log-item">[${ts}] <b>${ev}</b> ${payload}</div>`;
+                }).join('') || '-';
+            } catch (e) {
+                console.error('OPS log failed:', e);
             }
         }
 
@@ -304,6 +339,12 @@
                 }
 
                 document.getElementById('status-bar').textContent = header;
+                if (document.getElementById('mqtt-log').style.display !== 'none') {
+                    refreshMqttLog();
+                }
+                if (document.getElementById('ops-log').style.display !== 'none') {
+                    refreshOpsLog();
+                }
 
             } catch (e) {
                 console.error('Status update failed:', e);
