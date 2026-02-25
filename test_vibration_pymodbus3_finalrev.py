@@ -33,6 +33,8 @@ parser.add_argument("--baseline", type=str, default=None,
                     help="베이스라인 JSON 파일 경로")
 parser.add_argument("--result", type=str, default=None,
                     help="결과 JSON 저장 경로 (기본: 실행 디렉토리/vibration_result.json)")
+parser.add_argument("--summary-plot", type=str, default=None,
+                    help="요약 그래프 PNG 저장 경로 (기본: ~/data/vibration_data/<timestamp>_summary.png)")
 args = parser.parse_args()
 
 import matplotlib
@@ -126,6 +128,7 @@ FREQ_DIVISOR = 10.0                 # Hz
 # =========================
 # 저장 폴더
 # =========================
+RUN_TS = datetime.now().strftime("%Y%m%d_%H%M%S")
 home_dir = os.path.expanduser("~")
 save_dir = os.path.join(home_dir, "data", "vibration_data")
 os.makedirs(save_dir, exist_ok=True)
@@ -136,8 +139,7 @@ print(f"[저장 폴더] {save_dir}")
 # CSV 핸들(센서별)
 # =========================
 def make_csv(uid: int):
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = os.path.join(save_dir, f"{ts}_UID{uid:02X}_vibration.csv")
+    path = os.path.join(save_dir, f"{RUN_TS}_UID{uid:02X}_vibration.csv")
     f = open(path, "w", newline="", encoding="utf-8-sig")
     w = csv.writer(f)
     w.writerow([
@@ -1112,6 +1114,71 @@ def _save_result(result: dict):
         print(f"[결과 저장 오류] {e}")
 
 
+def _default_summary_plot_path() -> str:
+    if args.summary_plot:
+        return args.summary_plot
+    return os.path.join(save_dir, f"{RUN_TS}_summary.png")
+
+
+def _save_summary_plot(result: dict = None) -> str:
+    out_path = _default_summary_plot_path()
+    try:
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    except Exception:
+        pass
+
+    n_uid = max(1, len(UNIT_IDS))
+    fig, axes = plt.subplots(n_uid, 2, figsize=(14, max(4, 3 * n_uid)), squeeze=False)
+    fig.suptitle("Vibration Check Summary", fontsize=13)
+
+    for r, uid in enumerate(UNIT_IDS):
+        tbuf = np.array(buf_time[uid], dtype=float)
+        if tbuf.size > 0:
+            tbuf = tbuf - tbuf[0]
+        else:
+            tbuf = np.array([0.0], dtype=float)
+
+        ax_vel = axes[r][0]
+        ax_vel.set_title(f"UID 0x{uid:02X} Velocity (mm/s)")
+        ax_vel.set_xlabel("Time (s)")
+        ax_vel.set_ylabel("Vel")
+        ax_vel.grid(True, alpha=0.3)
+        labels = ("X", "Y", "Z")
+        for i in range(3):
+            vals = np.array(buf_vel[uid][i], dtype=float)
+            if vals.size == 0:
+                continue
+            n = min(len(tbuf), len(vals))
+            ax_vel.plot(tbuf[:n], vals[:n], label=labels[i], linewidth=1.0)
+        ax_vel.legend(loc="upper right", fontsize=8)
+
+        ax_freq = axes[r][1]
+        ax_freq.set_title(f"UID 0x{uid:02X} Frequency (Hz)")
+        ax_freq.set_xlabel("Time (s)")
+        ax_freq.set_ylabel("Freq")
+        ax_freq.grid(True, alpha=0.3)
+        for i in range(3):
+            vals = np.array(buf_freq[uid][i], dtype=float)
+            if vals.size == 0:
+                continue
+            n = min(len(tbuf), len(vals))
+            ax_freq.plot(tbuf[:n], vals[:n], label=labels[i], linewidth=1.0)
+        ax_freq.legend(loc="upper right", fontsize=8)
+
+    if isinstance(result, dict):
+        status = result.get("status", "UNKNOWN")
+        alerts = result.get("alerts", [])
+        first_alert = alerts[0] if isinstance(alerts, list) and alerts else "-"
+        footer = f"status={status} | alerts={len(alerts) if isinstance(alerts, list) else 0} | first={first_alert}"
+        fig.text(0.01, 0.01, footer, fontsize=9, ha="left", va="bottom")
+
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+    fig.savefig(out_path, dpi=140)
+    plt.close(fig)
+    print(f"[그래프 저장] {out_path}")
+    return out_path
+
+
 # =========================
 # 헤드리스 모드: duration 후 자동 종료
 # =========================
@@ -1144,6 +1211,12 @@ if args.headless:
                 "total_samples": total,
             }
             print(f"[진동 체크] 베이스라인 없음, 샘플 수={total}, 상태={result['status']}")
+        try:
+            summary_plot = _save_summary_plot(result)
+            if isinstance(result, dict):
+                result["summary_plot"] = summary_plot
+        except Exception as e:
+            print(f"[그래프 저장 오류] {e}")
         _save_result(result)
 
     # CSV 닫기
