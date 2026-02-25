@@ -768,6 +768,8 @@ class Jetson1Web:
         self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
         self.vibration_abnormal_timer = None
         self.last_vibration_check_time = 0  # 쿨다운용
+        self.vibration_starting = False
+        self.vibration_start_lock = threading.Lock()
         self.last_chk_vibration = False  # 상태 변화 감지용
         self.last_vibration_request = False  # 상태 변화 감지용
         self._last_robot_recipe = {"0": None, "1": None}
@@ -1126,19 +1128,22 @@ class Jetson1Web:
     def start_vibration_check(self):
         # 쿨다운 체크 (10초 이내 재실행 방지)
         cooldown_sec = 10.0
-        elapsed = time.time() - self.last_vibration_check_time
-        if elapsed < cooldown_sec:
-            print(f"[진동] 쿨다운 중 (마지막 실행 후 {elapsed:.1f}초, 대기 필요: {cooldown_sec - elapsed:.1f}초)")
-            self._set_vibration_event("SKIPPED_COOLDOWN", self.vibration_status)
-            self._log_ops_event("vibration_check_skipped", reason="cooldown", elapsed=elapsed)
-            return
+        with self.vibration_start_lock:
+            elapsed = time.time() - self.last_vibration_check_time
+            if elapsed < cooldown_sec:
+                print(f"[진동] 쿨다운 중 (마지막 실행 후 {elapsed:.1f}초, 대기 필요: {cooldown_sec - elapsed:.1f}초)")
+                self._set_vibration_event("SKIPPED_COOLDOWN", self.vibration_status)
+                self._log_ops_event("vibration_check_skipped", reason="cooldown", elapsed=elapsed)
+                return
 
-        if self.vibration_process is not None:
-            self._set_vibration_event("SKIPPED_ALREADY_RUNNING", self.vibration_status)
-            self._log_ops_event("vibration_check_skipped", reason="already_running", status=self.vibration_status)
-            return
+            if self.vibration_starting or self.vibration_process is not None or self.vibration_status == "MEASURING":
+                self._set_vibration_event("SKIPPED_ALREADY_RUNNING", self.vibration_status)
+                self._log_ops_event("vibration_check_skipped", reason="already_running", status=self.vibration_status)
+                return
 
-        self.last_vibration_check_time = time.time()
+            self.last_vibration_check_time = time.time()
+            self.vibration_starting = True
+
         base_dir = REPO_ROOT
         vibration_script = os.path.join(base_dir, "test_vibration_pymodbus3_finalrev.py")
         baseline_file = os.path.join(base_dir, "vibration_baseline_jetson1.json")
@@ -1146,6 +1151,8 @@ class Jetson1Web:
 
         if not os.path.exists(vibration_script):
             print(f"[진동] 오류: {vibration_script} 파일이 없습니다")
+            with self.vibration_start_lock:
+                self.vibration_starting = False
             self._set_vibration_status("ERROR", "FAILED_SCRIPT_MISSING")
             self._log_ops_event("vibration_check_failed", reason="script_missing", script=vibration_script)
             return
@@ -1254,6 +1261,8 @@ class Jetson1Web:
                 if self.vibration_process in self.child_processes:
                     self.child_processes.remove(self.vibration_process)
                 self.vibration_process = None
+                with self.vibration_start_lock:
+                    self.vibration_starting = False
 
         self._set_vibration_status("MEASURING", "MEASURING")
         threading.Thread(target=run_vibration_check, daemon=True).start()

@@ -1397,6 +1397,8 @@ class Jetson2Web:
         self._last_robot_recipe = {"0": None, "1": None}
         self._last_chk_vibration = False
         self._last_vibration_request = False
+        self.vibration_starting = False
+        self.vibration_start_lock = threading.Lock()
 
         self.relay_enabled = False
         self.relay_mode = config.get("relay_mode", "pulse")
@@ -2670,20 +2672,22 @@ class Jetson2Web:
             print(f"[진동 MQTT] 오류: {e}")
 
     def start_vibration_check(self):
-        if self.vibration_process is not None:
-            try:
-                running_pid = self.vibration_process.pid
-            except Exception:
-                running_pid = "unknown"
-            print(f"[진동] 시작 스킵: 이미 실행 중(pid={running_pid}) status={self.vibration_status}")
-            self._set_vibration_event("SKIPPED_ALREADY_RUNNING", self.vibration_status)
-            self._log_ops_event(
-                "vibration_check_skipped",
-                reason="already_running",
-                pid=running_pid,
-                status=self.vibration_status,
-            )
-            return
+        with self.vibration_start_lock:
+            if self.vibration_starting or self.vibration_process is not None or self.vibration_status == "MEASURING":
+                try:
+                    running_pid = self.vibration_process.pid if self.vibration_process is not None else "starting"
+                except Exception:
+                    running_pid = "unknown"
+                print(f"[진동] 시작 스킵: 이미 실행 중(pid={running_pid}) status={self.vibration_status}")
+                self._set_vibration_event("SKIPPED_ALREADY_RUNNING", self.vibration_status)
+                self._log_ops_event(
+                    "vibration_check_skipped",
+                    reason="already_running",
+                    pid=running_pid,
+                    status=self.vibration_status,
+                )
+                return
+            self.vibration_starting = True
         base_dir = os.path.dirname(os.path.abspath(SCRIPT_DIR))
         vibration_script = os.path.join(base_dir, "test_vibration_pymodbus3_finalrev.py")
         baseline_file = os.path.join(base_dir, "vibration_baseline_jetson2.json")
@@ -2691,6 +2695,8 @@ class Jetson2Web:
 
         if not os.path.exists(vibration_script):
             print(f"[진동] 오류: {vibration_script} 파일이 없습니다")
+            with self.vibration_start_lock:
+                self.vibration_starting = False
             self._set_vibration_status("ERROR", "FAILED_SCRIPT_MISSING")
             self._log_ops_event("vibration_check_failed", reason="script_missing", script=vibration_script)
             return
@@ -2819,6 +2825,8 @@ class Jetson2Web:
                 if self.vibration_process in self.child_processes:
                     self.child_processes.remove(self.vibration_process)
                 self.vibration_process = None
+                with self.vibration_start_lock:
+                    self.vibration_starting = False
                 print(f"[진동] 상태 갱신: {self.vibration_status}")
 
         self._set_vibration_status("MEASURING", "MEASURING")
