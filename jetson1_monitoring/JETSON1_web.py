@@ -1054,13 +1054,11 @@ class Jetson1Web:
                 chk_vibration = True
                 break
 
-        # 상태 변화 감지 (False → True 일 때만 실행)
-        if seen_device and chk_vibration and not self.last_chk_vibration:
-            if self.config.get("vibration_test_mode", False):
-                self._set_vibration_status("NORMAL", "TEST_MODE_NORMAL")
-            else:
-                self.start_vibration_check()
-        elif vibration_request and not self.last_vibration_request:
+        # 진동 요청 처리:
+        # - ChkVibration=True가 유지되는 로봇 구현에서도 동작하도록 level-trigger 사용
+        # - 중복 실행은 start_vibration_check()의 쿨다운/락으로 방지
+        trigger_requested = (seen_device and chk_vibration) or bool(vibration_request)
+        if trigger_requested:
             if self.config.get("vibration_test_mode", False):
                 self._set_vibration_status("NORMAL", "TEST_MODE_NORMAL")
             else:
