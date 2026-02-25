@@ -28,6 +28,7 @@ import cv2
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 _LOCK_FD = None
 
 # Add parent directory to path for imports
@@ -76,7 +77,11 @@ def _path_exists(path: str) -> bool:
         return False
     if os.path.isabs(path):
         return os.path.exists(path)
-    return os.path.exists(path) or os.path.exists(os.path.join(SCRIPT_DIR, path))
+    return (
+        os.path.exists(path)
+        or os.path.exists(os.path.join(SCRIPT_DIR, path))
+        or os.path.exists(os.path.join(PROJECT_DIR, path))
+    )
 
 
 def _resolve_existing_path(path: str) -> str:
@@ -84,11 +89,14 @@ def _resolve_existing_path(path: str) -> str:
         return ""
     if os.path.isabs(path):
         return path if os.path.exists(path) else ""
-    if os.path.exists(path):
-        return os.path.abspath(path)
-    candidate = os.path.join(SCRIPT_DIR, path)
-    if os.path.exists(candidate):
-        return candidate
+    candidates = [
+        path,
+        os.path.join(SCRIPT_DIR, path),
+        os.path.join(PROJECT_DIR, path),
+    ]
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return os.path.abspath(candidate)
     return ""
 
 
