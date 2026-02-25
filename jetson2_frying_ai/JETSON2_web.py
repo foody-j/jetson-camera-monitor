@@ -2730,6 +2730,10 @@ class Jetson2Web:
                 if left_effective != self.observe_left_effective:
                     self.observe_left_effective = left_effective
                     self._log_ops_event("observe_effective_changed", side="left", effective=left_effective)
+                    if left_effective == "투입":
+                        oil = self.temps.get("pot1_oil", 0.0)
+                        recipe = (self.pot1_robot_status or {}).get("recipe", "")
+                        print(f"[OBSERVE][left] FILLED -> 투입 (oil={oil:.1f}C, recipe={recipe})")
 
         if right_worker:
             right_result = right_worker.get_result()
@@ -2752,6 +2756,10 @@ class Jetson2Web:
                 if right_effective != self.observe_right_effective:
                     self.observe_right_effective = right_effective
                     self._log_ops_event("observe_effective_changed", side="right", effective=right_effective)
+                    if right_effective == "투입":
+                        oil = self.temps.get("pot2_oil", 0.0)
+                        recipe = (self.pot2_robot_status or {}).get("recipe", "")
+                        print(f"[OBSERVE][right] FILLED -> 투입 (oil={oil:.1f}C, recipe={recipe})")
 
     def start(self) -> None:
         print("=" * 60)
