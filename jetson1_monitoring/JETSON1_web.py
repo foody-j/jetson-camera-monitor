@@ -335,6 +335,7 @@ class PersonDetectionWorker(threading.Thread):
         self.day_start = config.get("day_start", "04:00")
         self.day_end = config.get("day_end", "21:00")
         self.detection_hold_sec = float(config.get("detection_hold_sec", 2))
+        self.day_person_lost_hold_sec = float(config.get("day_person_lost_hold_sec", 1.2))
 
         self.yolo_conf = float(config.get("yolo_confidence", 0.7))
         self.yolo_imgsz = int(config.get("yolo_imgsz", 416))
@@ -365,6 +366,7 @@ class PersonDetectionWorker(threading.Thread):
         self.last_night_detected_result = False
 
         self.last_person_detected_time = None
+        self.last_person_boxes = []
         self.det_hold_start = None
         self.on_triggered = False
         self._last_daytime = None
@@ -495,9 +497,9 @@ class PersonDetectionWorker(threading.Thread):
                     max_conf = max(max_conf, conf)
                     box = r.boxes.xyxy[i].cpu().numpy().astype(int).tolist()
                     person_boxes.append((box[0], box[1], box[2], box[3], conf))
-        self.camera.set_person_boxes(person_boxes)
-
         if detected:
+            self.camera.set_person_boxes(person_boxes)
+            self.last_person_boxes = person_boxes
             self.person_detected = True
             self.last_person_detected_time = now
             self.last_confidence = max_conf
@@ -512,8 +514,18 @@ class PersonDetectionWorker(threading.Thread):
                         self.parent.publish_robot_control("ON")
                     self.on_triggered = True
         else:
-            self.person_detected = False
-            self.det_hold_start = None
+            if self.last_person_detected_time is not None:
+                no_det_sec = (now - self.last_person_detected_time).total_seconds()
+            else:
+                no_det_sec = float("inf")
+            if no_det_sec <= self.day_person_lost_hold_sec:
+                # Keep daytime detection/box stable for brief missed frames.
+                self.person_detected = True
+                self.camera.set_person_boxes(self.last_person_boxes)
+            else:
+                self.person_detected = False
+                self.camera.set_person_boxes([])
+                self.det_hold_start = None
 
     def _process_night(self, frame: np.ndarray, now: datetime) -> None:
         if self.night_check_active:
