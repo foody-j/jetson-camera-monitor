@@ -58,6 +58,7 @@
   "observe_filled_prob_min": 0.995,
   "observe_vote_min_samples": 3,
   "observe_cam3_right_min_ratio": 0.55,
+  "observe_투입_temp_threshold": 167.0,
 
   "// 공통 AI 설정": "",
   "img_size_seg": 640,

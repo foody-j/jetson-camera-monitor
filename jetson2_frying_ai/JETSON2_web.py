@@ -234,6 +234,7 @@ class CameraWorker(threading.Thread):
         self.web_frame: Optional[bytes] = None
         self.web_frame_lock = threading.Lock()
         self.overlay_frame: Optional[bytes] = None
+        self.overlay_frame_ts: float = 0.0
         self.overlay_lock = threading.Lock()
         self.overlay_enabled = bool(self.config.get("overlay_enabled", False))
 
@@ -342,6 +343,7 @@ class CameraWorker(threading.Thread):
                 self.web_frame = None
             with self.overlay_lock:
                 self.overlay_frame = None
+                self.overlay_frame_ts = 0.0
             self.stats["fps"] = 0
             self.stats["last_frame_ts"] = 0
 
@@ -408,6 +410,7 @@ class CameraWorker(threading.Thread):
     def set_overlay_frame(self, jpg_bytes: bytes) -> None:
         with self.overlay_lock:
             self.overlay_frame = jpg_bytes
+            self.overlay_frame_ts = time.time()
 
     def set_overlay_enabled(self, enabled: bool) -> None:
         self.overlay_enabled = enabled
@@ -415,7 +418,10 @@ class CameraWorker(threading.Thread):
     def get_stream_frame(self) -> Optional[bytes]:
         if self.overlay_enabled:
             with self.overlay_lock:
-                if self.overlay_frame:
+                # If overlay producer lags, fall back to live web frame to avoid frozen stream.
+                stale_sec = _safe_float(self.config.get("overlay_stale_fallback_sec", 1.0), 1.0)
+                overlay_age = time.time() - self.overlay_frame_ts if self.overlay_frame_ts > 0 else float("inf")
+                if self.overlay_frame and overlay_age <= max(0.1, stale_sec):
                     return self.overlay_frame
         return self.get_web_frame()
 
@@ -1282,9 +1288,7 @@ class Jetson2Web:
 
         qos = self.config.get("mqtt_qos", 1)
         self.mqtt_client.subscribe(self.config.get("mqtt_topic_robot_status", "HR/Status"), self.on_robot_status, qos=qos)
-        self.mqtt_client.subscribe(self.config.get("mqtt_topic_pot1_oil_temp", "frying/pot1/oil_temp"), self.on_pot1_oil_temp, qos=qos)
         self.mqtt_client.subscribe(self.config.get("mqtt_topic_pot1_probe_temp", "frying/pot1/probe_temp"), self.on_pot1_probe_temp, qos=qos)
-        self.mqtt_client.subscribe(self.config.get("mqtt_topic_pot2_oil_temp", "frying/pot2/oil_temp"), self.on_pot2_oil_temp, qos=qos)
         self.mqtt_client.subscribe(self.config.get("mqtt_topic_pot2_probe_temp", "frying/pot2/probe_temp"), self.on_pot2_probe_temp, qos=qos)
         self.mqtt_client.subscribe(self.config.get("mqtt_topic_frying_pot1_food_type", "frying/pot1/food_type"), self.on_pot1_food_type, qos=qos)
         self.mqtt_client.subscribe(self.config.get("mqtt_topic_frying_pot1_control", "frying/pot1/control"), self.on_pot1_control, qos=qos)
@@ -1676,6 +1680,11 @@ class Jetson2Web:
 
             pot_status = pot_data.get("Potstatus", {})
             temp = pot_status.get("PT_Temp", 0)
+            # Use HR/Status PT_Temp as the canonical oil temperature for observe effective state.
+            try:
+                temp_value = float(temp)
+            except (TypeError, ValueError):
+                temp_value = None
             power = pot_status.get("PT_Power", "False")
             pt_level = pot_status.get("PT_Level", 0)
             rt_speed = pot_status.get("RT_Speed", 0)
@@ -1712,6 +1721,8 @@ class Jetson2Web:
             is_cleaning = "청소" in recipe if recipe else False
 
             if pot_num == "0":
+                if temp_value is not None:
+                    self.temps["pot1_oil"] = temp_value
                 self.robot_status["pot1"] = pot_data
                 self.pot1_target_time = target_time
                 self.pot1_robot_status = robot_meta
@@ -1737,6 +1748,8 @@ class Jetson2Web:
                         self.pot1_discharge_timer.start()
 
             elif pot_num == "1":
+                if temp_value is not None:
+                    self.temps["pot2_oil"] = temp_value
                 self.robot_status["pot2"] = pot_data
                 self.pot2_target_time = target_time
                 self.pot2_robot_status = robot_meta
@@ -2707,14 +2720,16 @@ class Jetson2Web:
             "system": self.system_info.get_dynamic_info() if self.system_info else {},
         }
 
-    def _get_effective_observe_state(self, raw_status: str, oil_temp: float) -> str:
-        """FILLED + 유온 170°C 이상이면 '투입', 아니면 raw_status 그대로 반환"""
-        투입_temp = float(self.config.get("observe_투입_temp_threshold", 170.0))
+    def _get_effective_observe_state(self, raw_status: str, oil_temp: float, recipe: str) -> str:
+        """FILLED + 레시피 유효 + 유온 임계 이상이면 '투입', 아니면 raw_status 그대로 반환"""
+        투입_temp = float(self.config.get("observe_투입_temp_threshold", 167.0))
+        recipe_value = (recipe or "").strip()
+        is_cleaning = "청소" in recipe_value
         try:
             oil_temp_value = float(oil_temp)
         except (TypeError, ValueError):
             oil_temp_value = float("-inf")
-        if raw_status == "FILLED" and oil_temp_value >= 투입_temp:
+        if raw_status == "FILLED" and recipe_value and not is_cleaning and oil_temp_value >= 투입_temp:
             return "투입"
         return raw_status
 
@@ -2738,7 +2753,9 @@ class Jetson2Web:
                         prob=left_result.get("prob"),
                     )
                 left_effective = self._get_effective_observe_state(
-                    left_status, self.temps.get("pot1_oil", 0.0)
+                    left_status,
+                    self.temps.get("pot1_oil", 0.0),
+                    (self.pot1_robot_status or {}).get("recipe", ""),
                 )
                 if left_effective != self.observe_left_effective:
                     self.observe_left_effective = left_effective
@@ -2758,7 +2775,9 @@ class Jetson2Web:
                         prob=right_result.get("prob"),
                     )
                 right_effective = self._get_effective_observe_state(
-                    right_status, self.temps.get("pot2_oil", 0.0)
+                    right_status,
+                    self.temps.get("pot2_oil", 0.0),
+                    (self.pot2_robot_status or {}).get("recipe", ""),
                 )
                 if right_effective != self.observe_right_effective:
                     self.observe_right_effective = right_effective
