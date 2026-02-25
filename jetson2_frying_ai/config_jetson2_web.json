@@ -74,6 +74,7 @@
   "human_block_exit_frames": 5,
   "human_block_cooldown_sec": 1.5,
   "human_fail_safe_block": false,
+  "show_human_zone_overlay": true,
   "human_zone_cam2": [[279, 639], [999, 639], [999, 1536], [279, 1536]],
   "human_zone_cam3": [[186, 658], [1395, 658], [1395, 1536], [186, 1536]],
 

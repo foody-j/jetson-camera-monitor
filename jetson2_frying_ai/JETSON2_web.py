@@ -410,6 +410,32 @@ class CameraWorker(threading.Thread):
         target_h = int(h * target_w / max(w, 1))
         small = cv2.resize(frame_for_preview, (target_w, target_h))
 
+        if bool(self.config.get("show_human_zone_overlay", True)) and roi is None:
+            zone_points = None
+            if self.cam_id == self.config.get("observe_left_camera_index", 2):
+                zone_points = self.config.get("human_zone_cam2", [])
+            elif self.cam_id == self.config.get("observe_right_camera_index", 3):
+                zone_points = self.config.get("human_zone_cam3", [])
+            if isinstance(zone_points, list) and len(zone_points) >= 3:
+                pts = []
+                for p in zone_points:
+                    if not isinstance(p, (list, tuple)) or len(p) != 2:
+                        continue
+                    try:
+                        px = int(float(p[0]) * target_w / max(frame.shape[1], 1))
+                        py = int(float(p[1]) * target_h / max(frame.shape[0], 1))
+                        pts.append([px, py])
+                    except Exception:
+                        continue
+                if len(pts) >= 3:
+                    cv2.polylines(
+                        small,
+                        [np.array(pts, dtype=np.int32)],
+                        isClosed=True,
+                        color=(0, 255, 255),
+                        thickness=2,
+                    )
+
         ret, jpg = cv2.imencode(
             ".jpg",
             small,
