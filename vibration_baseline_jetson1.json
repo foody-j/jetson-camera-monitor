@@ -119,13 +119,13 @@
   },
   "thresholds": {
     "velocity_magnitude_p99": 33587.705981895364,
-    "velocity_magnitude_3sigma": 34000.0,
+    "velocity_magnitude_3sigma": 35500.0,
     "vel_x_p99": 16280.0,
-    "vel_x_3sigma": 16500.0,
+    "vel_x_3sigma": 17000.0,
     "vel_y_p99": 22042.0,
-    "vel_y_3sigma": 22500.0,
+    "vel_y_3sigma": 24000.0,
     "vel_z_p99": 19118.5,
-    "vel_z_3sigma": 19500.0,
+    "vel_z_3sigma": 22500.0,
     "freq_x_low": 0.0,
     "freq_x_high": 442.59490000000005,
     "freq_x_high_min_uid_count": 1,
@@ -135,9 +135,9 @@
     "freq_z_low": 0.0,
     "freq_z_high": 442.31000000000006,
     "freq_z_high_min_uid_count": 1,
-    "min_exceed_duration_sec": 0.5,
+    "min_exceed_duration_sec": 0.2,
     "_comment_combo_rule": "UID-specific velocity rule: upper/lower bounds (95%ile/5%ile)",
-    "combo_rule_enabled": true,
+    "combo_rule_enabled": false,
     "uid53_vel_mag_thresh": 8000,
     "uid54_vel_mag_thresh": 37000,
     "uid55_vel_mag_thresh": 30500,
@@ -146,6 +146,16 @@
     "uid55_vel_mag_max": 30500,
     "uid53_vel_mag_min": 5000,
     "uid54_vel_mag_min": 25000,
-    "uid55_vel_mag_min": 12000
+    "uid55_vel_mag_min": 12000,
+    "freq_checks_enabled": false,
+    "velocity_combo_min_triggers": 3,
+    "velocity_include_uids": [
+      "0x54"
+    ],
+    "velocity_ignore_uid_axes": {},
+    "velocity_magnitude_low": 20000.0,
+    "vel_x_low": 12000.0,
+    "vel_y_low": 13000.0,
+    "vel_z_low": 11000.0
   }
 }

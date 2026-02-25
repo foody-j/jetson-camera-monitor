@@ -516,6 +516,42 @@ def _check_against_baseline(baseline: dict) -> dict:
                     single_uid_ignore.add(f"0X{int(s):02X}")
             except Exception:
                 continue
+
+    def _normalize_uid_set(raw_uids, default_uids):
+        if not isinstance(raw_uids, list) or not raw_uids:
+            return set(default_uids)
+        parsed = set()
+        for x in raw_uids:
+            try:
+                s = str(x).strip()
+                if not s:
+                    continue
+                parsed.add(int(s, 0))
+            except Exception:
+                continue
+        return parsed or set(default_uids)
+
+    velocity_include_uids = _normalize_uid_set(
+        thresholds.get("velocity_include_uids", []), UNIT_IDS
+    )
+    velocity_ignore_uid_axes_raw = thresholds.get("velocity_ignore_uid_axes", {})
+    velocity_ignore_uid_axes = {}
+    if isinstance(velocity_ignore_uid_axes_raw, dict):
+        for uid_key, axes in velocity_ignore_uid_axes_raw.items():
+            try:
+                uid_int = int(str(uid_key).strip(), 0)
+            except Exception:
+                continue
+            axes_set = set()
+            if isinstance(axes, list):
+                for a in axes:
+                    a_norm = str(a).strip().lower()
+                    if a_norm in ("x", "y", "z"):
+                        axes_set.add(a_norm)
+            velocity_ignore_uid_axes[uid_int] = axes_set
+    velocity_combo_min_triggers = int(thresholds.get("velocity_combo_min_triggers", 1))
+    velocity_combo_min_triggers = max(1, velocity_combo_min_triggers)
+    freq_checks_enabled = bool(thresholds.get("freq_checks_enabled", True))
     # freq high 판정:
     # - p99는 단일 센서 노이즈 오탐 방지를 위해 2개 이상 UID 동시 초과일 때만 경보
     # - burst(max)는 짧은 충격(툭툭) 복원을 위해 유지하되 비율을 높여 오탐 완화
@@ -658,179 +694,269 @@ def _check_against_baseline(baseline: dict) -> dict:
                 }
             )
 
-    # 3sigma threshold 비교
+    def _uid_axis_enabled(uid, axis_name):
+        if uid not in velocity_include_uids:
+            return False
+        ignored = velocity_ignore_uid_axes.get(uid, set())
+        return axis_name not in ignored
+
+    def _series_for_metric(uid, metric_key, x_vals, y_vals, z_vals):
+        if metric_key == "vel_x_3sigma":
+            return [abs(v) for v in x_vals] if _uid_axis_enabled(uid, "x") else []
+        if metric_key == "vel_y_3sigma":
+            return [abs(v) for v in y_vals] if _uid_axis_enabled(uid, "y") else []
+        if metric_key == "vel_z_3sigma":
+            return [abs(v) for v in z_vals] if _uid_axis_enabled(uid, "z") else []
+        n = min(len(x_vals), len(y_vals), len(z_vals))
+        if n <= 0:
+            return []
+        use_x = _uid_axis_enabled(uid, "x")
+        use_y = _uid_axis_enabled(uid, "y")
+        use_z = _uid_axis_enabled(uid, "z")
+        if not (use_x or use_y or use_z):
+            return []
+        out = []
+        for i in range(n):
+            vx = x_vals[i] if use_x else 0.0
+            vy = y_vals[i] if use_y else 0.0
+            vz = z_vals[i] if use_z else 0.0
+            out.append(float(np.sqrt(vx * vx + vy * vy + vz * vz)))
+        return out
+
+    # UID/축 필터 적용된 velocity 요약값
+    vel_selected = {"x": [], "y": [], "z": [], "mag": []}
+    for uid in UNIT_IDS:
+        x_vals, y_vals, z_vals = per_uid_vel.get(uid, ([], [], []))
+        if not x_vals:
+            continue
+        if _uid_axis_enabled(uid, "x"):
+            vel_selected["x"].extend([abs(v) for v in x_vals])
+        if _uid_axis_enabled(uid, "y"):
+            vel_selected["y"].extend([abs(v) for v in y_vals])
+        if _uid_axis_enabled(uid, "z"):
+            vel_selected["z"].extend([abs(v) for v in z_vals])
+        vel_selected["mag"].extend(_series_for_metric(uid, "velocity_magnitude_3sigma", x_vals, y_vals, z_vals))
+
+    velocity_measured = {
+        "velocity_magnitude_p99": float(np.percentile(vel_selected["mag"], 99)) if vel_selected["mag"] else 0.0,
+        "vel_x_p99": float(np.percentile(vel_selected["x"], 99)) if vel_selected["x"] else 0.0,
+        "vel_y_p99": float(np.percentile(vel_selected["y"], 99)) if vel_selected["y"] else 0.0,
+        "vel_z_p99": float(np.percentile(vel_selected["z"], 99)) if vel_selected["z"] else 0.0,
+    }
+    measured["velocity_magnitude_p99"] = velocity_measured["velocity_magnitude_p99"]
+    measured["vel_x_p99"] = velocity_measured["vel_x_p99"]
+    measured["vel_y_p99"] = velocity_measured["vel_y_p99"]
+    measured["vel_z_p99"] = velocity_measured["vel_z_p99"]
+
+    # 3sigma threshold 비교 (velocity combo)
     checks = [
         ("velocity_magnitude_3sigma", measured["velocity_magnitude_p99"], "속도 크기(3σ)"),
         ("vel_x_3sigma", measured["vel_x_p99"], "X축 속도(3σ)"),
         ("vel_y_3sigma", measured["vel_y_p99"], "Y축 속도(3σ)"),
         ("vel_z_3sigma", measured["vel_z_p99"], "Z축 속도(3σ)"),
     ]
-
+    velocity_alert_candidates = []
+    velocity_triggered = {}
+    velocity_ops = {}
     for key, val, label in checks:
         limit = thresholds.get(key)
         if limit is None or val <= limit:
             continue
-        duration_hit = False
+        hit_uids = []
         for uid in UNIT_IDS:
             x_vals, y_vals, z_vals = per_uid_vel.get(uid, ([], [], []))
-            if key == "vel_x_3sigma":
-                series = [abs(v) for v in x_vals]
-            elif key == "vel_y_3sigma":
-                series = [abs(v) for v in y_vals]
-            elif key == "vel_z_3sigma":
-                series = [abs(v) for v in z_vals]
-            else:
-                n = min(len(x_vals), len(y_vals), len(z_vals))
-                series = [
-                    float(np.sqrt(x_vals[i] ** 2 + y_vals[i] ** 2 + z_vals[i] ** 2))
-                    for i in range(n)
-                ]
-            if _longest_run_sec(series, float(limit), ">") >= min_exceed_duration_sec:
-                duration_hit = True
-                break
-        if duration_hit:
-            alerts.append(
-                f"{label} 초과: {val:.1f} > {limit:.1f} (연속 {min_exceed_duration_sec:.1f}s)"
-            )
-            triggered_metrics[key] = float(limit)
-            metric_operators[key] = ">"
-
-    # 주파수 임계값 비교 (high/low)
-    # high는 p99 기반 + burst(max) 보조 판정
-    freq_checks = [
-        ("freq_x_high", "freq_x_p99", "FREQ_X high"),
-        ("freq_y_high", "freq_y_p99", "FREQ_Y high"),
-        ("freq_z_high", "freq_z_p99", "FREQ_Z high"),
-    ]
-    for key, measured_key, label in freq_checks:
-        limit = thresholds.get(key)
-        if limit is None:
-            continue
-        min_uid_count = int(thresholds.get(f"{key}_min_uid_count", freq_high_min_uid_count))
-        min_uid_count = max(1, min_uid_count)
-        exceed_uids = []
-        for uid_key, uid_measured in measured_per_uid.items():
-            uid_val = float(uid_measured.get(measured_key, 0.0))
-            uid_int = int(uid_key, 16)
-            _, _, _ = per_uid_vel.get(uid_int, ([], [], []))
-            fx_vals, fy_vals, fz_vals = per_uid_freq.get(uid_int, ([], [], []))
-            if measured_key == "freq_x_p99":
-                series = fx_vals
-            elif measured_key == "freq_y_p99":
-                series = fy_vals
-            else:
-                series = fz_vals
-            if uid_val > float(limit) and _longest_run_sec(series, float(limit), ">") >= min_exceed_duration_sec:
-                exceed_uids.append(uid_key)
-        if len(exceed_uids) >= min_uid_count:
-            val = float(measured.get(measured_key, 0.0))
-            alerts.append(
-                f"{label} 초과({len(exceed_uids)}UID): {val:.1f} > {float(limit):.1f} "
-                f"(uids={','.join(exceed_uids)}, 연속 {min_exceed_duration_sec:.1f}s)"
-            )
-            triggered_metrics[key] = float(limit)
-            metric_operators[key] = ">"
-
-    # 단일 UID 강한 초과 예외: 한 센서만 강하게 튀는 경우(예: UID 0x51)도 검출
-    single_uid_overrides = [
-        ("freq_x_single_uid_high", "freq_x_p99", "FREQ_X single high"),
-        ("freq_y_single_uid_high", "freq_y_p99", "FREQ_Y single high"),
-        ("freq_z_single_uid_high", "freq_z_p99", "FREQ_Z single high"),
-    ]
-    for key, measured_key, label in single_uid_overrides:
-        limit = thresholds.get(key)
-        if limit is None:
-            continue
-        exceed_uids = []
-        max_uid_val = 0.0
-        for uid_key, uid_measured in measured_per_uid.items():
-            if uid_key.upper() in single_uid_ignore:
+            series = _series_for_metric(uid, key, x_vals, y_vals, z_vals)
+            if not series:
                 continue
-            uid_val = float(uid_measured.get(measured_key, 0.0))
-            if uid_val > max_uid_val:
-                max_uid_val = uid_val
-            uid_int = int(uid_key, 16)
-            fx_vals, fy_vals, fz_vals = per_uid_freq.get(uid_int, ([], [], []))
-            if measured_key == "freq_x_p99":
-                series = fx_vals
-            elif measured_key == "freq_y_p99":
-                series = fy_vals
-            else:
-                series = fz_vals
-            if uid_val > float(limit) and _longest_run_sec(series, float(limit), ">") >= min_exceed_duration_sec:
-                exceed_uids.append(uid_key)
-        if exceed_uids:
-            alerts.append(
-                f"{label} 초과({len(exceed_uids)}UID): {max_uid_val:.1f} > {float(limit):.1f} "
-                f"(uids={','.join(exceed_uids)}, 연속 {min_exceed_duration_sec:.1f}s)"
+            if _longest_run_sec(series, float(limit), ">") >= min_exceed_duration_sec:
+                hit_uids.append(f"0x{uid:02X}")
+        if hit_uids:
+            velocity_alert_candidates.append(
+                f"{label} 초과: {val:.1f} > {limit:.1f} (uids={','.join(hit_uids)}, 연속 {min_exceed_duration_sec:.1f}s)"
             )
-            triggered_metrics[key] = float(limit)
-            metric_operators[key] = ">"
-    # burst(max) 보조 판정: p99에서 안 걸려도 짧고 강한 충격은 감지
-    burst_checks = [
-        ("freq_x_high_burst", "freq_x_max", thresholds.get("freq_x_high"), "FREQ_X high burst"),
-        ("freq_y_high_burst", "freq_y_max", thresholds.get("freq_y_high"), "FREQ_Y high burst"),
-        ("freq_z_high_burst", "freq_z_max", thresholds.get("freq_z_high"), "FREQ_Z high burst"),
-    ]
-    for metric_key, measured_key, base_limit, label in burst_checks:
-        if base_limit is None:
-            continue
-        burst_limit = float(base_limit) * float(freq_high_burst_ratio)
-        exceed_uids = []
-        max_uid_val = 0.0
-        for uid_key, uid_measured in measured_per_uid.items():
-            uid_val = float(uid_measured.get(measured_key, 0.0))
-            if uid_val > max_uid_val:
-                max_uid_val = uid_val
-            uid_int = int(uid_key, 16)
-            fx_vals, fy_vals, fz_vals = per_uid_freq.get(uid_int, ([], [], []))
-            if measured_key == "freq_x_max":
-                series = fx_vals
-            elif measured_key == "freq_y_max":
-                series = fy_vals
-            else:
-                series = fz_vals
-            if uid_val > burst_limit and _longest_run_sec(series, burst_limit, ">") >= min_exceed_duration_sec:
-                exceed_uids.append(uid_key)
-        if exceed_uids:
-            alerts.append(
-                f"{label} 초과({len(exceed_uids)}UID): {float(max_uid_val):.1f} > {burst_limit:.1f} "
-                f"(uids={','.join(exceed_uids)}, 연속 {min_exceed_duration_sec:.1f}s)"
-            )
-            triggered_metrics[metric_key] = float(burst_limit)
-            metric_operators[metric_key] = ">"
+            velocity_triggered[key] = float(limit)
+            velocity_ops[key] = ">"
 
-    freq_low_checks = [
-        ("freq_x_low", measured["freq_x_min"], "FREQ_X low"),
-        ("freq_y_low", measured["freq_y_min"], "FREQ_Y low"),
-        ("freq_z_low", measured["freq_z_min"], "FREQ_Z low"),
+    if len(velocity_alert_candidates) >= velocity_combo_min_triggers:
+        alerts.extend(velocity_alert_candidates)
+        triggered_metrics.update(velocity_triggered)
+        metric_operators.update(velocity_ops)
+
+    # velocity 하한 판정 (저신호/접촉불량/비정상 저진동)
+    velocity_low_checks = [
+        ("velocity_magnitude_low", measured["velocity_magnitude_p99"], "속도 크기(low)"),
+        ("vel_x_low", measured["vel_x_p99"], "X축 속도(low)"),
+        ("vel_y_low", measured["vel_y_p99"], "Y축 속도(low)"),
+        ("vel_z_low", measured["vel_z_p99"], "Z축 속도(low)"),
     ]
-    for key, val, label in freq_low_checks:
+    for key, val, label in velocity_low_checks:
         limit = thresholds.get(key)
         if limit is None or val >= limit:
             continue
-        duration_hit = False
+        hit_uids = []
         for uid in UNIT_IDS:
-            fx_vals, fy_vals, fz_vals = per_uid_freq.get(uid, ([], [], []))
-            if key == "freq_x_low":
-                series = fx_vals
-            elif key == "freq_y_low":
-                series = fy_vals
+            x_vals, y_vals, z_vals = per_uid_vel.get(uid, ([], [], []))
+            if key == "vel_x_low":
+                series = _series_for_metric(uid, "vel_x_3sigma", x_vals, y_vals, z_vals)
+            elif key == "vel_y_low":
+                series = _series_for_metric(uid, "vel_y_3sigma", x_vals, y_vals, z_vals)
+            elif key == "vel_z_low":
+                series = _series_for_metric(uid, "vel_z_3sigma", x_vals, y_vals, z_vals)
             else:
-                series = fz_vals
+                series = _series_for_metric(uid, "velocity_magnitude_3sigma", x_vals, y_vals, z_vals)
+            if not series:
+                continue
             if _longest_run_sec(series, float(limit), "<") >= min_exceed_duration_sec:
-                duration_hit = True
-                break
-        if duration_hit:
-            alerts.append(f"{label} 미만: {val:.1f} < {limit:.1f} (연속 {min_exceed_duration_sec:.1f}s)")
+                hit_uids.append(f"0x{uid:02X}")
+        if hit_uids:
+            alerts.append(
+                f"{label} 미만: {val:.1f} < {float(limit):.1f} "
+                f"(uids={','.join(hit_uids)}, 연속 {min_exceed_duration_sec:.1f}s)"
+            )
             triggered_metrics[key] = float(limit)
             metric_operators[key] = "<"
 
+    # 주파수 임계값 비교 (high/low)
+    # high는 p99 기반 + burst(max) 보조 판정
+    if freq_checks_enabled:
+        freq_checks = [
+            ("freq_x_high", "freq_x_p99", "FREQ_X high"),
+            ("freq_y_high", "freq_y_p99", "FREQ_Y high"),
+            ("freq_z_high", "freq_z_p99", "FREQ_Z high"),
+        ]
+        for key, measured_key, label in freq_checks:
+            limit = thresholds.get(key)
+            if limit is None:
+                continue
+            min_uid_count = int(thresholds.get(f"{key}_min_uid_count", freq_high_min_uid_count))
+            min_uid_count = max(1, min_uid_count)
+            exceed_uids = []
+            for uid_key, uid_measured in measured_per_uid.items():
+                uid_val = float(uid_measured.get(measured_key, 0.0))
+                uid_int = int(uid_key, 16)
+                _, _, _ = per_uid_vel.get(uid_int, ([], [], []))
+                fx_vals, fy_vals, fz_vals = per_uid_freq.get(uid_int, ([], [], []))
+                if measured_key == "freq_x_p99":
+                    series = fx_vals
+                elif measured_key == "freq_y_p99":
+                    series = fy_vals
+                else:
+                    series = fz_vals
+                if uid_val > float(limit) and _longest_run_sec(series, float(limit), ">") >= min_exceed_duration_sec:
+                    exceed_uids.append(uid_key)
+            if len(exceed_uids) >= min_uid_count:
+                val = float(measured.get(measured_key, 0.0))
+                alerts.append(
+                    f"{label} 초과({len(exceed_uids)}UID): {val:.1f} > {float(limit):.1f} "
+                    f"(uids={','.join(exceed_uids)}, 연속 {min_exceed_duration_sec:.1f}s)"
+                )
+                triggered_metrics[key] = float(limit)
+                metric_operators[key] = ">"
+
+    # 단일 UID 강한 초과 예외: 한 센서만 강하게 튀는 경우(예: UID 0x51)도 검출
+        single_uid_overrides = [
+            ("freq_x_single_uid_high", "freq_x_p99", "FREQ_X single high"),
+            ("freq_y_single_uid_high", "freq_y_p99", "FREQ_Y single high"),
+            ("freq_z_single_uid_high", "freq_z_p99", "FREQ_Z single high"),
+        ]
+        for key, measured_key, label in single_uid_overrides:
+            limit = thresholds.get(key)
+            if limit is None:
+                continue
+            exceed_uids = []
+            max_uid_val = 0.0
+            for uid_key, uid_measured in measured_per_uid.items():
+                if uid_key.upper() in single_uid_ignore:
+                    continue
+                uid_val = float(uid_measured.get(measured_key, 0.0))
+                if uid_val > max_uid_val:
+                    max_uid_val = uid_val
+                uid_int = int(uid_key, 16)
+                fx_vals, fy_vals, fz_vals = per_uid_freq.get(uid_int, ([], [], []))
+                if measured_key == "freq_x_p99":
+                    series = fx_vals
+                elif measured_key == "freq_y_p99":
+                    series = fy_vals
+                else:
+                    series = fz_vals
+                if uid_val > float(limit) and _longest_run_sec(series, float(limit), ">") >= min_exceed_duration_sec:
+                    exceed_uids.append(uid_key)
+            if exceed_uids:
+                alerts.append(
+                    f"{label} 초과({len(exceed_uids)}UID): {max_uid_val:.1f} > {float(limit):.1f} "
+                    f"(uids={','.join(exceed_uids)}, 연속 {min_exceed_duration_sec:.1f}s)"
+                )
+                triggered_metrics[key] = float(limit)
+                metric_operators[key] = ">"
+        # burst(max) 보조 판정: p99에서 안 걸려도 짧고 강한 충격은 감지
+        burst_checks = [
+            ("freq_x_high_burst", "freq_x_max", thresholds.get("freq_x_high"), "FREQ_X high burst"),
+            ("freq_y_high_burst", "freq_y_max", thresholds.get("freq_y_high"), "FREQ_Y high burst"),
+            ("freq_z_high_burst", "freq_z_max", thresholds.get("freq_z_high"), "FREQ_Z high burst"),
+        ]
+        for metric_key, measured_key, base_limit, label in burst_checks:
+            if base_limit is None:
+                continue
+            burst_limit = float(base_limit) * float(freq_high_burst_ratio)
+            exceed_uids = []
+            max_uid_val = 0.0
+            for uid_key, uid_measured in measured_per_uid.items():
+                uid_val = float(uid_measured.get(measured_key, 0.0))
+                if uid_val > max_uid_val:
+                    max_uid_val = uid_val
+                uid_int = int(uid_key, 16)
+                fx_vals, fy_vals, fz_vals = per_uid_freq.get(uid_int, ([], [], []))
+                if measured_key == "freq_x_max":
+                    series = fx_vals
+                elif measured_key == "freq_y_max":
+                    series = fy_vals
+                else:
+                    series = fz_vals
+                if uid_val > burst_limit and _longest_run_sec(series, burst_limit, ">") >= min_exceed_duration_sec:
+                    exceed_uids.append(uid_key)
+            if exceed_uids:
+                alerts.append(
+                    f"{label} 초과({len(exceed_uids)}UID): {float(max_uid_val):.1f} > {burst_limit:.1f} "
+                    f"(uids={','.join(exceed_uids)}, 연속 {min_exceed_duration_sec:.1f}s)"
+                )
+                triggered_metrics[metric_key] = float(burst_limit)
+                metric_operators[metric_key] = ">"
+
+        freq_low_checks = [
+            ("freq_x_low", measured["freq_x_min"], "FREQ_X low"),
+            ("freq_y_low", measured["freq_y_min"], "FREQ_Y low"),
+            ("freq_z_low", measured["freq_z_min"], "FREQ_Z low"),
+        ]
+        for key, val, label in freq_low_checks:
+            limit = thresholds.get(key)
+            if limit is None or val >= limit:
+                continue
+            duration_hit = False
+            for uid in UNIT_IDS:
+                fx_vals, fy_vals, fz_vals = per_uid_freq.get(uid, ([], [], []))
+                if key == "freq_x_low":
+                    series = fx_vals
+                elif key == "freq_y_low":
+                    series = fy_vals
+                else:
+                    series = fz_vals
+                if _longest_run_sec(series, float(limit), "<") >= min_exceed_duration_sec:
+                    duration_hit = True
+                    break
+            if duration_hit:
+                alerts.append(f"{label} 미만: {val:.1f} < {limit:.1f} (연속 {min_exceed_duration_sec:.1f}s)")
+                triggered_metrics[key] = float(limit)
+                metric_operators[key] = "<"
+
     metric_to_label = {
         "velocity_magnitude_3sigma": "속도 크기(3σ)",
+        "velocity_magnitude_low": "속도 크기(low)",
         "vel_x_3sigma": "X축 속도(3σ)",
+        "vel_x_low": "X축 속도(low)",
         "vel_y_3sigma": "Y축 속도(3σ)",
+        "vel_y_low": "Y축 속도(low)",
         "vel_z_3sigma": "Z축 속도(3σ)",
+        "vel_z_low": "Z축 속도(low)",
         "freq_x_high": "FREQ_X high",
         "freq_y_high": "FREQ_Y high",
         "freq_z_high": "FREQ_Z high",
@@ -846,9 +972,13 @@ def _check_against_baseline(baseline: dict) -> dict:
     }
     metric_to_measured_key = {
         "velocity_magnitude_3sigma": "velocity_magnitude_p99",
+        "velocity_magnitude_low": "velocity_magnitude_p99",
         "vel_x_3sigma": "vel_x_p99",
+        "vel_x_low": "vel_x_p99",
         "vel_y_3sigma": "vel_y_p99",
+        "vel_y_low": "vel_y_p99",
         "vel_z_3sigma": "vel_z_p99",
+        "vel_z_low": "vel_z_p99",
         "freq_x_high": "freq_x_p99",
         "freq_y_high": "freq_y_p99",
         "freq_z_high": "freq_z_p99",
