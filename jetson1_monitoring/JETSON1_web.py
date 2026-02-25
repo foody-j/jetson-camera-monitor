@@ -767,6 +767,7 @@ class Jetson1Web:
         self.last_vibration_result = {}
         self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
         self.vibration_abnormal_timer = None
+        self.vibration_cooldown_sec = float(config.get("vibration_cooldown_sec", 30.0))
         self.last_vibration_check_time = 0  # 쿨다운용
         self.vibration_starting = False
         self.vibration_start_lock = threading.Lock()
@@ -1126,8 +1127,8 @@ class Jetson1Web:
             self.stop_vibration_check()
 
     def start_vibration_check(self):
-        # 쿨다운 체크 (10초 이내 재실행 방지)
-        cooldown_sec = 10.0
+        # 쿨다운 체크 (설정 시간 이내 재실행 방지)
+        cooldown_sec = max(1.0, float(self.vibration_cooldown_sec))
         with self.vibration_start_lock:
             elapsed = time.time() - self.last_vibration_check_time
             if elapsed < cooldown_sec:

@@ -1388,6 +1388,8 @@ class Jetson2Web:
         self._last_human_gate_right = None
         self.vibration_status = "IDLE"
         self.last_vibration_event = {"event": "INIT", "status": "IDLE", "timestamp": None}
+        self.vibration_cooldown_sec = float(config.get("vibration_cooldown_sec", 30.0))
+        self.last_vibration_check_time = 0.0
         self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
         self.vibration_abnormal_min_alerts = int(config.get("vibration_abnormal_min_alerts", 2))
         self.vibration_abnormal_confirm_runs = int(config.get("vibration_abnormal_confirm_runs", 2))
@@ -2673,6 +2675,13 @@ class Jetson2Web:
 
     def start_vibration_check(self):
         with self.vibration_start_lock:
+            cooldown_sec = max(1.0, float(self.vibration_cooldown_sec))
+            elapsed = time.time() - float(self.last_vibration_check_time)
+            if elapsed < cooldown_sec:
+                print(f"[진동] 쿨다운 중 (마지막 실행 후 {elapsed:.1f}초, 대기 필요: {cooldown_sec - elapsed:.1f}초)")
+                self._set_vibration_event("SKIPPED_COOLDOWN", self.vibration_status)
+                self._log_ops_event("vibration_check_skipped", reason="cooldown", elapsed=elapsed)
+                return
             if self.vibration_starting or self.vibration_process is not None or self.vibration_status == "MEASURING":
                 try:
                     running_pid = self.vibration_process.pid if self.vibration_process is not None else "starting"
@@ -2687,6 +2696,7 @@ class Jetson2Web:
                     status=self.vibration_status,
                 )
                 return
+            self.last_vibration_check_time = time.time()
             self.vibration_starting = True
         base_dir = os.path.dirname(os.path.abspath(SCRIPT_DIR))
         vibration_script = os.path.join(base_dir, "test_vibration_pymodbus3_finalrev.py")
