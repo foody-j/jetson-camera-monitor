@@ -767,7 +767,7 @@ class Jetson1Web:
         self.last_vibration_result = {}
         self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
         self.vibration_abnormal_timer = None
-        self.vibration_cooldown_sec = float(config.get("vibration_cooldown_sec", 30.0))
+        self.vibration_cooldown_sec = float(config.get("vibration_cooldown_sec", 15.0))
         self.last_vibration_check_time = 0  # 쿨다운용
         self.vibration_starting = False
         self.vibration_start_lock = threading.Lock()

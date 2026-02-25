@@ -143,6 +143,7 @@
 
   "// Relay/Vibration": "",
   "relay_mode": "pulse",
+  "vibration_cooldown_sec": 15,
   "auto_relay_enabled": false,
   "vibration_test_mode": false,
   "vibration_abnormal_min_alerts": 1,

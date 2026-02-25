@@ -1388,7 +1388,7 @@ class Jetson2Web:
         self._last_human_gate_right = None
         self.vibration_status = "IDLE"
         self.last_vibration_event = {"event": "INIT", "status": "IDLE", "timestamp": None}
-        self.vibration_cooldown_sec = float(config.get("vibration_cooldown_sec", 30.0))
+        self.vibration_cooldown_sec = float(config.get("vibration_cooldown_sec", 15.0))
         self.last_vibration_check_time = 0.0
         self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
         self.vibration_abnormal_min_alerts = int(config.get("vibration_abnormal_min_alerts", 2))

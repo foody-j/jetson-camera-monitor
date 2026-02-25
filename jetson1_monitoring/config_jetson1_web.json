@@ -73,6 +73,7 @@
   "mqtt_topic_vibration_control": "calibration/vibration/control",
 
   "relay_mode": "pulse",
+  "vibration_cooldown_sec": 15,
   "auto_relay_enabled": true,
   "startup_on_pulse_enabled": false,
   "periodic_off_pulse_enabled": true,
