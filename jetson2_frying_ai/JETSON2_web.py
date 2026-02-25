@@ -242,6 +242,8 @@ class CameraWorker(threading.Thread):
             "fps": 0,
             "frame_count": 0,
             "last_frame_ts": 0,
+            "last_unique_frame_ts": 0,
+            "same_frame_count": 0,
             "drop_count": 0,
         }
 
@@ -271,12 +273,16 @@ class CameraWorker(threading.Thread):
                 fps_frame_count = 0
             now = time.time()
             stale_sec = float(self.config.get("camera_stale_log_sec", 5.0))
-            cam_ts = getattr(self.camera, "last_frame_ts", 0.0) or 0.0
+            cam_ts = getattr(self.camera, "last_unique_frame_ts", 0.0) or 0.0
             if cam_ts > 0:
                 if cam_ts > self._last_camera_frame_ts:
                     self._last_camera_frame_ts = cam_ts
                 elif stale_sec > 0 and now - cam_ts >= stale_sec and now - self._last_stale_log_ts >= stale_sec:
-                    print(f"[CAM{self.cam_id}] Frame stalled ({now - cam_ts:.1f}s since last new frame)")
+                    dup_count = int(getattr(self.camera, "same_frame_count", 0) or 0)
+                    print(
+                        f"[CAM{self.cam_id}] Frame stalled ({now - cam_ts:.1f}s since last unique frame, "
+                        f"same_count={dup_count})"
+                    )
                     self._last_stale_log_ts = now
 
             ret, frame = self.camera.read()
@@ -300,6 +306,8 @@ class CameraWorker(threading.Thread):
 
             self.stats["frame_count"] += 1
             self.stats["last_frame_ts"] = now
+            self.stats["last_unique_frame_ts"] = getattr(self.camera, "last_unique_frame_ts", 0.0) or 0.0
+            self.stats["same_frame_count"] = int(getattr(self.camera, "same_frame_count", 0) or 0)
 
         self.camera.stop()
 
@@ -2865,7 +2873,7 @@ class Jetson2Web:
             for cam_id, cam in self.cameras.items():
                 if cam is None or not cam.running:
                     continue
-                last_ts = cam.stats.get("last_frame_ts", 0) or 0
+                last_ts = cam.stats.get("last_unique_frame_ts", 0) or cam.stats.get("last_frame_ts", 0) or 0
                 if last_ts == 0:
                     continue
                 if now - last_ts > stall_sec and not cam.is_recovering():

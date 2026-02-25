@@ -33,6 +33,9 @@ class GstCamera:
         self.is_running = False
         self.thread = None
         self.last_frame_ts = 0.0
+        self.last_unique_frame_ts = 0.0
+        self.same_frame_count = 0
+        self._last_frame_signature = None
 
         # BGR frame size
         self.frame_size = width * height * 3
@@ -145,6 +148,14 @@ class GstCamera:
                     frame_data = buffer[:self.frame_size]
                     buffer = buffer[self.frame_size:]
 
+                    # Fast signature for repeated-frame detection
+                    mid = self.frame_size // 2
+                    signature = (
+                        frame_data[:64],
+                        frame_data[mid:mid + 64],
+                        frame_data[-64:],
+                    )
+
                     # Convert to numpy array
                     frame = np.frombuffer(frame_data, dtype=np.uint8).reshape(
                         (self.height, self.width, 3)
@@ -152,7 +163,14 @@ class GstCamera:
 
                     with self.frame_lock:
                         self.latest_frame = frame.copy()
-                        self.last_frame_ts = time.time()
+                        now_ts = time.time()
+                        self.last_frame_ts = now_ts
+                        if signature == self._last_frame_signature:
+                            self.same_frame_count += 1
+                        else:
+                            self._last_frame_signature = signature
+                            self.same_frame_count = 0
+                            self.last_unique_frame_ts = now_ts
 
         except Exception as e:
             if self.is_running:
