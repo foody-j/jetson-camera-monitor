@@ -1291,9 +1291,7 @@ class Jetson2Web:
         self.mqtt_client.subscribe(self.config.get("mqtt_topic_pot1_probe_temp", "frying/pot1/probe_temp"), self.on_pot1_probe_temp, qos=qos)
         self.mqtt_client.subscribe(self.config.get("mqtt_topic_pot2_probe_temp", "frying/pot2/probe_temp"), self.on_pot2_probe_temp, qos=qos)
         self.mqtt_client.subscribe(self.config.get("mqtt_topic_frying_pot1_food_type", "frying/pot1/food_type"), self.on_pot1_food_type, qos=qos)
-        self.mqtt_client.subscribe(self.config.get("mqtt_topic_frying_pot1_control", "frying/pot1/control"), self.on_pot1_control, qos=qos)
         self.mqtt_client.subscribe(self.config.get("mqtt_topic_frying_pot2_food_type", "frying/pot2/food_type"), self.on_pot2_food_type, qos=qos)
-        self.mqtt_client.subscribe(self.config.get("mqtt_topic_frying_pot2_control", "frying/pot2/control"), self.on_pot2_control, qos=qos)
         self.mqtt_client.subscribe(self.config.get("mqtt_topic_vibration_control", "calibration/vibration/control"), self.on_vibration_control, qos=qos)
         jetson1_relay_topic = self.config.get("mqtt_topic_jetson1_relay", "jetson1/relay/status")
         if jetson1_relay_topic:
@@ -1437,42 +1435,6 @@ class Jetson2Web:
         self.pot2_timeout_timer.start()
         if self.debug_print:
             print(f"[MQTT] POT2 food_type={food_type}, target={target_time}")
-
-    def on_pot1_control(self, client, userdata, message):
-        self._log_mqtt_message(message.topic, message.payload)
-        command = message.payload.decode().strip().lower()
-        if command == "stop":
-            if self.pot1_timeout_timer:
-                try:
-                    self.pot1_timeout_timer.cancel()
-                except Exception:
-                    pass
-                self.pot1_timeout_timer = None
-            self.pot1_status = "IDLE"
-            self._cancel_discharge_idle_timer(1)
-            if self.pot1_collecting:
-                self.stop_pot1_collection()
-            worker = self.frying_workers.get(0)
-            if worker:
-                worker.stop_session()
-
-    def on_pot2_control(self, client, userdata, message):
-        self._log_mqtt_message(message.topic, message.payload)
-        command = message.payload.decode().strip().lower()
-        if command == "stop":
-            if self.pot2_timeout_timer:
-                try:
-                    self.pot2_timeout_timer.cancel()
-                except Exception:
-                    pass
-                self.pot2_timeout_timer = None
-            self.pot2_status = "IDLE"
-            self._cancel_discharge_idle_timer(2)
-            if self.pot2_collecting:
-                self.stop_pot2_collection()
-            worker = self.frying_workers.get(1)
-            if worker:
-                worker.stop_session()
 
     def on_pot1_oil_temp(self, client, userdata, message):
         self._log_mqtt_message(message.topic, message.payload)
