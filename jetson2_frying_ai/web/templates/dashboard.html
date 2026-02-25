@@ -301,6 +301,9 @@
                         ` | Lift: ${data.frying.pot1.lift_count || 0}`;
                 }
 
+                let header = `MQTT: ${data.mqtt.connected ? 'Connected' : 'Disconnected'} | ` +
+                    `Updated: ${new Date(data.timestamp * 1000).toLocaleTimeString()}`;
+
                 if (data.observe.cam2) {
                     document.getElementById('status-2').textContent +=
                         ` | ${data.observe.cam2.status || 'UNKNOWN'}`;
@@ -309,9 +312,24 @@
                     document.getElementById('status-3').textContent +=
                         ` | ${data.observe.cam3.status || 'UNKNOWN'}`;
                 }
+                if (data.observe_state) {
+                    const leftRaw = data.observe_state.left || 'UNKNOWN';
+                    const rightRaw = data.observe_state.right || 'UNKNOWN';
+                    const leftEff = data.observe_state.left_effective || leftRaw;
+                    const rightEff = data.observe_state.right_effective || rightRaw;
+                    document.getElementById('status-2').textContent += ` | RAW:${leftRaw} EFF:${leftEff}`;
+                    document.getElementById('status-3').textContent += ` | RAW:${rightRaw} EFF:${rightEff}`;
+                }
+                if (data.safety_gate) {
+                    const gl = data.safety_gate.left || {};
+                    const gr = data.safety_gate.right || {};
+                    const lGate = gl.gate || 'SAFE';
+                    const rGate = gr.gate || 'SAFE';
+                    document.getElementById('status-2').textContent += ` | GATE:${lGate} (${Number(gl.confidence || 0).toFixed(2)})`;
+                    document.getElementById('status-3').textContent += ` | GATE:${rGate} (${Number(gr.confidence || 0).toFixed(2)})`;
+                    header += ` | GateL:${lGate} GateR:${rGate}`;
+                }
 
-                let header = `MQTT: ${data.mqtt.connected ? 'Connected' : 'Disconnected'} | ` +
-                    `Updated: ${new Date(data.timestamp * 1000).toLocaleTimeString()}`;
                 if (data.vibration && data.vibration.last_event && data.vibration.last_event.event) {
                     const ve = data.vibration.last_event;
                     const veTs = ve.timestamp ? ve.timestamp.split(' ').pop() : '-';

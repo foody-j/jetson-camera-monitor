@@ -72,6 +72,20 @@ def create_app(
                     "observe_state": {
                         "left": state.observe_left_state,
                         "right": state.observe_right_state,
+                        "left_effective": state.observe_left_effective,
+                        "right_effective": state.observe_right_effective,
+                    },
+                    "safety_gate": {
+                        "left": {
+                            "gate": state.human_gate_left,
+                            "confidence": state.human_left_conf,
+                            "reason": state.human_left_reason,
+                        },
+                        "right": {
+                            "gate": state.human_gate_right,
+                            "confidence": state.human_right_conf,
+                            "reason": state.human_right_reason,
+                        },
                     },
                     "vibration": {
                         "status": state.vibration_status,
