@@ -1006,11 +1006,16 @@ class ObserveAIWorker(threading.Thread):
                     )
                 if status != self._last_status:
                     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    prev_status = self._last_status if self._last_status is not None else "INIT"
                     if top1_name is None:
-                        print(f"[{ts}] [Observe AI] cam{self.cam_id} status -> {status}")
+                        print(
+                            f"[{ts}] [Observe AI] cam{self.cam_id} status_change "
+                            f"(from={prev_status}, to={status})"
+                        )
                     else:
                         print(
-                            f"[{ts}] [Observe AI] cam{self.cam_id} status -> {status} "
+                            f"[{ts}] [Observe AI] cam{self.cam_id} status_change "
+                            f"(from={prev_status}, to={status}) "
                             f"(top1={top1_name}, prob={prob:.2f})"
                         )
                     if self.event_logger:
@@ -1299,8 +1304,9 @@ class HumanSafetyWorker(threading.Thread):
             if gate != self._last_gate:
                 event_name = "human_block_enter" if gate == "BLOCKED_HUMAN" else "human_block_exit"
                 print(
-                    f"[HumanGate][{self.side}] {self._last_gate} -> {gate} "
-                    f"(detected={human_detected}, conf={conf_max:.2f}, reason={reason})"
+                    f"[HumanGate][{self.side}] gate_change "
+                    f"(from={self._last_gate}, to={gate}, detected={human_detected}, "
+                    f"conf={conf_max:.2f}, reason={reason})"
                 )
                 if self.event_logger:
                     self.event_logger(
@@ -3117,7 +3123,10 @@ class Jetson2Web:
                     if left_effective == "투입":
                         oil = self.temps.get("pot1_oil", 0.0)
                         recipe = (self.pot1_robot_status or {}).get("recipe", "")
-                        print(f"[OBSERVE][left] FILLED -> 투입 (oil={oil:.1f}C, recipe={recipe})")
+                        print(
+                            f"[OBSERVE][left] input_decision "
+                            f"(from=FILLED, to=투입, oil={oil:.1f}C, recipe={recipe})"
+                        )
                     elif left_effective == "BLOCKED_HUMAN":
                         self._log_ops_event(
                             "observe_input_blocked",
@@ -3152,7 +3161,10 @@ class Jetson2Web:
                     if right_effective == "투입":
                         oil = self.temps.get("pot2_oil", 0.0)
                         recipe = (self.pot2_robot_status or {}).get("recipe", "")
-                        print(f"[OBSERVE][right] FILLED -> 투입 (oil={oil:.1f}C, recipe={recipe})")
+                        print(
+                            f"[OBSERVE][right] input_decision "
+                            f"(from=FILLED, to=투입, oil={oil:.1f}C, recipe={recipe})"
+                        )
                     elif right_effective == "BLOCKED_HUMAN":
                         self._log_ops_event(
                             "observe_input_blocked",
