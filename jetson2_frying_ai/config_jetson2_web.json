@@ -59,7 +59,7 @@
   "observe_bbox_pad": 2,
   "observe_cpp_postprocess_enabled": true,
   "observe_cpp_postprocess_lib": "cpp_observe_postprocess/build/libobserve_postprocess.so",
-  "observe_filled_prob_min": 0.995,
+  "observe_filled_prob_min": 0.95,
   "observe_vote_min_samples": 3,
   "observe_cam3_right_min_ratio": 0.55,
   "observe_투입_temp_threshold": 167.0,
