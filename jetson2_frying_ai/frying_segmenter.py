@@ -15,6 +15,15 @@ from pathlib import Path
 from typing import Tuple, Dict, List, Optional
 from dataclasses import dataclass, asdict
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CPP_FRY_PY_DIR = os.path.join(SCRIPT_DIR, "cpp_frying_core", "python")
+if os.path.isdir(CPP_FRY_PY_DIR) and CPP_FRY_PY_DIR not in sys.path:
+    sys.path.insert(0, CPP_FRY_PY_DIR)
+try:
+    from frying_postprocess import FryingPostprocessCpp
+except Exception:
+    FryingPostprocessCpp = None
+
 # YOLO 모델
 try:
     from ultralytics import YOLO
@@ -104,6 +113,11 @@ class FoodSegmenter:
             conf = kwargs["conf"]
         if "mask_threshold" in kwargs:
             mask_threshold = kwargs["mask_threshold"]
+        self.frying_cpp_postprocess_enabled = bool(kwargs.get("frying_cpp_postprocess_enabled", False))
+        self.frying_cpp_postprocess_lib = kwargs.get(
+            "frying_cpp_postprocess_lib",
+            "cpp_frying_core/build/libfrying_postprocess.so",
+        )
 
         # Defensive defaults in case config provides None
         if imgsz is None:
@@ -121,14 +135,27 @@ class FoodSegmenter:
         self.conf = conf
         self.mask_threshold = mask_threshold
         self.last_yolo_stats = None
+        self.cpp_postprocess = None
+        if self.frying_cpp_postprocess_enabled:
+            if FryingPostprocessCpp is None:
+                print("[FoodSegmenter] C++ postprocess unavailable, fallback to Python")
+            else:
+                try:
+                    lib_path = self.frying_cpp_postprocess_lib
+                    if not os.path.isabs(lib_path):
+                        lib_path = os.path.join(SCRIPT_DIR, lib_path)
+                    self.cpp_postprocess = FryingPostprocessCpp(lib_path=lib_path)
+                    print(f"[FoodSegmenter] C++ postprocess enabled: {lib_path}")
+                except Exception as e:
+                    print(f"[FoodSegmenter] C++ postprocess init failed: {e}")
+                    self.cpp_postprocess = None
 
         # YOLO 모델 로드
         if _YOLO_AVAILABLE:
             try:
                 # 모델 경로가 상대 경로면 절대 경로로 변환
                 if not os.path.isabs(model_path):
-                    script_dir = os.path.dirname(os.path.abspath(__file__))
-                    model_path = os.path.join(script_dir, model_path)
+                    model_path = os.path.join(SCRIPT_DIR, model_path)
 
                 if os.path.exists(model_path):
                     self.model = YOLO(model_path)
@@ -193,13 +220,7 @@ class FoodSegmenter:
             # HSV fallback
             food_mask = self._segment_hsv(image)
 
-        # 색상 특징 추출
-        color_features = self._extract_color_features(image, food_mask)
-
-        # 음식 영역 비율
-        total_pixels = image.shape[0] * image.shape[1]
-        food_pixels = np.sum(food_mask > 0)
-        food_area_ratio = food_pixels / total_pixels
+        color_features, food_area_ratio = self._extract_features_with_fallback(image, food_mask)
 
         # 시각화
         if visualize or save_path:
@@ -211,6 +232,33 @@ class FoodSegmenter:
             color_features=color_features,
             image_path=""
         )
+
+    def _extract_features_with_fallback(self, image: np.ndarray, mask: np.ndarray) -> Tuple[ColorFeatures, float]:
+        if self.cpp_postprocess is not None:
+            try:
+                hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+                lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+                vals = self.cpp_postprocess.calc(hsv, lab, mask)
+                return (
+                    ColorFeatures(
+                        mean_hsv=(vals["mean_h"], vals["mean_s"], vals["mean_v"]),
+                        std_hsv=(vals["std_h"], vals["std_s"], vals["std_v"]),
+                        mean_lab=(vals["mean_l"], vals["mean_a"], vals["mean_b"]),
+                        dominant_hue=vals["dominant_hue"],
+                        saturation_mean=vals["saturation_mean"],
+                        value_mean=vals["value_mean"],
+                        brown_ratio=vals["brown_ratio"],
+                        golden_ratio=vals["golden_ratio"],
+                    ),
+                    vals["food_area_ratio"],
+                )
+            except Exception as e:
+                print(f"[FoodSegmenter] C++ postprocess error, fallback to Python: {e}")
+        color_features = self._extract_color_features(image, mask)
+        total_pixels = image.shape[0] * image.shape[1]
+        food_pixels = np.sum(mask > 0)
+        food_area_ratio = food_pixels / total_pixels
+        return color_features, float(food_area_ratio)
 
     def _segment_yolo(self, image: np.ndarray) -> np.ndarray:
         """YOLO 기반 분할"""
