@@ -64,6 +64,13 @@ class LiftEventTracker:
         self.completion_detected = False
         self.completion_time = None
 
+        print(
+            f"[{self.pot_name} LiftTracker] config "
+            f"(lift_area_threshold={self.lift_area_threshold}, "
+            f"lift_cooldown_sec={self.lift_cooldown_sec}, "
+            f"color_change_threshold={self.color_change_threshold})"
+        )
+
     def start_session(self, session_id: str, food_type: str, target_time: int):
         """세션 시작"""
         self.active = True
@@ -120,12 +127,16 @@ class LiftEventTracker:
         # 탈탈 감지 (food_area_ratio > threshold)
         lift_detected = False
         color_delta = 0
+        block_reason = "area_below_threshold"
+        cooldown_remaining = max(0.0, self.lift_cooldown_sec - max(0.0, now - self.last_lift_time))
 
         if seg_result.food_area_ratio > self.lift_area_threshold:
             # 쿨다운 체크 (연속된 프레임 필터링)
             if now - self.last_lift_time > self.lift_cooldown_sec:
                 lift_detected = True
                 self.last_lift_time = now
+                cooldown_remaining = 0.0
+                block_reason = ""
 
                 # 색상 변화 계산
                 color_delta = self._calculate_color_change(seg_result.color_features)
@@ -136,13 +147,18 @@ class LiftEventTracker:
                 # 완료 판단
                 if not self.completion_detected:
                     self._check_completion(running_time, color_delta)
+            else:
+                block_reason = "cooldown_active"
 
         return {
             'lift_detected': lift_detected,
             'completion_detected': self.completion_detected,
             'running_time': running_time,
             'color_delta': color_delta,
-            'lift_count': len(self.lift_events)
+            'lift_count': len(self.lift_events),
+            'lift_area_threshold': float(self.lift_area_threshold),
+            'cooldown_remaining': float(cooldown_remaining),
+            'block_reason': block_reason,
         }
 
     def _calculate_color_change(self, color_features) -> float:

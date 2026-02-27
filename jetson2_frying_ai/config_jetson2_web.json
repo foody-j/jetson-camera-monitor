@@ -84,8 +84,8 @@
   "conf_seg": 0.5,
   "vote_n": 9,
   "positive_label": "filled",
-  "lift_area_threshold": 0.15,
-  "lift_cooldown_sec": 2.0,
+  "lift_area_threshold": 0.08,
+  "lift_cooldown_sec": 1.0,
   "color_change_threshold": 12.0,
 
   "// 웹 대시보드": "",

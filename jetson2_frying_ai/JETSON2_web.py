@@ -583,9 +583,13 @@ class FryingAIWorker(threading.Thread):
                     print(
                         f"[Frying AI] pot{self.pot_id} "
                         f"area={seg_result.food_area_ratio:.3f} "
+                        f"threshold={tracker_result.get('lift_area_threshold', 0.0):.3f} "
                         f"brown={seg_result.color_features.brown_ratio:.3f} "
                         f"golden={seg_result.color_features.golden_ratio:.3f} "
-                        f"lift={tracker_result.get('lift_count', 0)}"
+                        f"lift={tracker_result.get('lift_count', 0)} "
+                        f"lift_detected={tracker_result.get('lift_detected', False)} "
+                        f"cooldown_remaining={tracker_result.get('cooldown_remaining', 0.0):.2f} "
+                        f"block_reason={tracker_result.get('block_reason', '') or '-'}"
                     )
                     self._last_log_ts = now
 
