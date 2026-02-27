@@ -50,6 +50,10 @@ try:
     from observe_postprocess import ObservePostprocessCpp
 except Exception:
     ObservePostprocessCpp = None
+try:
+    from observe_overlay import ObserveOverlayCpp
+except Exception:
+    ObserveOverlayCpp = None
 
 try:
     import torch
@@ -815,6 +819,8 @@ class ObserveAIWorker(threading.Thread):
         self._last_status = None
         self.observe_cpp_postprocess_enabled = bool(self.config.get("observe_cpp_postprocess_enabled", False))
         self.cpp_postprocess = None
+        self.observe_cpp_overlay_enabled = bool(self.config.get("observe_cpp_overlay_enabled", False))
+        self.cpp_overlay = None
         if self.observe_cpp_postprocess_enabled:
             if ObservePostprocessCpp is None:
                 print(f"[Observe AI] cam{self.cam_id} C++ postprocess unavailable, fallback to Python")
@@ -831,6 +837,22 @@ class ObserveAIWorker(threading.Thread):
                 except Exception as e:
                     print(f"[Observe AI] cam{self.cam_id} C++ postprocess init failed: {e}")
                     self.cpp_postprocess = None
+        if self.observe_cpp_overlay_enabled:
+            if ObserveOverlayCpp is None:
+                print(f"[Observe AI] cam{self.cam_id} C++ overlay unavailable, fallback to Python")
+            else:
+                try:
+                    lib_path = self.config.get(
+                        "observe_cpp_overlay_lib",
+                        "cpp_observe_postprocess/build/libobserve_overlay.so",
+                    )
+                    if not os.path.isabs(lib_path):
+                        lib_path = os.path.join(SCRIPT_DIR, lib_path)
+                    self.cpp_overlay = ObserveOverlayCpp(lib_path=lib_path)
+                    print(f"[Observe AI] cam{self.cam_id} C++ overlay enabled: {lib_path}")
+                except Exception as e:
+                    print(f"[Observe AI] cam{self.cam_id} C++ overlay init failed: {e}")
+                    self.cpp_overlay = None
 
     def _resolve_model_path(self, path: str) -> str:
         if os.path.isabs(path):
@@ -1074,6 +1096,20 @@ class ObserveAIWorker(threading.Thread):
         target_h = int(h * target_w / max(w, 1))
         if target_w <= 1 or target_h <= 1:
             return
+        if self.cpp_overlay is not None:
+            try:
+                jpg = self.cpp_overlay.build_jpeg(
+                    frame_bgr=frame,
+                    mask=basket_mask,
+                    target_w=target_w,
+                    jpeg_quality=_safe_int(self.config.get("web_preview_quality", 70), 70),
+                )
+                if jpg:
+                    self.camera.set_overlay_frame(jpg)
+                    self._last_overlay_ts = now
+                return
+            except Exception as e:
+                print(f"[Observe AI] cam{self.cam_id} C++ overlay error: {e}")
         small = cv2.resize(frame, (target_w, target_h))
         if small is None or small.size == 0:
             return

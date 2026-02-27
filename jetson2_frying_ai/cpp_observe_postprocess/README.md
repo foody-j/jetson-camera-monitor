@@ -7,6 +7,7 @@
   - `IN` 클래스 후보 선택
   - cam3(오른쪽)일 때 우측 후보 필터
   - `bbox_pad`, `inner_margin` 적용한 inner box 계산
+  - overlay preview용 `resize + green mask blend + JPEG`
 - 미포함:
   - YOLO `predict()` 자체 추론
   - 이미지 crop/resize/분류 추론
@@ -15,8 +16,10 @@
 
 ## 디렉토리
 - `src/observe_postprocess.cpp`: C++ 구현 (shared lib)
+- `src/observe_overlay.cpp`: overlay/JPEG C++ 구현
 - `build.sh`: 빌드 스크립트
 - `python/observe_postprocess.py`: ctypes 래퍼
+- `python/observe_overlay.py`: overlay ctypes 래퍼
 - `python/benchmark_postprocess.py`: Python 기준 로직과 결과/속도 비교
 
 ## 빠른 실행
@@ -25,6 +28,10 @@
 cd /home/yjk/jetson-food-ai/jetson2_frying_ai/cpp_observe_postprocess
 bash build.sh
 ```
+
+생성물:
+- `build/libobserve_postprocess.so`
+- `build/libobserve_overlay.so`
 
 2. 벤치마크
 ```bash
@@ -48,7 +55,8 @@ Observe 경로의 아래 구간을 대체 대상으로 본다:
 ## 다음 단계 (Step2 권장)
 1. `JETSON2_web.py`에 옵션 플래그 추가:
    - `observe_cpp_postprocess_enabled: true/false`
-2. enabled일 때만 `ObservePostprocessCpp` 호출
+   - `observe_cpp_overlay_enabled: true/false`
+2. enabled일 때만 C++ helper 호출
 3. 현장 배포 전:
    - 하루 로그 비교
    - mismatch 0 확인
