@@ -206,8 +206,9 @@ class LiftEventTracker:
 
     def _check_completion(self, running_time: float, color_delta: float):
         """완료 판단"""
-        # 조건 1: target_time 이상
-        time_ok = running_time >= self.target_time
+        # 조건 1: target_time 60초 전부터 완료 후보 허용
+        ready_time = max(0.0, float(self.target_time or 0) - 60.0)
+        time_ok = running_time >= ready_time
 
         # 조건 2: 색상 변화 임계값 이상
         color_ok = color_delta >= self.color_change_threshold
@@ -217,7 +218,7 @@ class LiftEventTracker:
             self.completion_time = time.time()
 
             print(f"[{self.pot_name} LiftTracker] ✅ 완료 감지! "
-                  f"시간={running_time:.0f}초 (목표={self.target_time}초), "
+                  f"시간={running_time:.0f}초 (완료허용={ready_time:.0f}초, 목표={self.target_time}초), "
                   f"색변화={color_delta:.1f} (임계값={self.color_change_threshold})")
 
     def save_session_data(self, save_dir: str) -> str:
