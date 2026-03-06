@@ -2739,7 +2739,7 @@ class Jetson2Web:
             self.last_vibration_check_time = time.time()
             self.vibration_starting = True
         base_dir = os.path.dirname(os.path.abspath(SCRIPT_DIR))
-        vibration_script = os.path.join(base_dir, "test_vibration_pymodbus3_finalrev.py")
+        vibration_script = os.path.join(base_dir, "test_vibration_jetson2.py")
         baseline_file = os.path.join(base_dir, "vibration_baseline_jetson2.json")
         result_file = os.path.join(base_dir, "vibration_result.json")
 
@@ -2755,7 +2755,7 @@ class Jetson2Web:
             cmd = []
             try:
                 env = os.environ.copy()
-                env["VIB_UNIT_IDS"] = "0x50,0x51,0x52"
+                vibration_unit_ids = "0x52"
                 cmd = ["python3", vibration_script, "--headless", "--check", "--duration", "10"]
                 if os.path.exists(baseline_file):
                     cmd += ["--baseline", baseline_file]
@@ -2778,7 +2778,7 @@ class Jetson2Web:
                     "vibration_check_started",
                     pid=self.vibration_process.pid,
                     baseline_exists=os.path.exists(baseline_file),
-                    unit_ids=env.get("VIB_UNIT_IDS", ""),
+                    unit_ids=vibration_unit_ids,
                 )
                 self._set_vibration_event("STARTED", "MEASURING")
                 stdout, _ = self.vibration_process.communicate(timeout=30)

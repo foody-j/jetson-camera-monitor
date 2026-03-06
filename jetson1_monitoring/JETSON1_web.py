@@ -1144,7 +1144,7 @@ class Jetson1Web:
             self.vibration_starting = True
 
         base_dir = REPO_ROOT
-        vibration_script = os.path.join(base_dir, "test_vibration_pymodbus3_finalrev.py")
+        vibration_script = os.path.join(base_dir, "test_vibration_jetson1.py")
         baseline_file = os.path.join(base_dir, "vibration_baseline_jetson1.json")
         result_file = os.path.join(base_dir, "vibration_result.json")
 
@@ -1159,7 +1159,7 @@ class Jetson1Web:
         def run_vibration_check():
             try:
                 env = os.environ.copy()
-                env["VIB_UNIT_IDS"] = "0x53,0x54"  # 0x55 Y축 고장으로 제외
+                vibration_unit_ids = "0x53,0x54"
                 graph_mode = bool(self.config.get("vibration_graph_debug", False))
                 if graph_mode:
                     cmd = ["python3", vibration_script, "--duration", str(self.config.get("vibration_graph_duration_sec", 30))]
@@ -1191,7 +1191,7 @@ class Jetson1Web:
                     "vibration_check_started",
                     pid=self.vibration_process.pid,
                     baseline_exists=os.path.exists(baseline_file),
-                    unit_ids=env.get("VIB_UNIT_IDS", ""),
+                    unit_ids=vibration_unit_ids,
                 )
                 stdout, _ = self.vibration_process.communicate(timeout=10)
                 if stdout:
