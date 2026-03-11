@@ -2667,19 +2667,17 @@ class Jetson2Web:
                 if time.time() - self.pot1_last_collection_ts >= self.collection_interval:
                     self.pot1_last_collection_ts = time.time()
                     cam0 = self.cameras.get(0)
-                    cam2 = self.cameras.get(2)
                     self.save_pot1_data(
                         cam0.get_latest_frame() if cam0 else None,
-                        cam2.get_latest_frame() if cam2 else None,
+                        None,
                     )
             if self.pot2_collecting:
                 if time.time() - self.pot2_last_collection_ts >= self.collection_interval:
                     self.pot2_last_collection_ts = time.time()
                     cam1 = self.cameras.get(1)
-                    cam3 = self.cameras.get(3)
                     self.save_pot2_data(
                         cam1.get_latest_frame() if cam1 else None,
-                        cam3.get_latest_frame() if cam3 else None,
+                        None,
                     )
             if self.data_collection_active:
                 if time.time() - self.collection_last_ts >= self.collection_interval:
