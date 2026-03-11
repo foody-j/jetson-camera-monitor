@@ -166,6 +166,22 @@ class ContinuousVibrationMonitor:
             self.capture_thread.start()
         return True, "capture_started"
 
+    def get_recent_summary(self, window_sec: float = 3.0) -> Dict:
+        snapshot = self._snapshot(time.time() - max(0.5, float(window_sec)), time.time())
+        total_samples, measured, measured_per_uid, _, _ = self._build_measured(snapshot)
+        return {
+            "window_sec": float(window_sec),
+            "total_samples": total_samples,
+            "unit_ids": [f"0x{u:02X}" for u in self.unit_ids],
+            "measured": measured,
+            "measured_per_uid": measured_per_uid,
+        }
+
+    def save_recent_plot(self, out_path: str, window_sec: float = 5.0) -> str:
+        snapshot = self._snapshot(time.time() - max(0.5, float(window_sec)), time.time())
+        result = {"status": "LIVE", "decision_source": "live_recent"}
+        return self._save_summary_plot(snapshot, result, out_path)
+
     def _capture_worker(
         self,
         *,

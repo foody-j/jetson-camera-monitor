@@ -130,7 +130,7 @@ body {
     grid-template-columns: 1fr 1fr;
     gap: 15px;
     padding: 15px;
-    height: calc(100vh - 330px);
+    height: calc(100vh - 470px);
     box-sizing: border-box;
 }
 

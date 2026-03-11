@@ -22,6 +22,7 @@
             <div class="control-title">Vibration</div>
             <button class="btn" onclick="vibrationControl('start')">START</button>
             <button class="btn" onclick="vibrationControl('stop')">STOP</button>
+            <button class="btn" onclick="vibrationControl('start')">CAPTURE</button>
             <button class="btn" onclick="vibrationStatus('NORMAL')">NORMAL</button>
             <button class="btn" onclick="vibrationStatus('ABNORMAL')">ABNORMAL</button>
             <button class="btn" onclick="vibrationStatus('IDLE')">IDLE</button>
@@ -97,6 +98,18 @@
         </div>
     </div>
 
+    <div class="snapshot-panel" id="vibration-panel">
+        <div class="snapshot-title">Vibration Live</div>
+        <div class="snapshot-grid">
+            <div class="snapshot-box">
+                <img id="vibration-live-plot" alt="vibration-live-plot">
+            </div>
+            <div class="snapshot-box">
+                <div class="snapshot-metrics" id="vibration-live-metrics">-</div>
+            </div>
+        </div>
+    </div>
+
     <div class="grid">
         <div class="camera-box">
             <div class="cam-header">Frying Left (POT0)</div>
@@ -146,6 +159,11 @@
 
         function vibrationStatus(status) {
             postJSON('/api/control/vibration/status', { status });
+        }
+
+        function refreshVibrationPlot() {
+            const img = document.getElementById('vibration-live-plot');
+            img.src = `/api/vibration/live-plot?window=5&t=${Date.now()}`;
         }
 
         function observeControl(side, status) {
@@ -334,6 +352,15 @@
                     const ve = data.vibration.last_event;
                     const veTs = ve.timestamp ? ve.timestamp.split(' ').pop() : '-';
                     header += ` | VibEvent: ${ve.event}(${ve.status || '-'}) @ ${veTs}`;
+                }
+                if (data.vibration && data.vibration.live) {
+                    const live = data.vibration.live;
+                    const measured = live.measured || {};
+                    document.getElementById('vibration-live-metrics').textContent =
+                        `samples=${live.total_samples || 0}\n` +
+                        `freq_p99=(${Number(measured.freq_x_p99 || 0).toFixed(1)}, ${Number(measured.freq_y_p99 || 0).toFixed(1)}, ${Number(measured.freq_z_p99 || 0).toFixed(1)})\n` +
+                        `vel_p99=(${Number(measured.vel_x_p99 || 0).toFixed(1)}, ${Number(measured.vel_y_p99 || 0).toFixed(1)}, ${Number(measured.vel_z_p99 || 0).toFixed(1)})`;
+                    refreshVibrationPlot();
                 }
 
                 if (data.system && data.system.disk) {

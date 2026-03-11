@@ -90,6 +90,8 @@ def create_app(
                     "vibration": {
                         "status": state.vibration_status,
                         "last_event": getattr(state, "last_vibration_event", None),
+                        "last_result": getattr(state, "last_vibration_result", {}),
+                        "live": state.get_vibration_live_snapshot(window_sec=3.0),
                     },
                     "relay": {"enabled": state.relay_enabled},
                     "collection": {
@@ -178,6 +180,14 @@ def create_app(
                 except Exception:
                     state.vibration_status = status
             return {"ok": True, "status": status}
+
+        @app.get("/api/vibration/live-plot")
+        async def vibration_live_plot(window: float = 5.0):
+            out_path = base_dir / "static" / "vibration_live.png"
+            saved = state.save_vibration_live_plot(str(out_path), window_sec=window)
+            if not saved or not out_path.exists():
+                return JSONResponse({"ok": False}, status_code=404)
+            return FileResponse(str(out_path))
 
         @app.post("/api/control/collection")
         async def collection_control(payload: dict = Body(...)):

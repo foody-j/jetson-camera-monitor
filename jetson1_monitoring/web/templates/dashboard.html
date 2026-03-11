@@ -22,6 +22,7 @@
             <div class="control-title">Vibration</div>
             <button class="btn" onclick="vibrationControl('start')">START</button>
             <button class="btn" onclick="vibrationControl('stop')">STOP</button>
+            <button class="btn" onclick="vibrationControl('start')">CAPTURE</button>
             <button class="btn" onclick="vibrationStatus('NORMAL')">NORMAL</button>
             <button class="btn" onclick="vibrationStatus('ABNORMAL')">ABNORMAL</button>
             <button class="btn" onclick="vibrationStatus('IDLE')">IDLE</button>
@@ -59,6 +60,18 @@
     <div class="mqtt-log" id="ops-log" style="display:none;">
         <div class="mqtt-log-title">OPS Event Log</div>
         <div class="mqtt-log-list" id="ops-log-list">-</div>
+    </div>
+
+    <div class="snapshot-panel" id="vibration-panel">
+        <div class="snapshot-title">Vibration Live</div>
+        <div class="snapshot-grid">
+            <div class="snapshot-box">
+                <img id="vibration-live-plot" alt="vibration-live-plot">
+            </div>
+            <div class="snapshot-box">
+                <div class="snapshot-metrics" id="vibration-live-metrics">-</div>
+            </div>
+        </div>
     </div>
 
     <div class="grid">
@@ -104,6 +117,11 @@
 
         function vibrationStatus(status) {
             postJSON('/api/control/vibration/status', { status });
+        }
+
+        function refreshVibrationPlot() {
+            const img = document.getElementById('vibration-live-plot');
+            img.src = `/api/vibration/live-plot?window=5&t=${Date.now()}`;
         }
 
         function recordingControl(pot, action) {
@@ -270,6 +288,16 @@
                     const disk = data.system.disk;
                     const free = (disk.total_gb - disk.used_gb).toFixed(1);
                     header += ` | Disk: ${disk.used_gb} / ${disk.total_gb} GB (Free ${free} GB)`;
+                }
+
+                if (data.vibration && data.vibration.live) {
+                    const live = data.vibration.live;
+                    const measured = live.measured || {};
+                    document.getElementById('vibration-live-metrics').textContent =
+                        `samples=${live.total_samples || 0}\n` +
+                        `freq_p99=(${Number(measured.freq_x_p99 || 0).toFixed(1)}, ${Number(measured.freq_y_p99 || 0).toFixed(1)}, ${Number(measured.freq_z_p99 || 0).toFixed(1)})\n` +
+                        `vel_p99=(${Number(measured.vel_x_p99 || 0).toFixed(1)}, ${Number(measured.vel_y_p99 || 0).toFixed(1)}, ${Number(measured.vel_z_p99 || 0).toFixed(1)})`;
+                    refreshVibrationPlot();
                 }
 
                 document.getElementById('status-bar').textContent = header;

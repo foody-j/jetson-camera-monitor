@@ -2802,6 +2802,22 @@ class Jetson2Web:
             result_file=self.last_vibration_result.get("event_dir", ""),
         )
 
+    def get_vibration_live_snapshot(self, window_sec: float = 3.0) -> dict:
+        if self.vibration_monitor is None:
+            return {}
+        try:
+            return self.vibration_monitor.get_recent_summary(window_sec=window_sec)
+        except Exception:
+            return {}
+
+    def save_vibration_live_plot(self, out_path: str, window_sec: float = 5.0) -> Optional[str]:
+        if self.vibration_monitor is None:
+            return None
+        try:
+            return self.vibration_monitor.save_recent_plot(out_path, window_sec=window_sec)
+        except Exception:
+            return None
+
     def start_vibration_check(self):
         with self.vibration_start_lock:
             cooldown_sec = max(1.0, float(self.vibration_cooldown_sec))

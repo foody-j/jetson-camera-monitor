@@ -39,6 +39,11 @@ def create_app(cameras: Dict[int, object], state: object, config: dict) -> FastA
             f"cam{i}": cam.stats for i, cam in cameras.items() if cam is not None
         }
         base = state.build_status()
+        try:
+            base.setdefault("vibration", {})
+            base["vibration"]["live"] = state.get_vibration_live_snapshot(window_sec=3.0)
+        except Exception:
+            pass
         return JSONResponse(
             {
                 "api_timestamp": time.time(),
@@ -92,6 +97,14 @@ def create_app(cameras: Dict[int, object], state: object, config: dict) -> FastA
             except Exception:
                 state.vibration_status = status
         return {"ok": True, "status": status}
+
+    @app.get("/api/vibration/live-plot")
+    async def vibration_live_plot(window: float = 5.0):
+        out_path = base_dir / "static" / "vibration_live.png"
+        saved = state.save_vibration_live_plot(str(out_path), window_sec=window)
+        if not saved or not out_path.exists():
+            return JSONResponse({"ok": False}, status_code=404)
+        return FileResponse(str(out_path))
 
     @app.post("/api/control/recording")
     async def recording_control(payload: dict = Body(...)):
