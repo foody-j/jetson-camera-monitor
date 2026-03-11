@@ -40,6 +40,7 @@ from lift_event_tracker import LiftEventTracker
 from image_saver_mp import get_image_saver, stop_image_saver
 from src.communication.mqtt_client import MQTTClient
 from src.core.system_info import SystemInfo
+from vibration_continuous_runtime import ContinuousVibrationMonitor
 from web.app import create_app
 
 CPP_OBS_PY_DIR = os.path.join(SCRIPT_DIR, "cpp_observe_postprocess", "python")
@@ -1447,6 +1448,7 @@ class Jetson2Web:
         self.auto_relay_enabled = bool(config.get("auto_relay_enabled", False))
 
         self.vibration_process = None
+        self.vibration_monitor: Optional[ContinuousVibrationMonitor] = None
         self.child_processes = []
 
         self.data_collection_active = False
@@ -2208,28 +2210,47 @@ class Jetson2Web:
             target_w = _safe_int(self.config.get("web_preview_width", 640), 640)
             h, w = frame.shape[:2]
             target_h = int(h * target_w / max(w, 1))
-            small = cv2.resize(frame, (target_w, target_h))
-
-            if mask is not None and mask.any():
-                mask_small = cv2.resize(mask, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
-                color = np.zeros_like(small)
-                color[:, :, 1] = 255
-                alpha = 0.35
-                mask_bool = mask_small > 0
-                overlay = small.copy()
-                overlay[mask_bool] = cv2.addWeighted(small[mask_bool], 1 - alpha, color[mask_bool], alpha, 0)
-            else:
-                overlay = small
-
-            ret, jpg = cv2.imencode(
-                ".jpg",
-                overlay,
-                [cv2.IMWRITE_JPEG_QUALITY, _safe_int(self.config.get("web_preview_quality", 70), 70)],
-            )
-            if not ret:
+            if target_w <= 1 or target_h <= 1:
                 results[str(cam_id)] = {"image": None, "metrics": metrics}
                 continue
-            b64 = base64.b64encode(jpg.tobytes()).decode("ascii")
+
+            jpg_bytes = None
+            cpp_overlay = getattr(worker, "cpp_overlay", None)
+            if cpp_overlay is not None and mask is not None and np.any(mask):
+                try:
+                    jpg_bytes = cpp_overlay.build_jpeg(
+                        frame_bgr=frame,
+                        mask=mask,
+                        target_w=target_w,
+                        jpeg_quality=_safe_int(self.config.get("web_preview_quality", 70), 70),
+                    )
+                except Exception:
+                    jpg_bytes = None
+
+            if jpg_bytes is None:
+                small = cv2.resize(frame, (target_w, target_h))
+                if mask is not None and mask.any():
+                    mask_small = cv2.resize(mask, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+                    color = np.zeros_like(small)
+                    color[:, :, 1] = 255
+                    alpha = 0.35
+                    mask_bool = mask_small > 0
+                    overlay = small.copy()
+                    overlay[mask_bool] = cv2.addWeighted(small[mask_bool], 1 - alpha, color[mask_bool], alpha, 0)
+                else:
+                    overlay = small
+
+                ret, jpg = cv2.imencode(
+                    ".jpg",
+                    overlay,
+                    [cv2.IMWRITE_JPEG_QUALITY, _safe_int(self.config.get("web_preview_quality", 70), 70)],
+                )
+                if not ret:
+                    results[str(cam_id)] = {"image": None, "metrics": metrics}
+                    continue
+                jpg_bytes = jpg.tobytes()
+
+            b64 = base64.b64encode(jpg_bytes).decode("ascii")
             results[str(cam_id)] = {"image": b64, "metrics": metrics}
 
         return results
@@ -2713,6 +2734,74 @@ class Jetson2Web:
         except Exception as e:
             print(f"[진동 MQTT] 오류: {e}")
 
+    def _build_vibration_monitor(self) -> ContinuousVibrationMonitor:
+        base_dir = os.path.dirname(os.path.abspath(SCRIPT_DIR))
+        cnn_model = self.config.get("vibration_cnn_model")
+        return ContinuousVibrationMonitor(
+            [0x52],
+            baseline_path=os.path.join(base_dir, "vibration_baseline_jetson2.json"),
+            cnn_model_path=cnn_model if cnn_model and os.path.exists(cnn_model) else None,
+            cnn_threshold=self.config.get("vibration_cnn_threshold"),
+            use_cnn_main=bool(self.config.get("vibration_use_cnn_main", False)),
+            event_root_dir=os.path.join(os.path.expanduser("~"), "data", "vibration_events", "jetson2"),
+            pre_sec=float(self.config.get("vibration_trigger_pre_sec", 3.0)),
+            post_sec=float(self.config.get("vibration_trigger_post_sec", 2.0)),
+            buffer_sec=float(self.config.get("vibration_buffer_sec", 15.0)),
+            log_prefix="[진동]",
+        )
+
+    def _start_vibration_monitor(self) -> None:
+        if self.vibration_monitor is not None:
+            return
+        self.vibration_monitor = self._build_vibration_monitor()
+        self.vibration_monitor.start()
+
+    def _stop_vibration_monitor(self) -> None:
+        if self.vibration_monitor is None:
+            return
+        self.vibration_monitor.stop()
+        self.vibration_monitor = None
+
+    def _on_vibration_capture_complete(self, result: dict) -> None:
+        self.last_vibration_result = dict(result or {})
+        raw_status = str(self.last_vibration_result.get("status", "ERROR")).upper()
+        alerts = self.last_vibration_result.get("alerts", [])
+        alert_count = len(alerts) if isinstance(alerts, list) else 0
+        final_status = raw_status
+        if raw_status == "ABNORMAL":
+            if alert_count >= max(1, self.vibration_abnormal_min_alerts):
+                self.vibration_abnormal_streak += 1
+            else:
+                self.vibration_abnormal_streak = 0
+            if self.vibration_abnormal_streak < max(1, self.vibration_abnormal_confirm_runs):
+                final_status = "NORMAL"
+        else:
+            self.vibration_abnormal_streak = 0
+        self._set_vibration_status(final_status, "COMPLETED")
+        print(
+            f"[진동] 완료: raw={raw_status} final={final_status} "
+            f"alerts={alert_count} streak={self.vibration_abnormal_streak}"
+        )
+        culprit_details = self.last_vibration_result.get("culprit_details", [])
+        if isinstance(culprit_details, list):
+            for detail in culprit_details:
+                if not isinstance(detail, dict):
+                    continue
+                print(
+                    f"[진동][원인] {detail.get('label', detail.get('metric', 'unknown'))} "
+                    f"UID {detail.get('culprit_uid', 'unknown')}: "
+                    f"{detail.get('value', 0.0)} {detail.get('operator', '>')} {detail.get('threshold', 0.0)}"
+                )
+        self._log_ops_event(
+            "vibration_check_completed",
+            status=final_status,
+            raw_status=raw_status,
+            alerts_count=alert_count,
+            abnormal_streak=self.vibration_abnormal_streak,
+            culprit_details=culprit_details if isinstance(culprit_details, list) else [],
+            result_file=self.last_vibration_result.get("event_dir", ""),
+        )
+
     def start_vibration_check(self):
         with self.vibration_start_lock:
             cooldown_sec = max(1.0, float(self.vibration_cooldown_sec))
@@ -2738,173 +2827,44 @@ class Jetson2Web:
                 return
             self.last_vibration_check_time = time.time()
             self.vibration_starting = True
-        base_dir = os.path.dirname(os.path.abspath(SCRIPT_DIR))
-        vibration_script = os.path.join(base_dir, "test_vibration_jetson2.py")
-        baseline_file = os.path.join(base_dir, "vibration_baseline_jetson2.json")
-        result_file = os.path.join(base_dir, "vibration_result.json")
-
-        if not os.path.exists(vibration_script):
-            print(f"[진동] 오류: {vibration_script} 파일이 없습니다")
+        try:
+            self._start_vibration_monitor()
+        except Exception as e:
             with self.vibration_start_lock:
                 self.vibration_starting = False
-            self._set_vibration_status("ERROR", "FAILED_SCRIPT_MISSING")
-            self._log_ops_event("vibration_check_failed", reason="script_missing", script=vibration_script)
+            self.vibration_abnormal_streak = 0
+            self._set_vibration_status("ERROR", "FAILED_MONITOR_START")
+            self._log_ops_event("vibration_check_failed", reason="monitor_start_failed", error=str(e))
             return
 
-        def run_vibration_check():
-            cmd = []
-            try:
-                env = os.environ.copy()
-                vibration_unit_ids = "0x52"
-                cmd = ["python3", vibration_script, "--headless", "--check", "--duration", "10"]
-                if os.path.exists(baseline_file):
-                    cmd += ["--baseline", baseline_file]
-                cmd += ["--result", result_file]
-                self.vibration_process = subprocess.Popen(
-                    cmd,
-                    cwd=base_dir,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    env=env,
-                    text=True,
-                )
-                self.child_processes.append(self.vibration_process)
-                print(
-                    "[진동] 프로세스 시작 "
-                    f"pid={self.vibration_process.pid} cmd={' '.join(cmd)} "
-                    f"baseline={'Y' if os.path.exists(baseline_file) else 'N'}"
-                )
-                self._log_ops_event(
-                    "vibration_check_started",
-                    pid=self.vibration_process.pid,
-                    baseline_exists=os.path.exists(baseline_file),
-                    unit_ids=vibration_unit_ids,
-                )
-                self._set_vibration_event("STARTED", "MEASURING")
-                stdout, _ = self.vibration_process.communicate(timeout=30)
-                exit_code = self.vibration_process.returncode
-                stdout_lines = [line for line in (stdout or "").strip().splitlines() if line]
-                key_tokens = ("CSV", "[결과 저장]", "[진동 체크]", "[베이스라인]", "[원인]", "⚠")
-                important_lines = [line for line in stdout_lines if any(token in line for token in key_tokens)]
-                if important_lines:
-                    for line in important_lines:
-                        print(f"[진동][stdout] {line}")
-                else:
-                    for line in stdout_lines[-8:]:
-                        print(f"[진동][stdout] {line}")
-                if exit_code == 0 and os.path.exists(result_file):
-                    with open(result_file, "r", encoding="utf-8") as f:
-                        result = json.load(f)
-                    raw_status = str(result.get("status", "ERROR")).upper()
-                    alerts = result.get("alerts", [])
-                    alert_count = len(alerts) if isinstance(alerts, list) else 0
-                    culprit_details = result.get("culprit_details", [])
-                    final_status = raw_status
-                    if raw_status == "ABNORMAL":
-                        if alert_count >= max(1, self.vibration_abnormal_min_alerts):
-                            self.vibration_abnormal_streak += 1
-                        else:
-                            self.vibration_abnormal_streak = 0
-                        if self.vibration_abnormal_streak >= max(1, self.vibration_abnormal_confirm_runs):
-                            final_status = "ABNORMAL"
-                        else:
-                            final_status = "NORMAL"
-                    else:
-                        self.vibration_abnormal_streak = 0
-                    self._set_vibration_status(final_status, "COMPLETED")
-                    print(
-                        f"[진동] 완료: exit={exit_code} raw={raw_status} final={final_status} "
-                        f"alerts={alert_count} streak={self.vibration_abnormal_streak} result={result_file}"
-                    )
-                    if isinstance(culprit_details, list):
-                        for detail in culprit_details:
-                            if not isinstance(detail, dict):
-                                continue
-                            label = detail.get("label", detail.get("metric", "unknown"))
-                            uid = detail.get("culprit_uid", "unknown")
-                            value = detail.get("value", 0.0)
-                            threshold = detail.get("threshold", 0.0)
-                            try:
-                                value_s = f"{float(value):.1f}"
-                                threshold_s = f"{float(threshold):.1f}"
-                            except Exception:
-                                value_s = str(value)
-                                threshold_s = str(threshold)
-                            print(
-                                f"[진동][원인] {label} UID {uid}: {value_s} > {threshold_s}"
-                            )
-                    self._log_ops_event(
-                        "vibration_check_completed",
-                        exit_code=exit_code,
-                        status=final_status,
-                        raw_status=raw_status,
-                        alerts_count=alert_count,
-                        abnormal_streak=self.vibration_abnormal_streak,
-                        culprit_details=culprit_details if isinstance(culprit_details, list) else [],
-                        result_file=result_file,
-                    )
-                else:
-                    self.vibration_abnormal_streak = 0
-                    self._set_vibration_status("ERROR", "FAILED_NONZERO_OR_NO_RESULT")
-                    print(
-                        f"[진동] 실패: exit={exit_code} result_exists={os.path.exists(result_file)} "
-                        f"status={self.vibration_status}"
-                    )
-                    self._log_ops_event(
-                        "vibration_check_failed",
-                        reason="nonzero_or_no_result",
-                        exit_code=exit_code,
-                        result_exists=os.path.exists(result_file),
-                    )
-            except subprocess.TimeoutExpired:
-                print("[진동] 타임아웃(30초): 프로세스 강제 종료")
-                try:
-                    self.vibration_process.kill()
-                    self.vibration_process.wait(timeout=2)
-                except Exception:
-                    pass
-                self.vibration_abnormal_streak = 0
-                self._set_vibration_status("ERROR", "FAILED_TIMEOUT")
-                self._log_ops_event("vibration_check_failed", reason="timeout")
-            except Exception as e:
-                print(f"[진동] 예외: {e}")
-                self.vibration_abnormal_streak = 0
-                self._set_vibration_status("ERROR", "FAILED_EXCEPTION")
-                self._log_ops_event("vibration_check_failed", reason="exception", error=str(e))
-            finally:
-                if self.vibration_process in self.child_processes:
-                    self.child_processes.remove(self.vibration_process)
-                self.vibration_process = None
-                with self.vibration_start_lock:
-                    self.vibration_starting = False
-                print(f"[진동] 상태 갱신: {self.vibration_status}")
+        result_file = os.path.join(os.path.dirname(os.path.abspath(SCRIPT_DIR)), "vibration_result.json")
+        accepted, reason = self.vibration_monitor.trigger_capture(
+            callback=self._on_vibration_capture_complete,
+            result_path=result_file,
+            event_tag="jetson2",
+        )
+        with self.vibration_start_lock:
+            self.vibration_starting = False
+        if not accepted:
+            self._set_vibration_event("SKIPPED_ALREADY_RUNNING", self.vibration_status)
+            self._log_ops_event("vibration_check_skipped", reason=reason, status=self.vibration_status)
+            return
 
         self._set_vibration_status("MEASURING", "MEASURING")
         print("[진동] 측정 시작 요청 수락: status=MEASURING")
-        threading.Thread(target=run_vibration_check, daemon=True).start()
+        self._log_ops_event(
+            "vibration_check_started",
+            baseline_exists=os.path.exists(os.path.join(os.path.dirname(os.path.abspath(SCRIPT_DIR)), "vibration_baseline_jetson2.json")),
+            unit_ids="0x52",
+            result_file=result_file,
+        )
 
     def stop_vibration_check(self):
-        if self.vibration_process is None:
-            return
-        stopped_pid = None
-        try:
-            stopped_pid = self.vibration_process.pid
-        except Exception:
-            stopped_pid = None
-        try:
-            self.vibration_process.terminate()
-            self.vibration_process.wait(timeout=3)
-        except Exception:
-            try:
-                self.vibration_process.kill()
-                self.vibration_process.wait()
-            except Exception:
-                pass
-        if self.vibration_process in self.child_processes:
-            self.child_processes.remove(self.vibration_process)
+        if self.vibration_monitor is not None:
+            self.vibration_monitor.cancel_capture()
         self.vibration_process = None
         self._set_vibration_status("IDLE", "STOPPED")
-        self._log_ops_event("vibration_check_stopped", pid=stopped_pid, status=self.vibration_status)
+        self._log_ops_event("vibration_check_stopped", status=self.vibration_status)
 
     def _log_mqtt_message(self, topic: str, payload) -> None:
         try:
@@ -3238,6 +3198,7 @@ class Jetson2Web:
         print("=" * 60)
 
         self.init_gpio()
+        self._start_vibration_monitor()
 
         if self.config.get("gmsl_init_enabled", True):
             run_gmsl_init_script(self.config)
@@ -3407,6 +3368,7 @@ class Jetson2Web:
             self.pot2_taltal_timer.cancel()
 
         self.stop_vibration_check()
+        self._stop_vibration_monitor()
         try:
             stop_image_saver()
         except Exception:
