@@ -3,6 +3,7 @@
 
 import csv
 import json
+import logging
 import os
 import threading
 import time
@@ -17,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pymodbus.client import ModbusSerialClient
 from pymodbus.exceptions import ModbusIOException
+from pymodbus.logging import Log as PymodbusLog
 from serial import SerialException
 
 try:
@@ -26,6 +28,11 @@ try:
     _TORCH_AVAILABLE = True
 except Exception:
     _TORCH_AVAILABLE = False
+
+
+# Hide noisy serial buffer cleanup warnings while keeping real errors visible.
+logging.getLogger("pymodbus.logging").setLevel(logging.ERROR)
+PymodbusLog.setLevel(logging.ERROR)
 
 
 DEFAULT_VIB_PORT_BY_ID = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A9NF7ROC-if00-port0"
