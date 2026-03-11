@@ -13,7 +13,9 @@ YOLO 추론 자체는 포함하지 않는다.
 
 ## 파일
 - `src/frying_postprocess.cpp`: C++ 계산 코어
+- `src/lift_tracker_core.cpp`: Lift tracker 핵심 수식 코어
 - `python/frying_postprocess.py`: ctypes 래퍼
+- `python/lift_tracker_core.py`: lift core ctypes 래퍼
 - `python/benchmark_frying_postprocess.py`: Python 대비 벤치
 - `build.sh`: 빌드 스크립트
 
@@ -33,4 +35,9 @@ python3 benchmark_frying_postprocess.py --iters 1000 --h 448 --w 640
 - `frying_cpp_postprocess_enabled`: true/false
 - `frying_cpp_postprocess_lib`: so 경로
 
-문제 시 자동 Python 경로로 폴백되도록 구현한다.
+## 연동 설정 (lift_event_tracker.py)
+- `lift_cpp_core_enabled`: true/false
+- `lift_cpp_core_lib`: so 경로
+- `lift_completion_early_sec`: 완료 허용 시작 시간 오프셋(초)
+
+문제 시 자동 Python 경로로 폴백된다.

@@ -13,6 +13,16 @@ from datetime import datetime
 from typing import Optional, Dict, List
 from dataclasses import dataclass, asdict
 import numpy as np
+import sys
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CPP_FRY_PY_DIR = os.path.join(SCRIPT_DIR, "cpp_frying_core", "python")
+if os.path.isdir(CPP_FRY_PY_DIR) and CPP_FRY_PY_DIR not in sys.path:
+    sys.path.insert(0, CPP_FRY_PY_DIR)
+try:
+    from lift_tracker_core import LiftTrackerCoreCpp
+except Exception:
+    LiftTrackerCoreCpp = None
 
 
 @dataclass
@@ -47,6 +57,23 @@ class LiftEventTracker:
 
         # 완료 판단 임계값
         self.color_change_threshold = config.get('color_change_threshold', 25.0)  # HSV 변화량
+        self.completion_early_sec = float(config.get("lift_completion_early_sec", 60.0))
+
+        self.lift_cpp_core_enabled = bool(config.get("lift_cpp_core_enabled", False))
+        self.lift_cpp_core = None
+        if self.lift_cpp_core_enabled:
+            if LiftTrackerCoreCpp is None:
+                print(f"[{self.pot_name} LiftTracker] C++ core unavailable, fallback to Python")
+            else:
+                try:
+                    lib_path = config.get("lift_cpp_core_lib", "cpp_frying_core/build/liblift_tracker_core.so")
+                    if not os.path.isabs(lib_path):
+                        lib_path = os.path.join(SCRIPT_DIR, lib_path)
+                    self.lift_cpp_core = LiftTrackerCoreCpp(lib_path=lib_path)
+                    print(f"[{self.pot_name} LiftTracker] C++ core enabled: {lib_path}")
+                except Exception as e:
+                    print(f"[{self.pot_name} LiftTracker] C++ core init failed: {e}")
+                    self.lift_cpp_core = None
 
         # 세션 상태
         self.active = False
@@ -172,14 +199,16 @@ class LiftEventTracker:
             }
             return 0.0
 
-        # HSV 유클리드 거리 계산
         h1, s1, v1 = self.baseline_color['hsv_mean']
         h2, s2, v2 = color_features.mean_hsv
+        if self.lift_cpp_core is not None:
+            try:
+                return self.lift_cpp_core.calc_color_delta(h1, s1, v1, h2, s2, v2)
+            except Exception as e:
+                print(f"[{self.pot_name} LiftTracker] C++ delta error, fallback: {e}")
 
-        # Hue는 circular이므로 각도 차이 계산
+        # HSV 유클리드 거리 계산
         h_diff = min(abs(h1 - h2), 360 - abs(h1 - h2))
-
-        # 가중치 적용 (Hue가 가장 중요)
         delta = np.sqrt((h_diff * 2.0)**2 + (s1 - s2)**2 + (v1 - v2)**2)
 
         return float(delta)
@@ -206,14 +235,29 @@ class LiftEventTracker:
 
     def _check_completion(self, running_time: float, color_delta: float):
         """완료 판단"""
-        # 조건 1: target_time 60초 전부터 완료 후보 허용
-        ready_time = max(0.0, float(self.target_time or 0) - 60.0)
-        time_ok = running_time >= ready_time
+        ready_time = max(0.0, float(self.target_time or 0) - self.completion_early_sec)
+        is_ready = False
+        used_cpp = False
+        if self.lift_cpp_core is not None:
+            try:
+                used_cpp = True
+                is_ready = self.lift_cpp_core.check_completion_ready(
+                    running_time=running_time,
+                    target_time=float(self.target_time or 0),
+                    early_sec=self.completion_early_sec,
+                    color_delta=color_delta,
+                    color_threshold=float(self.color_change_threshold),
+                )
+            except Exception as e:
+                print(f"[{self.pot_name} LiftTracker] C++ completion check error, fallback: {e}")
+                used_cpp = False
 
-        # 조건 2: 색상 변화 임계값 이상
-        color_ok = color_delta >= self.color_change_threshold
+        if not used_cpp:
+            time_ok = running_time >= ready_time
+            color_ok = color_delta >= self.color_change_threshold
+            is_ready = bool(time_ok and color_ok)
 
-        if time_ok and color_ok:
+        if is_ready:
             self.completion_detected = True
             self.completion_time = time.time()
 
