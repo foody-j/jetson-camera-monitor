@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from fastapi import FastAPI, Body
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .mjpeg import mjpeg_stream
@@ -187,7 +187,11 @@ def create_app(
             saved = state.save_vibration_live_plot(str(out_path), window_sec=window)
             if not saved or not out_path.exists():
                 return JSONResponse({"ok": False}, status_code=404)
-            return FileResponse(str(out_path))
+            try:
+                content = out_path.read_bytes()
+            except Exception:
+                return JSONResponse({"ok": False}, status_code=500)
+            return Response(content=content, media_type="image/png")
 
         @app.post("/api/control/collection")
         async def collection_control(payload: dict = Body(...)):
