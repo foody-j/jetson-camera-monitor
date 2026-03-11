@@ -64,13 +64,8 @@
 
     <div class="snapshot-panel" id="vibration-panel">
         <div class="snapshot-title">Vibration Live</div>
-        <div class="snapshot-grid">
-            <div class="snapshot-box">
-                <img id="vibration-live-plot" alt="vibration-live-plot">
-            </div>
-            <div class="snapshot-box">
-                <div class="snapshot-metrics" id="vibration-live-metrics">-</div>
-            </div>
+        <div class="snapshot-box">
+            <div class="snapshot-metrics" id="vibration-live-metrics">-</div>
         </div>
     </div>
 
@@ -117,11 +112,6 @@
 
         function vibrationStatus(status) {
             postJSON('/api/control/vibration/status', { status });
-        }
-
-        function refreshVibrationPlot() {
-            const img = document.getElementById('vibration-live-plot');
-            img.src = `/api/vibration/live-plot?window=5&t=${Date.now()}`;
         }
 
         function recordingControl(pot, action) {
@@ -297,7 +287,6 @@
                         `samples=${live.total_samples || 0}\n` +
                         `freq_p99=(${Number(measured.freq_x_p99 || 0).toFixed(1)}, ${Number(measured.freq_y_p99 || 0).toFixed(1)}, ${Number(measured.freq_z_p99 || 0).toFixed(1)})\n` +
                         `vel_p99=(${Number(measured.vel_x_p99 || 0).toFixed(1)}, ${Number(measured.vel_y_p99 || 0).toFixed(1)}, ${Number(measured.vel_z_p99 || 0).toFixed(1)})`;
-                    refreshVibrationPlot();
                 }
 
                 document.getElementById('status-bar').textContent = header;

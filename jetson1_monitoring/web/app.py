@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict
 
 from fastapi import FastAPI, Body
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .mjpeg import mjpeg_stream
@@ -97,18 +97,6 @@ def create_app(cameras: Dict[int, object], state: object, config: dict) -> FastA
             except Exception:
                 state.vibration_status = status
         return {"ok": True, "status": status}
-
-    @app.get("/api/vibration/live-plot")
-    async def vibration_live_plot(window: float = 5.0):
-        out_path = base_dir / "static" / "vibration_live.png"
-        saved = state.save_vibration_live_plot(str(out_path), window_sec=window)
-        if not saved or not out_path.exists():
-            return JSONResponse({"ok": False}, status_code=404)
-        try:
-            content = out_path.read_bytes()
-        except Exception:
-            return JSONResponse({"ok": False}, status_code=500)
-        return Response(content=content, media_type="image/png")
 
     @app.post("/api/control/recording")
     async def recording_control(payload: dict = Body(...)):

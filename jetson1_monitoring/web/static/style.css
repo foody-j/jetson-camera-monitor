@@ -106,23 +106,10 @@ body {
     font-size: 12px;
 }
 
-.snapshot-grid {
-    display: grid;
-    grid-template-columns: 1.4fr 1fr;
-    gap: 10px;
-}
-
 .snapshot-box {
     background: #0b0f14;
     border: 1px solid #2c3e50;
     padding: 6px;
-}
-
-.snapshot-box img {
-    width: 100%;
-    height: auto;
-    display: block;
-    background: #000;
 }
 
 .snapshot-metrics {
@@ -139,7 +126,7 @@ body {
     grid-template-columns: 1fr 1fr;
     gap: 15px;
     padding: 15px;
-    height: calc(100vh - 390px);
+    height: calc(100vh - 320px);
     box-sizing: border-box;
 }
 
