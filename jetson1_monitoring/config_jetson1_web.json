@@ -2,11 +2,9 @@
   "device_id": "jetson1",
   "device_name": "Jetson1_Web",
   "device_location": "kitchen_stirfry",
-
   "mode": "auto",
   "day_start": "04:00",
   "day_end": "21:00",
-
   "camera_width": 1920,
   "camera_height": 1536,
   "camera_fps": 30,
@@ -23,7 +21,6 @@
   "gmsl_reinit_cooldown_sec": 20,
   "camera_init_delay_sec": 4.0,
   "camera_init_timeout_sec": 8.0,
-
   "person_detection_enabled": true,
   "person_camera_index": 2,
   "yolo_model": "yolo12n.pt",
@@ -37,23 +34,19 @@
   "snapshot_dir": "Detection",
   "snapshot_cooldown_sec": 15,
   "snapshot_warmup_frames": 30,
-
   "camera_person_enabled": true,
   "stirfry_left_enabled": true,
   "stirfry_right_enabled": true,
   "stirfry_left_camera_index": 0,
   "stirfry_right_camera_index": 1,
-
   "gmsl_init_enabled": true,
   "gmsl_init_use_sudo": false,
-
   "web_enabled": true,
   "web_host": "0.0.0.0",
   "web_port": 7000,
   "web_preview_fps": 5,
   "web_preview_width": 640,
   "web_preview_quality": 70,
-
   "mqtt_enabled": true,
   "mqtt_broker": "192.168.0.100",
   "mqtt_port": 1883,
@@ -61,7 +54,6 @@
   "mqtt_qos": 1,
   "mqtt_publish_interval": 2,
   "mqtt_log_maxlen": 200,
-
   "mqtt_topic": "robot/control",
   "mqtt_topic_jetson1_status": "jetson1/status",
   "mqtt_topic_jetson1_relay": "jetson1/relay/status",
@@ -71,7 +63,6 @@
   "mqtt_topic_stirfry_pot2_control": "stirfry/pot2/control",
   "mqtt_topic_robot_status": "HR/Status",
   "mqtt_topic_vibration_control": "calibration/vibration/control",
-
   "relay_mode": "pulse",
   "vibration_cooldown_sec": 15,
   "auto_relay_enabled": true,
@@ -80,25 +71,28 @@
   "periodic_off_pulse_enabled": true,
   "periodic_off_pulse_interval_min": 0.05,
   "periodic_off_test_mode": false,
-
   "stirfry_save_enabled": false,
   "stirfry_save_dir": "AI_Data/StirFryData",
-  "stirfry_save_resolution": { "width": 1920, "height": 1536 },
+  "stirfry_save_resolution": {
+    "width": 1920,
+    "height": 1536
+  },
   "stirfry_jpeg_quality": 100,
   "stirfry_frame_skip": 90,
   "recording_delay_after_discharge": 20,
-
   "vibration_test_mode": false,
   "vibration_stabilization_delay_sec": 0.0,
   "vibration_use_cnn_main": true,
-  "vibration_cnn_model": "/home/hr_dku_001/jetson-food-ai/models/vibration_cnn_jetson1_v1.pt",
+  "vibration_cnn_model": "/home/hr_dku_001/jetson-food-ai/models/vibration_cnn_jetson1_v2.pt",
   "vibration_cnn_threshold": 0.5,
-
   "person_data_collection_enabled": true,
   "person_collection_start_time": "08:30",
   "person_collection_end_time": "12:00",
   "person_collection_interval_sec": 5,
   "person_collection_save_dir": "AI_Data/PersonData",
-  "person_collection_save_resolution": { "width": 640, "height": 512 },
+  "person_collection_save_resolution": {
+    "width": 640,
+    "height": 512
+  },
   "person_collection_jpeg_quality": 50
 }
