@@ -2742,8 +2742,8 @@ class Jetson2Web:
             cnn_threshold=self.config.get("vibration_cnn_threshold"),
             use_cnn_main=bool(self.config.get("vibration_use_cnn_main", False)),
             event_root_dir=os.path.join(os.path.expanduser("~"), "data", "vibration_events", "jetson2"),
-            pre_sec=float(self.config.get("vibration_trigger_pre_sec", 5.0)),
-            post_sec=float(self.config.get("vibration_trigger_post_sec", 5.0)),
+            pre_sec=float(self.config.get("vibration_trigger_pre_sec", 2.0)),
+            post_sec=float(self.config.get("vibration_trigger_post_sec", 10.0)),
             buffer_sec=float(self.config.get("vibration_buffer_sec", 15.0)),
             log_prefix="[진동]",
         )
