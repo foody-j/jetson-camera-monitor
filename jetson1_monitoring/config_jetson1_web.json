@@ -75,6 +75,7 @@
   "relay_mode": "pulse",
   "vibration_cooldown_sec": 15,
   "auto_relay_enabled": true,
+  "night_auto_off_enabled": false,
   "startup_on_pulse_enabled": false,
   "periodic_off_pulse_enabled": true,
   "periodic_off_pulse_interval_min": 0.05,

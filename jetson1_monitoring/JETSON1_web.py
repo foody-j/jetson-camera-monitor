@@ -350,6 +350,7 @@ class PersonDetectionWorker(threading.Thread):
         self.periodic_off_enabled = bool(config.get("periodic_off_pulse_enabled", True))
         self.periodic_off_interval_min = float(config.get("periodic_off_pulse_interval_min", 0.05))
         self.periodic_off_test_mode = bool(config.get("periodic_off_test_mode", False))
+        self.night_auto_off_enabled = bool(config.get("night_auto_off_enabled", True))
 
         self.night_check_minutes = int(config.get("night_check_minutes", 0))
         self.night_check_active = False
@@ -565,14 +566,21 @@ class PersonDetectionWorker(threading.Thread):
                     self._night_person_state = False
                 if self.night_no_person_deadline is not None and now >= self.night_no_person_deadline:
                     if not self.off_triggered_once:
-                        self.parent.send_off_pulse()
-                        self.parent._log_ops_event(
-                            "night_off_triggered",
-                            reason="no_person_timeout",
-                            night_check_minutes=self.night_check_minutes,
-                        )
+                        if self.night_auto_off_enabled:
+                            self.parent.send_off_pulse()
+                            self.parent._log_ops_event(
+                                "night_off_triggered",
+                                reason="no_person_timeout",
+                                night_check_minutes=self.night_check_minutes,
+                            )
+                        else:
+                            self.parent._log_ops_event(
+                                "night_auto_off_disabled",
+                                reason="no_person_timeout",
+                                night_check_minutes=self.night_check_minutes,
+                            )
                         self.off_triggered_once = True
-                        if self.periodic_off_enabled:
+                        if self.night_auto_off_enabled and self.periodic_off_enabled:
                             self.periodic_off_active = True
                     self.night_check_active = False
             return
@@ -624,6 +632,8 @@ class PersonDetectionWorker(threading.Thread):
             self._night_motion_state = motion
 
     def _check_periodic_off(self, now: datetime) -> None:
+        if not self.night_auto_off_enabled:
+            return
         if not self.periodic_off_enabled:
             return
         if not self.periodic_off_active and not self.periodic_off_test_mode:
