@@ -1171,7 +1171,11 @@ class Jetson1Web:
     def _on_vibration_capture_complete(self, result: dict) -> None:
         self.last_vibration_result = dict(result or {})
         raw_status = str(self.last_vibration_result.get("status", "ERROR")).upper()
-        self._set_vibration_status(raw_status, "COMPLETED")
+        final_status = raw_status
+        self._set_vibration_status(final_status, "COMPLETED")
+        alerts = self.last_vibration_result.get("alerts", [])
+        alert_count = len(alerts) if isinstance(alerts, list) else 0
+        print(f"[진동] 완료: raw={raw_status} final={final_status} alerts={alert_count}")
         measured = self.last_vibration_result.get("measured", {})
         if isinstance(measured, dict):
             print(
@@ -1183,7 +1187,6 @@ class Jetson1Web:
                 f"{measured.get('vel_y_p99', 0.0):.1f},"
                 f"{measured.get('vel_z_p99', 0.0):.1f})"
             )
-        alerts = self.last_vibration_result.get("alerts", [])
         if isinstance(alerts, list) and alerts:
             print(f"[진동][요약] alerts={len(alerts)} first={alerts[0]}")
         cnn_info = self.last_vibration_result.get("cnn", {})
@@ -1194,11 +1197,21 @@ class Jetson1Web:
                 f"prob={float(cnn_info.get('prob_abnormal', 0.0)):.3f} "
                 f"thr={float(cnn_info.get('threshold', 0.5)):.2f}"
             )
+        culprit_details = self.last_vibration_result.get("culprit_details", [])
+        if isinstance(culprit_details, list):
+            for detail in culprit_details:
+                if not isinstance(detail, dict):
+                    continue
+                print(
+                    f"[진동][원인] {detail.get('label', detail.get('metric', 'unknown'))} "
+                    f"UID {detail.get('culprit_uid', 'unknown')}: "
+                    f"{detail.get('value', 0.0)} {detail.get('operator', '>')} {detail.get('threshold', 0.0)}"
+                )
         self._log_ops_event(
             "vibration_check_completed",
-            status=self.vibration_status,
+            status=final_status,
             raw_status=raw_status,
-            alerts_count=len(alerts) if isinstance(alerts, list) else 0,
+            alerts_count=alert_count,
             result_file=self.last_vibration_result.get("event_dir", ""),
         )
 

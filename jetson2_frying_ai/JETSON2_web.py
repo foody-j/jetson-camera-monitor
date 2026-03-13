@@ -2776,10 +2776,28 @@ class Jetson2Web:
         else:
             self.vibration_abnormal_streak = 0
         self._set_vibration_status(final_status, "COMPLETED")
-        print(
-            f"[진동] 완료: raw={raw_status} final={final_status} "
-            f"alerts={alert_count} streak={self.vibration_abnormal_streak}"
-        )
+        print(f"[진동] 완료: raw={raw_status} final={final_status} alerts={alert_count}")
+        measured = self.last_vibration_result.get("measured", {})
+        if isinstance(measured, dict):
+            print(
+                "[진동][요약] "
+                f"freq_p99=({measured.get('freq_x_p99', 0.0):.1f},"
+                f"{measured.get('freq_y_p99', 0.0):.1f},"
+                f"{measured.get('freq_z_p99', 0.0):.1f}) "
+                f"vel_p99=({measured.get('vel_x_p99', 0.0):.1f},"
+                f"{measured.get('vel_y_p99', 0.0):.1f},"
+                f"{measured.get('vel_z_p99', 0.0):.1f})"
+            )
+        if isinstance(alerts, list) and alerts:
+            print(f"[진동][요약] alerts={len(alerts)} first={alerts[0]}")
+        cnn_info = self.last_vibration_result.get("cnn", {})
+        if isinstance(cnn_info, dict) and cnn_info.get("enabled"):
+            print(
+                f"[진동][CNN] source={self.last_vibration_result.get('decision_source', 'rule')} "
+                f"pred={cnn_info.get('pred', 'UNKNOWN')} "
+                f"prob={float(cnn_info.get('prob_abnormal', 0.0)):.3f} "
+                f"thr={float(cnn_info.get('threshold', 0.5)):.2f}"
+            )
         culprit_details = self.last_vibration_result.get("culprit_details", [])
         if isinstance(culprit_details, list):
             for detail in culprit_details:
