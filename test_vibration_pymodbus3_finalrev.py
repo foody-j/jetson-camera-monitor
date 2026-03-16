@@ -87,7 +87,7 @@ def _parse_unit_ids(env_val: str):
             pass
     return ids or None
 
-UNIT_IDS = _parse_unit_ids(os.getenv("VIB_UNIT_IDS")) or [0x53, 0x54]  # 0x55 Y축 고장으로 제외
+UNIT_IDS = _parse_unit_ids(os.getenv("VIB_UNIT_IDS")) or [0x01, 0x02, 0x03]  # 0x55 Y축 고장으로 제외
 PARITY = 'N'
 STOPBITS = 1
 BYTESIZE = 8
@@ -126,8 +126,14 @@ REG_VX = 0x3A; REG_VY = 0x3B; REG_VZ = 0x3C
 REG_DX = 0x41; REG_DY = 0x42; REG_DZ = 0x43
 REG_HX = 0x44; REG_HY = 0x45; REG_HZ = 0x46
 
-REG_START = REG_AX
-REG_COUNT = (REG_HZ - REG_AX + 1)   # 19
+# Manual note:
+# 0x37~0x39 and 0x3D~0x3F are reserved, so split reads by valid ranges.
+READ_BLOCKS = {
+    "acc": (REG_AX, 3),
+    "vel": (REG_VX, 3),
+    "disp": (REG_DX, 3),
+    "freq": (REG_HX, 3),
+}
 
 REG_UNLOCK_ADDR = 0x0069
 REG_SAVE = 0x00                      # 0x00FF → 재시작 (기기 펌웨어/모델에 따라 다를 수 있음)
@@ -261,12 +267,16 @@ def restart_sensor(uid: int):
 def s16(v: int) -> int:
     return v - 0x10000 if v >= 0x8000 else v
 
-def parse_map(regs):
-    # regs: 0x34~0x46 (19개)
-    AX, AY, AZ = [s16(regs[i]) for i in (0, 1, 2)]
-    VX, VY, VZ = [s16(regs[i]) for i in (6, 7, 8)]
-    DX, DY, DZ = [s16(regs[i]) for i in (13, 14, 15)]
-    HX, HY, HZ = [s16(regs[i]) for i in (16, 17, 18)]
+def parse_map(regs_by_block):
+    acc_regs = regs_by_block["acc"]
+    vel_regs = regs_by_block["vel"]
+    disp_regs = regs_by_block["disp"]
+    freq_regs = regs_by_block["freq"]
+
+    AX, AY, AZ = [s16(v) for v in acc_regs]
+    VX, VY, VZ = [s16(v) for v in vel_regs]
+    DX, DY, DZ = [s16(v) for v in disp_regs]
+    HX, HY, HZ = [s16(v) for v in freq_regs]
 
     acc = (AX * ACC_SCALE, AY * ACC_SCALE, AZ * ACC_SCALE)
     vel = (float(VX), float(VY), float(VZ))     # mm/s
@@ -315,38 +325,45 @@ def fft_peak(series, tbuf):
 # =========================
 # 읽기(재시도 + FC4 fallback)
 # =========================
-def read_block_retry(uid: int):
+def _read_register_range(uid: int, start_addr: int, count: int, label: str):
     last_rr = None
     for attempt in range(1, RETRY_READ + 1):
-        rr = _modbus_call(client.read_holding_registers, address=REG_START, count=REG_COUNT, slave=uid)
+        rr = _modbus_call(client.read_holding_registers, address=start_addr, count=count, slave=uid)
         last_rr = rr
         if _ok(rr):
             if DEBUG_READ_LOG:
                 if DEBUG_REG_PREVIEW:
-                    print(f"[UID 0x{uid:02X}] HOLD OK regs[0:6]={rr.registers[:6]}")
+                    print(f"[UID 0x{uid:02X}] {label} HOLD OK regs={rr.registers[:count]}")
                 else:
-                    print(f"[UID 0x{uid:02X}] HOLD OK")
+                    print(f"[UID 0x{uid:02X}] {label} HOLD OK")
             return rr.registers
 
         if DEBUG_READ_LOG:
-            print(f"[UID 0x{uid:02X}] HOLD fail (attempt {attempt}) -> {rr}")
+            print(f"[UID 0x{uid:02X}] {label} HOLD fail (attempt {attempt}) -> {rr}")
         time.sleep(0.01)
 
-        rr2 = _modbus_call(client.read_input_registers, address=REG_START, count=REG_COUNT, slave=uid)
+        rr2 = _modbus_call(client.read_input_registers, address=start_addr, count=count, slave=uid)
         last_rr = rr2
         if _ok(rr2):
             if DEBUG_READ_LOG:
                 if DEBUG_REG_PREVIEW:
-                    print(f"[UID 0x{uid:02X}] INPT OK regs[0:6]={rr2.registers[:6]}")
+                    print(f"[UID 0x{uid:02X}] {label} INPT OK regs={rr2.registers[:count]}")
                 else:
-                    print(f"[UID 0x{uid:02X}] INPT OK")
+                    print(f"[UID 0x{uid:02X}] {label} INPT OK")
             return rr2.registers
 
         if DEBUG_READ_LOG:
-            print(f"[UID 0x{uid:02X}] INPT fail (attempt {attempt}) -> {rr2}")
+            print(f"[UID 0x{uid:02X}] {label} INPT fail (attempt {attempt}) -> {rr2}")
         time.sleep(0.02)
 
-    raise ModbusIOException(f"[UID 0x{uid:02X}] read 실패 last={last_rr}")
+    raise ModbusIOException(f"[UID 0x{uid:02X}] {label} read 실패 last={last_rr}")
+
+
+def read_block_retry(uid: int):
+    regs_by_block = {}
+    for label, (start_addr, count) in READ_BLOCKS.items():
+        regs_by_block[label] = _read_register_range(uid, start_addr, count, label)
+    return regs_by_block
 
 
 # =========================
