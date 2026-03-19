@@ -2897,6 +2897,9 @@ class Jetson2Web:
                     f"UID {detail.get('culprit_uid', 'unknown')}: "
                     f"{detail.get('value', 0.0)} {detail.get('operator', '>')} {detail.get('threshold', 0.0)}"
                 )
+        summary_plot = self.last_vibration_result.get("summary_plot")
+        if isinstance(summary_plot, str) and summary_plot:
+            self._open_vibration_plot(summary_plot, "capture_complete")
         self._log_ops_event(
             "vibration_check_completed",
             status=final_status,
@@ -2906,6 +2909,22 @@ class Jetson2Web:
             culprit_details=culprit_details if isinstance(culprit_details, list) else [],
             result_file=self.last_vibration_result.get("event_dir", ""),
         )
+
+    def _open_vibration_plot(self, plot_path: str, reason: str) -> None:
+        if not plot_path or not os.path.exists(plot_path):
+            return
+        if not (os.getenv("DISPLAY") or os.getenv("WAYLAND_DISPLAY")):
+            return
+        try:
+            subprocess.Popen(
+                ["xdg-open", plot_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            print(f"[진동] 그래프 표시: {plot_path} ({reason})")
+        except Exception as exc:
+            print(f"[진동] 그래프 표시 실패({reason}): {exc}")
 
     def get_vibration_live_snapshot(self, window_sec: float = 3.0) -> dict:
         if self.vibration_monitor is None:
@@ -2970,6 +2989,11 @@ class Jetson2Web:
             self._set_vibration_event("SKIPPED_ALREADY_RUNNING", self.vibration_status)
             self._log_ops_event("vibration_check_skipped", reason=reason, status=self.vibration_status)
             return
+
+        live_plot_path = os.path.join("/tmp", f"vibration_live_jetson2_{int(time.time() * 1000)}.png")
+        live_plot = self.save_vibration_live_plot(live_plot_path, window_sec=3.0)
+        if live_plot:
+            self._open_vibration_plot(live_plot, "capture_started")
 
         self._set_vibration_status("MEASURING", "MEASURING")
         print("[진동] 측정 시작 요청 수락: status=MEASURING")
