@@ -1411,8 +1411,12 @@ class Jetson2Web:
         self.pot2_food_type = None
         self.pot1_target_time = None
         self.pot2_target_time = None
+        self.pot1_running_time = None
+        self.pot2_running_time = None
         self.pot1_status = "IDLE"
         self.pot2_status = "IDLE"
+        self.pot1_target_early_discharge_sent = False
+        self.pot2_target_early_discharge_sent = False
         self.frying_running = False
         self.observe_running = False
         self.observe_left_state = None
@@ -2050,7 +2054,17 @@ class Jetson2Web:
                     self.temps["pot1_oil"] = temp_value
                 self.robot_status["pot1"] = pot_data
                 self.pot1_target_time = target_time
+                self.pot1_running_time = running_time
                 self.pot1_robot_status = robot_meta
+                if process_type == "투입":
+                    self.pot1_target_early_discharge_sent = False
+                self._maybe_trigger_target_early_discharge(
+                    pot=1,
+                    recipe=recipe,
+                    process_type=process_type,
+                    running_time_raw=running_time,
+                    target_time_raw=target_time,
+                )
                 if process_type in ["투입", "조리"] and not is_cleaning:
                     if self.pot1_discharge_timer:
                         try:
@@ -2064,6 +2078,7 @@ class Jetson2Web:
                 elif is_cleaning:
                     pass
                 elif process_type == "배출":
+                    self.pot1_target_early_discharge_sent = True
                     self._set_discharge_with_idle_timer(1, reason="robot_process_discharge")
                     if self.pot1_collecting and not self.pot1_discharge_timer:
                         self.pot1_discharge_timer = threading.Timer(
@@ -2077,7 +2092,17 @@ class Jetson2Web:
                     self.temps["pot2_oil"] = temp_value
                 self.robot_status["pot2"] = pot_data
                 self.pot2_target_time = target_time
+                self.pot2_running_time = running_time
                 self.pot2_robot_status = robot_meta
+                if process_type == "투입":
+                    self.pot2_target_early_discharge_sent = False
+                self._maybe_trigger_target_early_discharge(
+                    pot=2,
+                    recipe=recipe,
+                    process_type=process_type,
+                    running_time_raw=running_time,
+                    target_time_raw=target_time,
+                )
                 if process_type in ["투입", "조리"] and not is_cleaning:
                     if self.pot2_discharge_timer:
                         try:
@@ -2091,6 +2116,7 @@ class Jetson2Web:
                 elif is_cleaning:
                     pass
                 elif process_type == "배출":
+                    self.pot2_target_early_discharge_sent = True
                     self._set_discharge_with_idle_timer(2, reason="robot_process_discharge")
                     if self.pot2_collecting and not self.pot2_discharge_timer:
                         self.pot2_discharge_timer = threading.Timer(
@@ -2294,20 +2320,30 @@ class Jetson2Web:
                 print("[POT2 탈탈] 최신 프레임 없음 - 스킵")
 
     def _get_target_time(self, target_time_raw: Optional[str]) -> int:
-        if not target_time_raw:
+        seconds = self._parse_time_text(target_time_raw)
+        if seconds is None:
             return int(self.config.get("default_target_time_sec", 180))
+        return seconds
 
-        if isinstance(target_time_raw, (int, float)):
-            return int(target_time_raw)
+    def _parse_time_text(self, time_raw: Optional[str]) -> Optional[int]:
+        if time_raw is None or time_raw == "":
+            return None
 
-        text = str(target_time_raw)
+        if isinstance(time_raw, (int, float)):
+            return int(time_raw)
+
+        text = str(time_raw).strip()
+        if not text:
+            return None
+
         if ":" in text:
             parts = text.split(":")
             if len(parts) == 3:
                 try:
-                    mm = int(parts[1])
-                    ss = int(parts[2])
-                    return mm * 60 + ss
+                    hh = int(float(parts[0]))
+                    mm = int(float(parts[1]))
+                    ss = int(float(parts[2]))
+                    return hh * 3600 + mm * 60 + ss
                 except ValueError:
                     pass
         if "분" in text:
@@ -2325,7 +2361,60 @@ class Jetson2Web:
         try:
             return int(float(text))
         except ValueError:
-            return int(self.config.get("default_target_time_sec", 180))
+            return None
+
+    def _maybe_trigger_target_early_discharge(
+        self,
+        pot: int,
+        recipe: str,
+        process_type: str,
+        running_time_raw: Optional[str],
+        target_time_raw: Optional[str],
+    ) -> None:
+        if not recipe or "청소" in recipe:
+            return
+        if process_type not in ["투입", "조리"]:
+            return
+
+        status = self.pot1_status if pot == 1 else self.pot2_status
+        if status == "DISCHARGE":
+            return
+
+        already_sent = self.pot1_target_early_discharge_sent if pot == 1 else self.pot2_target_early_discharge_sent
+        if already_sent:
+            return
+
+        running_sec = self._parse_time_text(running_time_raw)
+        target_sec = self._parse_time_text(target_time_raw)
+        if running_sec is None or target_sec is None:
+            return
+
+        early_sec = max(0, int(self.config.get("target_time_discharge_early_sec", 20)))
+        trigger_sec = max(0, target_sec - early_sec)
+        if running_sec < trigger_sec:
+            return
+
+        if pot == 1:
+            self.pot1_target_early_discharge_sent = True
+        else:
+            self.pot2_target_early_discharge_sent = True
+
+        print(
+            f"[POT{pot}] TargetTime 조기 배출 트리거: "
+            f"running={running_sec}s target={target_sec}s early={early_sec}s"
+        )
+        self._log_ops_event(
+            "target_time_early_discharge",
+            pot=pot,
+            recipe=recipe,
+            process_type=process_type,
+            running_sec=running_sec,
+            target_sec=target_sec,
+            early_sec=early_sec,
+            trigger_sec=trigger_sec,
+        )
+        self._set_discharge_with_idle_timer(pot, reason="target_time_early_discharge")
+        self._publish_mqtt_status()
 
     def mark_completion_auto(self, position: str, probe_temp: float) -> None:
         if not self.data_collection_active:
