@@ -1224,8 +1224,19 @@ class Jetson1Web:
         if not (os.getenv("DISPLAY") or os.getenv("WAYLAND_DISPLAY")):
             return
         try:
-            subprocess.Popen(
-                ["xdg-open", plot_path],
+            viewer_process = getattr(self, "vibration_plot_process", None)
+            if viewer_process is not None and viewer_process.poll() is None:
+                try:
+                    viewer_process.terminate()
+                    viewer_process.wait(timeout=1.0)
+                except Exception:
+                    try:
+                        viewer_process.kill()
+                    except Exception:
+                        pass
+            viewer_script = os.path.join(REPO_ROOT, "scripts", "show_image_fullscreen.py")
+            self.vibration_plot_process = subprocess.Popen(
+                [sys.executable, viewer_script, plot_path, "--title", f"Jetson1 Vibration Plot ({reason})"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
