@@ -39,22 +39,26 @@ DEFAULT_VIB_PORT_BY_ID = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A9NF7ROC-if
 PARITY = "N"
 STOPBITS = 1
 BYTESIZE = 8
-TIMEOUT_S = 0.15
+TIMEOUT_S = 0.08
 POLL_HZ_TOTAL = 45
-RETRY_READ = 2
+RETRY_READ = 1
 RECONNECT_TIMEOUT = 3.0
 WARMUP_SEC = 10.0
 ZERO_EPS = 0.02
 MISSING_PERSIST_SEC = 1.0
-REBOOT_SLEEP_SEC = 1.5
-REBOOT_COOLDOWN_SEC = 5.0
 ACC_SCALE = 16.0 / 32768.0
 FREQ_DIVISOR = 10.0
 
 REG_AX = 0x34
-REG_HZ = 0x46
-REG_START = REG_AX
-REG_COUNT = REG_HZ - REG_AX + 1
+REG_VX = 0x3A
+REG_DX = 0x41
+REG_HX = 0x44
+READ_BLOCKS = {
+    "acc": (REG_AX, 3),
+    "vel": (REG_VX, 3),
+    "disp": (REG_DX, 3),
+    "freq": (REG_HX, 3),
+}
 REG_UNLOCK_ADDR = 0x0069
 REG_SAVE = 0x00
 
@@ -109,7 +113,6 @@ class ContinuousVibrationMonitor:
         self.rows: Dict[int, deque] = {uid: deque(maxlen=self.maxlen) for uid in self.unit_ids}
         self.last_ok = {uid: time.time() for uid in self.unit_ids}
         self.missing_since = {uid: None for uid in self.unit_ids}
-        self.last_reboot = {uid: 0.0 for uid in self.unit_ids}
         self.program_start_ts = 0.0
 
     def start(self) -> None:
@@ -240,11 +243,15 @@ class ContinuousVibrationMonitor:
     def _s16(v: int) -> int:
         return v - 0x10000 if v >= 0x8000 else v
 
-    def _parse_map(self, regs):
-        ax, ay, az = [self._s16(regs[i]) for i in (0, 1, 2)]
-        vx, vy, vz = [self._s16(regs[i]) for i in (6, 7, 8)]
-        dx, dy, dz = [self._s16(regs[i]) for i in (13, 14, 15)]
-        hx, hy, hz = [self._s16(regs[i]) for i in (16, 17, 18)]
+    def _parse_map(self, regs_by_block):
+        acc_regs = regs_by_block["acc"]
+        vel_regs = regs_by_block["vel"]
+        disp_regs = regs_by_block["disp"]
+        freq_regs = regs_by_block["freq"]
+        ax, ay, az = [self._s16(v) for v in acc_regs]
+        vx, vy, vz = [self._s16(v) for v in vel_regs]
+        dx, dy, dz = [self._s16(v) for v in disp_regs]
+        hx, hy, hz = [self._s16(v) for v in freq_regs]
         acc = (ax * ACC_SCALE, ay * ACC_SCALE, az * ACC_SCALE)
         vel = (float(vx), float(vy), float(vz))
         disp = (float(dx), float(dy), float(dz))
@@ -275,20 +282,26 @@ class ContinuousVibrationMonitor:
         except Exception as exc:
             print(f"{self.log_prefix} UID 0x{uid:02X} 재시작 오류: {exc}")
 
-    def _read_block_retry(self, uid: int):
+    def _read_register_range(self, uid: int, start_addr: int, count: int, label: str):
         last_rr = None
-        for _ in range(RETRY_READ):
-            rr = self._modbus_call(self.client.read_holding_registers, address=REG_START, count=REG_COUNT, slave=uid)
+        for attempt in range(1, RETRY_READ + 1):
+            rr = self._modbus_call(self.client.read_holding_registers, address=start_addr, count=count, slave=uid)
             last_rr = rr
             if self._ok(rr):
                 return rr.registers
-            time.sleep(0.01)
-            rr = self._modbus_call(self.client.read_input_registers, address=REG_START, count=REG_COUNT, slave=uid)
+            rr = self._modbus_call(self.client.read_input_registers, address=start_addr, count=count, slave=uid)
             last_rr = rr
             if self._ok(rr):
                 return rr.registers
-            time.sleep(0.02)
-        raise ModbusIOException(f"UID 0x{uid:02X} read failed last={last_rr}")
+            if attempt < RETRY_READ:
+                time.sleep(0.01)
+        raise ModbusIOException(f"UID 0x{uid:02X} {label} read failed last={last_rr}")
+
+    def _read_block_retry(self, uid: int):
+        regs_by_block = {}
+        for label, (start_addr, count) in READ_BLOCKS.items():
+            regs_by_block[label] = self._read_register_range(uid, start_addr, count, label)
+        return regs_by_block
 
     def _collector_loop(self) -> None:
         poll_dt = 1.0 / max(1.0, POLL_HZ_TOTAL)
@@ -309,28 +322,15 @@ class ContinuousVibrationMonitor:
                         dead_count = sum(1 for bit in zmask if bit)
                         alive_axes = [i for i in range(3) if (not zmask[i]) and self._axis_alive(acc, vel, disp, i)]
                         now = time.time()
-                        cooldown = (now - self.last_reboot[uid]) < REBOOT_COOLDOWN_SEC
                         real_missing = (dead_count == 1) and (len(alive_axes) == 2)
-                        if real_missing and (not cooldown):
+                        if real_missing:
                             if warmup:
                                 self.missing_since[uid] = None
                             else:
                                 if self.missing_since[uid] is None:
                                     self.missing_since[uid] = now
                                 if (now - self.missing_since[uid]) >= MISSING_PERSIST_SEC:
-                                    print(f"{self.log_prefix} UID 0x{uid:02X} 한 축 누락 지속 -> reboot")
-                                    self._restart_sensor(uid)
-                                    self.last_reboot[uid] = time.time()
-                                    self.missing_since[uid] = None
-                                    time.sleep(REBOOT_SLEEP_SEC)
-                                    try:
-                                        self.client.close()
-                                    except Exception:
-                                        pass
-                                    time.sleep(0.2)
-                                    self.client.connect()
-                                    self.last_ok[uid] = time.time()
-                                    continue
+                                    print(f"{self.log_prefix} UID 0x{uid:02X} 한 축 누락 지속")
                         else:
                             self.missing_since[uid] = None
 
@@ -360,9 +360,7 @@ class ContinuousVibrationMonitor:
 
                     if (not had_error) and (time.time() - self.last_ok[uid] > RECONNECT_TIMEOUT):
                         if not warmup:
-                            print(f"{self.log_prefix} UID 0x{uid:02X} 타임아웃 -> reboot")
-                            self._restart_sensor(uid)
-                            self.last_reboot[uid] = time.time()
+                            print(f"{self.log_prefix} UID 0x{uid:02X} 타임아웃")
                         self.last_ok[uid] = time.time()
             finally:
                 elapsed = time.time() - cycle_ts
