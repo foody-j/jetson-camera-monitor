@@ -2897,9 +2897,9 @@ class Jetson2Web:
                     f"UID {detail.get('culprit_uid', 'unknown')}: "
                     f"{detail.get('value', 0.0)} {detail.get('operator', '>')} {detail.get('threshold', 0.0)}"
                 )
-        summary_plot = self.last_vibration_result.get("summary_plot")
-        if isinstance(summary_plot, str) and summary_plot:
-            self._open_vibration_plot(summary_plot, "capture_complete")
+        event_dir = self.last_vibration_result.get("event_dir")
+        if isinstance(event_dir, str) and event_dir:
+            self._open_vibration_plot("", "capture_complete", event_dir=event_dir)
         self._log_ops_event(
             "vibration_check_completed",
             status=final_status,
@@ -2910,8 +2910,15 @@ class Jetson2Web:
             result_file=self.last_vibration_result.get("event_dir", ""),
         )
 
-    def _open_vibration_plot(self, plot_path: str, reason: str) -> None:
-        if not plot_path or not os.path.exists(plot_path):
+    def _open_vibration_plot(self, plot_path: str, reason: str, *, snapshot_json: Optional[str] = None, event_dir: Optional[str] = None) -> None:
+        target_exists = False
+        if snapshot_json:
+            target_exists = os.path.exists(snapshot_json)
+        elif event_dir:
+            target_exists = os.path.isdir(event_dir)
+        elif plot_path:
+            target_exists = os.path.exists(plot_path)
+        if not target_exists:
             return
         if not (os.getenv("DISPLAY") or os.getenv("WAYLAND_DISPLAY")):
             return
@@ -2927,8 +2934,15 @@ class Jetson2Web:
                     except Exception:
                         pass
             viewer_script = os.path.join(PROJECT_DIR, "scripts", "show_image_fullscreen.py")
+            cmd = [sys.executable, viewer_script, "--title", f"Jetson2 Vibration Plot ({reason})"]
+            if snapshot_json:
+                cmd.extend(["--snapshot-json", snapshot_json])
+            elif event_dir:
+                cmd.extend(["--event-dir", event_dir])
+            else:
+                cmd.append(plot_path)
             self.vibration_plot_process = subprocess.Popen(
-                [sys.executable, viewer_script, plot_path, "--title", f"Jetson2 Vibration Plot ({reason})"],
+                cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
@@ -2950,6 +2964,17 @@ class Jetson2Web:
             return None
         try:
             return self.vibration_monitor.save_recent_plot(out_path, window_sec=window_sec)
+        except Exception:
+            return None
+
+    def save_vibration_live_snapshot(self, out_path: str, window_sec: float = 3.0) -> Optional[str]:
+        if self.vibration_monitor is None:
+            return None
+        try:
+            snapshot = self.vibration_monitor.get_recent_snapshot(window_sec=window_sec)
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump({str(uid): rows for uid, rows in snapshot.items()}, f, ensure_ascii=False)
+            return out_path
         except Exception:
             return None
 
@@ -3001,10 +3026,10 @@ class Jetson2Web:
             self._log_ops_event("vibration_check_skipped", reason=reason, status=self.vibration_status)
             return
 
-        live_plot_path = os.path.join("/tmp", f"vibration_live_jetson2_{int(time.time() * 1000)}.png")
-        live_plot = self.save_vibration_live_plot(live_plot_path, window_sec=3.0)
-        if live_plot:
-            self._open_vibration_plot(live_plot, "capture_started")
+        live_snapshot_path = os.path.join("/tmp", f"vibration_live_jetson2_{int(time.time() * 1000)}.json")
+        live_snapshot = self.save_vibration_live_snapshot(live_snapshot_path, window_sec=3.0)
+        if live_snapshot:
+            self._open_vibration_plot("", "capture_started", snapshot_json=live_snapshot)
 
         self._set_vibration_status("MEASURING", "MEASURING")
         print("[진동] 측정 시작 요청 수락: status=MEASURING")

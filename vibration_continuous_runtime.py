@@ -187,6 +187,9 @@ class ContinuousVibrationMonitor:
             "measured_per_uid": measured_per_uid,
         }
 
+    def get_recent_snapshot(self, window_sec: float = 3.0) -> Dict[int, List[dict]]:
+        return self._snapshot(time.time() - max(0.5, float(window_sec)), time.time())
+
     def save_recent_plot(self, out_path: str, window_sec: float = 5.0) -> str:
         snapshot = self._snapshot(time.time() - max(0.5, float(window_sec)), time.time())
         result = {"status": "LIVE", "decision_source": "live_recent"}
