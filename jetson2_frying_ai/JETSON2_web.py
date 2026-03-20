@@ -2850,6 +2850,7 @@ class Jetson2Web:
         self.vibration_monitor = None
 
     def _on_vibration_capture_complete(self, result: dict) -> None:
+        self._stop_vibration_live_plot_feed()
         self.last_vibration_result = dict(result or {})
         raw_status = str(self.last_vibration_result.get("status", "ERROR")).upper()
         alerts = self.last_vibration_result.get("alerts", [])
@@ -2936,7 +2937,7 @@ class Jetson2Web:
             viewer_script = os.path.join(PROJECT_DIR, "scripts", "show_image_fullscreen.py")
             cmd = [sys.executable, viewer_script, "--title", f"Jetson2 Vibration Plot ({reason})"]
             if snapshot_json:
-                cmd.extend(["--snapshot-json", snapshot_json])
+                cmd.extend(["--follow-snapshot-json", snapshot_json])
             elif event_dir:
                 cmd.extend(["--event-dir", event_dir])
             else:
@@ -2977,6 +2978,29 @@ class Jetson2Web:
             return out_path
         except Exception:
             return None
+
+    def _start_vibration_live_plot_feed(self, snapshot_path: str, window_sec: float = 3.0, interval_sec: float = 0.25) -> None:
+        self._stop_vibration_live_plot_feed()
+        stop_event = threading.Event()
+        self.vibration_live_plot_stop_event = stop_event
+
+        def _worker():
+            while not stop_event.is_set():
+                self.save_vibration_live_snapshot(snapshot_path, window_sec=window_sec)
+                stop_event.wait(interval_sec)
+
+        self.vibration_live_plot_thread = threading.Thread(target=_worker, daemon=True)
+        self.vibration_live_plot_thread.start()
+
+    def _stop_vibration_live_plot_feed(self) -> None:
+        stop_event = getattr(self, "vibration_live_plot_stop_event", None)
+        if stop_event is not None:
+            stop_event.set()
+        thread = getattr(self, "vibration_live_plot_thread", None)
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=1.0)
+        self.vibration_live_plot_thread = None
+        self.vibration_live_plot_stop_event = None
 
     def start_vibration_check(self):
         with self.vibration_start_lock:
@@ -3029,6 +3053,7 @@ class Jetson2Web:
         live_snapshot_path = os.path.join("/tmp", f"vibration_live_jetson2_{int(time.time() * 1000)}.json")
         live_snapshot = self.save_vibration_live_snapshot(live_snapshot_path, window_sec=3.0)
         if live_snapshot:
+            self._start_vibration_live_plot_feed(live_snapshot_path, window_sec=3.0, interval_sec=0.25)
             self._open_vibration_plot("", "capture_started", snapshot_json=live_snapshot)
 
         self._set_vibration_status("MEASURING", "MEASURING")
@@ -3041,6 +3066,7 @@ class Jetson2Web:
         )
 
     def stop_vibration_check(self):
+        self._stop_vibration_live_plot_feed()
         if self.vibration_monitor is not None:
             self.vibration_monitor.cancel_capture()
         self.vibration_process = None

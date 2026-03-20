@@ -8,6 +8,7 @@ import sys
 import matplotlib
 
 matplotlib.use("TkAgg")
+from matplotlib.animation import FuncAnimation
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -41,11 +42,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("image_path", nargs="?")
     parser.add_argument("--snapshot-json")
+    parser.add_argument("--follow-snapshot-json")
     parser.add_argument("--event-dir")
     parser.add_argument("--title", default="Vibration Plot")
     args = parser.parse_args()
 
-    if args.snapshot_json:
+    if args.follow_snapshot_json:
+        fig = _figure_from_follow_snapshot_json(os.path.abspath(args.follow_snapshot_json), args.title)
+    elif args.snapshot_json:
         fig = _figure_from_snapshot_json(os.path.abspath(args.snapshot_json), args.title)
     elif args.event_dir:
         fig = _figure_from_event_dir(os.path.abspath(args.event_dir), args.title)
@@ -89,6 +93,27 @@ def _figure_from_snapshot_json(snapshot_path: str, title: str):
         raw = json.load(f)
     snapshot = {int(uid): rows for uid, rows in raw.items()}
     return _plot_snapshot(snapshot, title)
+
+
+def _figure_from_follow_snapshot_json(snapshot_path: str, title: str):
+    if not os.path.exists(snapshot_path):
+        print(f"[plot-viewer] missing file: {snapshot_path}", file=sys.stderr)
+        return None
+    fig = plt.figure(title, facecolor="black")
+    fig.canvas.manager.set_window_title(title)
+
+    def _refresh(_frame_idx):
+        try:
+            with open(snapshot_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            snapshot = {int(uid): rows for uid, rows in raw.items()}
+            _draw_snapshot_onto_figure(fig, snapshot, title)
+        except Exception:
+            return
+
+    fig._vibration_animation = FuncAnimation(fig, _refresh, interval=250, cache_frame_data=False)
+    _refresh(0)
+    return fig
 
 
 def _figure_from_event_dir(event_dir: str, title: str):
@@ -143,6 +168,18 @@ def _plot_snapshot(snapshot: dict, title: str):
         return None
     fig, axes = plt.subplots(len(unit_ids), 2, figsize=(18, max(6, 4 * len(unit_ids))), squeeze=False, facecolor="black")
     fig.canvas.manager.set_window_title(title)
+    _draw_snapshot_onto_figure(fig, snapshot, title)
+    return fig
+
+
+def _draw_snapshot_onto_figure(fig, snapshot: dict, title: str):
+    unit_ids = sorted(snapshot.keys())
+    fig.clf()
+    if not unit_ids:
+        fig.suptitle(f"{title}\n(no data)", fontsize=18, color="white")
+        fig.canvas.draw_idle()
+        return
+    axes = np.asarray(fig.subplots(len(unit_ids), 2, squeeze=False), dtype=object)
     fig.suptitle(title, fontsize=18, color="white")
     colors = ("#ff6b6b", "#4ecdc4", "#ffe66d")
     for row_idx, uid in enumerate(unit_ids):
@@ -174,7 +211,7 @@ def _plot_snapshot(snapshot: dict, title: str):
         vel_ax.legend(loc="upper right")
         freq_ax.legend(loc="upper right")
     fig.tight_layout(rect=[0, 0.02, 1, 0.97])
-    return fig
+    fig.canvas.draw_idle()
 
 
 if __name__ == "__main__":
