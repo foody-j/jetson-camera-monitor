@@ -1161,6 +1161,7 @@ class Jetson1Web:
             return
         self.vibration_monitor = self._build_vibration_monitor()
         self.vibration_monitor.start()
+        self._ensure_vibration_live_plot()
 
     def _stop_vibration_monitor(self) -> None:
         if self.vibration_monitor is None:
@@ -1169,7 +1170,6 @@ class Jetson1Web:
         self.vibration_monitor = None
 
     def _on_vibration_capture_complete(self, result: dict) -> None:
-        self._stop_vibration_live_plot_feed()
         self.last_vibration_result = dict(result or {})
         raw_status = str(self.last_vibration_result.get("status", "ERROR")).upper()
         final_status = raw_status
@@ -1208,9 +1208,6 @@ class Jetson1Web:
                     f"UID {detail.get('culprit_uid', 'unknown')}: "
                     f"{detail.get('value', 0.0)} {detail.get('operator', '>')} {detail.get('threshold', 0.0)}"
                 )
-        event_dir = self.last_vibration_result.get("event_dir")
-        if isinstance(event_dir, str) and event_dir:
-            self._open_vibration_plot("", "capture_complete", event_dir=event_dir)
         self._log_ops_event(
             "vibration_check_completed",
             status=final_status,
@@ -1310,6 +1307,16 @@ class Jetson1Web:
         self.vibration_live_plot_thread = None
         self.vibration_live_plot_stop_event = None
 
+    def _ensure_vibration_live_plot(self) -> None:
+        live_snapshot_path = os.path.join("/tmp", "vibration_live_jetson1.json")
+        live_snapshot = self.save_vibration_live_snapshot(live_snapshot_path, window_sec=3.0)
+        if not live_snapshot:
+            return
+        self._start_vibration_live_plot_feed(live_snapshot_path, window_sec=3.0, interval_sec=0.25)
+        viewer_process = getattr(self, "vibration_plot_process", None)
+        if viewer_process is None or viewer_process.poll() is not None:
+            self._open_vibration_plot("", "live", snapshot_json=live_snapshot)
+
     def start_vibration_check(self):
         # 쿨다운 체크 (설정 시간 이내 재실행 방지)
         cooldown_sec = max(1.0, float(self.vibration_cooldown_sec))
@@ -1350,11 +1357,7 @@ class Jetson1Web:
             self._log_ops_event("vibration_check_skipped", reason=reason, status=self.vibration_status)
             return
 
-        live_snapshot_path = os.path.join("/tmp", f"vibration_live_jetson1_{int(time.time() * 1000)}.json")
-        live_snapshot = self.save_vibration_live_snapshot(live_snapshot_path, window_sec=3.0)
-        if live_snapshot:
-            self._start_vibration_live_plot_feed(live_snapshot_path, window_sec=3.0, interval_sec=0.25)
-            self._open_vibration_plot("", "capture_started", snapshot_json=live_snapshot)
+        self._ensure_vibration_live_plot()
 
         self._set_vibration_status("MEASURING", "MEASURING")
         self._log_ops_event(
@@ -1365,7 +1368,6 @@ class Jetson1Web:
         )
 
     def stop_vibration_check(self):
-        self._stop_vibration_live_plot_feed()
         if self.vibration_monitor is not None:
             self.vibration_monitor.cancel_capture()
         self.vibration_process = None
