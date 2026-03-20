@@ -66,10 +66,6 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
 def _figure_from_image(image_path: str, title: str):
     import matplotlib.image as mpimg
 
@@ -179,3 +175,7 @@ def _plot_snapshot(snapshot: dict, title: str):
         freq_ax.legend(loc="upper right")
     fig.tight_layout(rect=[0, 0.02, 1, 0.97])
     return fig
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
