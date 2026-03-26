@@ -1,0 +1,23 @@
+[Unit]
+Description=Jetson #2 Web Dashboard (FastAPI + Frying AI + Bucket Detection)
+After=multi-user.target gmsl-driver-load.service graphical.target network-online.target
+Wants=network-online.target
+Requires=gmsl-driver-load.service
+
+[Service]
+Type=simple
+User=yjk
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/yjk/.Xauthority"
+Environment="HOME=/home/yjk"
+Environment="PYTHONPATH=/home/yjk/.local/lib/python3.10/site-packages"
+WorkingDirectory=/home/yjk/jetson-food-ai/jetson2_frying_ai
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/bin/python3 /home/yjk/jetson-food-ai/jetson2_frying_ai/JETSON2_web.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical.target
