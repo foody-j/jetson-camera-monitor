@@ -1739,7 +1739,13 @@ class Jetson1Web:
 
         self.init_gpio()
         ensure_gmsl_initialized(self.config)
-        self._start_vibration_monitor()
+
+        # 진동센서 시작 (연결 실패해도 계속 진행)
+        try:
+            self._start_vibration_monitor()
+        except Exception as e:
+            print(f"[진동] 센서 시작 실패 (무시하고 계속): {e}")
+            self.vibration_monitor = None
 
         # Sequential camera init (Jetson2 style, with delay)
         for cam_id in sorted(self.cameras.keys()):

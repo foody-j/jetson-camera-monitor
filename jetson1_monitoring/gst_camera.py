@@ -27,7 +27,7 @@ class GstCamera:
         self.fps = fps
         self.device_path = f"/dev/video{device_index}"
         self.use_nvvidconv = os.getenv("GMSL_USE_NVVIDCONV", "1").lower() not in ("0", "false", "no")
-        self.io_mode = os.getenv("GMSL_IO_MODE", "4")  # 4=dmabuf, 2=mmap
+        self.io_mode = os.getenv("GMSL_IO_MODE", "2")  # 4=dmabuf, 2=mmap (changed to mmap for stability)
 
         # 출력 해상도/FPS (저지연을 위해 항상 원본 해상도 사용)
         self.output_width = width

@@ -25,7 +25,7 @@ class GstCamera:
         self.device_path = f"/dev/video{device_index}"
         self.preview_sink = os.getenv("GMSL_PREVIEW_SINK", "none")  # GUI에만 표시, GST 윈도우 안 띄움
         self.use_nvvidconv = os.getenv("GMSL_USE_NVVIDCONV", "1").lower() not in ("0", "false", "no")
-        self.io_mode = os.getenv("GMSL_IO_MODE", "4")  # 4=dmabuf, 2=mmap
+        self.io_mode = os.getenv("GMSL_IO_MODE", "2")  # 4=dmabuf, 2=mmap (changed to mmap for stability)
 
         self.process = None
         self.latest_frame = None

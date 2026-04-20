@@ -1536,10 +1536,13 @@ class Jetson2Web:
 
         self.mqtt_message_log = deque(maxlen=int(config.get("mqtt_log_maxlen", 200)))
         self.ops_event_log = deque(maxlen=int(config.get("ops_log_maxlen", 500)))
+        self.frying_event_log = deque(maxlen=int(config.get("frying_event_log_maxlen", 500)))
         self.mqtt_log_dir = os.path.join(SCRIPT_DIR, "mqtt_logs")
         self.ops_log_dir = os.path.join(SCRIPT_DIR, "ops_logs")
+        self.frying_event_log_dir = os.path.join(SCRIPT_DIR, "frying_event_logs")
         self.relay_log_dir = os.path.join(SCRIPT_DIR, "relay_logs")
         self._ops_log_lock = threading.Lock()
+        self._frying_event_log_lock = threading.Lock()
         self._relay_log_lock = threading.Lock()
 
     def _init_cameras(self) -> None:
@@ -2164,6 +2167,7 @@ class Jetson2Web:
             if self.pot1_status != "DISCHARGE":
                 self.pot1_status = "DISCHARGE"
                 print(f"[POT1] 상태 변경: DISCHARGE ({reason})")
+                self._record_frying_event("discharge", pot=1, source=reason or "internal")
                 self._log_ops_event("pot_status_changed", pot=1, status="DISCHARGE", reason=reason)
             if self.pot1_discharge_idle_timer is None:
                 self.pot1_discharge_idle_timer = threading.Timer(
@@ -2175,6 +2179,7 @@ class Jetson2Web:
             if self.pot2_status != "DISCHARGE":
                 self.pot2_status = "DISCHARGE"
                 print(f"[POT2] 상태 변경: DISCHARGE ({reason})")
+                self._record_frying_event("discharge", pot=2, source=reason or "internal")
                 self._log_ops_event("pot_status_changed", pot=2, status="DISCHARGE", reason=reason)
             if self.pot2_discharge_idle_timer is None:
                 self.pot2_discharge_idle_timer = threading.Timer(
@@ -3118,6 +3123,105 @@ class Jetson2Web:
             if self.debug_print:
                 print(f"[OPS 로그] 저장 실패: {e}")
 
+    def _pot_context(self, pot: int) -> dict:
+        if pot == 1:
+            side = "left"
+            robot_meta = self.pot1_robot_status or {}
+            return {
+                "pot": 1,
+                "side": side,
+                "status": self.pot1_status,
+                "food_type": self.pot1_food_type,
+                "recipe": robot_meta.get("recipe") or self.pot1_food_type,
+                "process_type": robot_meta.get("process_type"),
+                "running_time": self.pot1_running_time,
+                "target_time": self.pot1_target_time,
+                "oil_temp": self.temps.get("pot1_oil"),
+                "probe_temp": self.temps.get("pot1_probe"),
+                "observe_state": self.observe_left_state,
+                "observe_effective": self.observe_left_effective,
+                "human_gate": self.human_gate_left,
+            }
+
+        side = "right"
+        robot_meta = self.pot2_robot_status or {}
+        return {
+            "pot": 2,
+            "side": side,
+            "status": self.pot2_status,
+            "food_type": self.pot2_food_type,
+            "recipe": robot_meta.get("recipe") or self.pot2_food_type,
+            "process_type": robot_meta.get("process_type"),
+            "running_time": self.pot2_running_time,
+            "target_time": self.pot2_target_time,
+            "oil_temp": self.temps.get("pot2_oil"),
+            "probe_temp": self.temps.get("pot2_probe"),
+            "observe_state": self.observe_right_state,
+            "observe_effective": self.observe_right_effective,
+            "human_gate": self.human_gate_right,
+        }
+
+    def _record_frying_event(self, action: str, pot: int, source: str = "", **data) -> None:
+        ts = datetime.now()
+        entry = {
+            "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            "event": f"frying_{action}",
+            "action": action,
+            "source": source,
+            **self._pot_context(pot),
+            **data,
+        }
+        self.frying_event_log.appendleft(entry)
+        ops_entry = dict(entry)
+        ops_entry["frying_event"] = ops_entry.pop("event")
+        self._log_ops_event("frying_event_recorded", **ops_entry)
+
+        try:
+            os.makedirs(self.frying_event_log_dir, exist_ok=True)
+            date_str = ts.strftime("%Y-%m-%d")
+            path = os.path.join(self.frying_event_log_dir, f"frying_events_{date_str}.jsonl")
+            with self._frying_event_log_lock:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception as e:
+            if self.debug_print:
+                print(f"[튀김 이벤트 로그] 저장 실패: {e}")
+
+    def get_recent_frying_events(self, limit: int = 100) -> list:
+        max_items = max(1, min(int(limit), 1000))
+        if self.frying_event_log:
+            return list(self.frying_event_log)[:max_items]
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        path = os.path.join(self.frying_event_log_dir, f"frying_events_{date_str}.jsonl")
+        if not os.path.exists(path):
+            return []
+        tail = deque(maxlen=max_items)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        tail.append(json.loads(line))
+                    except Exception:
+                        continue
+        except Exception:
+            return []
+        return list(reversed(tail))
+
+    def _set_observe_input_decision(self, side: str, source: str = "", **data) -> None:
+        if side == "left":
+            self.observe_left_state = "FILLED"
+            self.observe_left_effective = "투입"
+            self._record_frying_event("input", pot=1, source=source or "observe", **data)
+            self._log_ops_event("observe_effective_changed", side="left", effective="투입", source=source)
+        elif side == "right":
+            self.observe_right_state = "FILLED"
+            self.observe_right_effective = "투입"
+            self._record_frying_event("input", pot=2, source=source or "observe", **data)
+            self._log_ops_event("observe_effective_changed", side="right", effective="투입", source=source)
+
     def get_recent_ops_events(self, limit: int = 100) -> list:
         max_items = max(1, min(int(limit), 1000))
         if self.ops_event_log:
@@ -3345,16 +3449,24 @@ class Jetson2Web:
                     self.human_gate_left,
                 )
                 if left_effective != self.observe_left_effective:
-                    self.observe_left_effective = left_effective
-                    self._log_ops_event("observe_effective_changed", side="left", effective=left_effective)
                     if left_effective == "투입":
                         oil = self.temps.get("pot1_oil", 0.0)
                         recipe = (self.pot1_robot_status or {}).get("recipe", "")
+                        self._set_observe_input_decision(
+                            "left",
+                            source="observe_auto",
+                            oil_temp=oil,
+                            recipe=recipe,
+                            from_state=left_status,
+                        )
                         print(
                             f"[OBSERVE][left] input_decision "
                             f"(from=FILLED, to=투입, oil={oil:.1f}C, recipe={recipe})"
                         )
-                    elif left_effective == "BLOCKED_HUMAN":
+                    else:
+                        self.observe_left_effective = left_effective
+                        self._log_ops_event("observe_effective_changed", side="left", effective=left_effective)
+                    if left_effective == "BLOCKED_HUMAN":
                         self._log_ops_event(
                             "observe_input_blocked",
                             side="left",
@@ -3383,16 +3495,24 @@ class Jetson2Web:
                     self.human_gate_right,
                 )
                 if right_effective != self.observe_right_effective:
-                    self.observe_right_effective = right_effective
-                    self._log_ops_event("observe_effective_changed", side="right", effective=right_effective)
                     if right_effective == "투입":
                         oil = self.temps.get("pot2_oil", 0.0)
                         recipe = (self.pot2_robot_status or {}).get("recipe", "")
+                        self._set_observe_input_decision(
+                            "right",
+                            source="observe_auto",
+                            oil_temp=oil,
+                            recipe=recipe,
+                            from_state=right_status,
+                        )
                         print(
                             f"[OBSERVE][right] input_decision "
                             f"(from=FILLED, to=투입, oil={oil:.1f}C, recipe={recipe})"
                         )
-                    elif right_effective == "BLOCKED_HUMAN":
+                    else:
+                        self.observe_right_effective = right_effective
+                        self._log_ops_event("observe_effective_changed", side="right", effective=right_effective)
+                    if right_effective == "BLOCKED_HUMAN":
                         self._log_ops_event(
                             "observe_input_blocked",
                             side="right",
@@ -3407,7 +3527,13 @@ class Jetson2Web:
         print("=" * 60)
 
         self.init_gpio()
-        self._start_vibration_monitor()
+
+        # 진동센서 시작 (연결 실패해도 계속 진행)
+        try:
+            self._start_vibration_monitor()
+        except Exception as e:
+            print(f"[진동] 센서 시작 실패 (무시하고 계속): {e}")
+            self.vibration_monitor = None
 
         if self.config.get("gmsl_init_enabled", True):
             run_gmsl_init_script(self.config)
