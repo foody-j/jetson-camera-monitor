@@ -3675,6 +3675,11 @@ class Jetson2Web:
         self.stop_event.set()
         self.camera_watchdog_stop.set()
 
+        if self.camera_watchdog_thread and self.camera_watchdog_thread.is_alive():
+            self.camera_watchdog_thread.join(timeout=2.0)
+        if self.collection_thread and self.collection_thread.is_alive():
+            self.collection_thread.join(timeout=2.0)
+
         for cam in self.cameras.values():
             if cam is not None:
                 cam.stop()
@@ -3685,6 +3690,19 @@ class Jetson2Web:
             worker.stop()
         for worker in self.human_workers.values():
             worker.stop()
+
+        for worker in self.human_workers.values():
+            if worker.is_alive():
+                worker.join(timeout=2.0)
+        for worker in self.observe_workers.values():
+            if worker.is_alive():
+                worker.join(timeout=2.0)
+        for worker in self.frying_workers.values():
+            if worker.is_alive():
+                worker.join(timeout=2.0)
+        for cam in self.cameras.values():
+            if cam is not None and cam.is_alive():
+                cam.join(timeout=3.0)
 
         if self.mqtt_client:
             self.mqtt_client.disconnect()
