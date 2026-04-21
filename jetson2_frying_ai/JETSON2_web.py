@@ -30,6 +30,9 @@ import numpy as np
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 _LOCK_FD = None
+_APP_LOG_BUFFER = deque(maxlen=2000)
+_APP_LOG_LOCK = threading.Lock()
+_APP_LOG_CAPTURE_INSTALLED = False
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -75,6 +78,94 @@ def load_config(config_path: str = "config_jetson2_web.json") -> dict:
     config_full_path = os.path.join(SCRIPT_DIR, config_path)
     with open(config_full_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _append_app_log_entry(entry: dict) -> None:
+    _APP_LOG_BUFFER.appendleft(entry)
+    try:
+        app_log_dir = os.path.join(SCRIPT_DIR, "app_logs")
+        os.makedirs(app_log_dir, exist_ok=True)
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        path = os.path.join(app_log_dir, f"app_{date_str}.jsonl")
+        with _APP_LOG_LOCK:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _record_stream_line(message: str, stream_name: str) -> None:
+    text = str(message).rstrip("\r\n")
+    if not text:
+        return
+    _append_app_log_entry(
+        {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            "level": "STDERR" if stream_name == "stderr" else "STDOUT",
+            "message": text,
+        }
+    )
+
+
+def get_recent_app_log_entries(limit: int = 100) -> list:
+    max_items = max(1, min(int(limit), 1000))
+    if _APP_LOG_BUFFER:
+        return list(_APP_LOG_BUFFER)[:max_items]
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    path = os.path.join(SCRIPT_DIR, "app_logs", f"app_{date_str}.jsonl")
+    if not os.path.exists(path):
+        return []
+    tail = deque(maxlen=max_items)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    tail.append(json.loads(line))
+                except Exception:
+                    continue
+    except Exception:
+        return []
+    return list(reversed(tail))
+
+
+class _StreamToAppLog:
+    def __init__(self, original, stream_name: str):
+        self.original = original
+        self.stream_name = stream_name
+        self._pending = ""
+
+    def write(self, data):
+        text = data if isinstance(data, str) else str(data)
+        self.original.write(text)
+        self._pending += text
+        while "\n" in self._pending:
+            line, self._pending = self._pending.split("\n", 1)
+            _record_stream_line(line, self.stream_name)
+        return len(text)
+
+    def flush(self):
+        if self._pending:
+            _record_stream_line(self._pending, self.stream_name)
+            self._pending = ""
+        self.original.flush()
+
+    def isatty(self):
+        return self.original.isatty()
+
+    def fileno(self):
+        return self.original.fileno()
+
+
+def install_app_log_stream_capture() -> None:
+    global _APP_LOG_CAPTURE_INSTALLED
+    if _APP_LOG_CAPTURE_INSTALLED:
+        return
+    sys.stdout = _StreamToAppLog(sys.stdout, "stdout")
+    sys.stderr = _StreamToAppLog(sys.stderr, "stderr")
+    _APP_LOG_CAPTURE_INSTALLED = True
 
 
 def _path_exists(path: str) -> bool:
@@ -1379,6 +1470,20 @@ class Jetson2Web:
 
         self.debug_print = bool(config.get("debug_print_enabled", False))
         self.ai_mode_enabled = bool(config.get("ai_mode_enabled", False))
+        self.mqtt_message_log = deque(maxlen=int(config.get("mqtt_log_maxlen", 200)))
+        self.ops_event_log = deque(maxlen=int(config.get("ops_log_maxlen", 500)))
+        self.app_event_log = deque(maxlen=int(config.get("app_log_maxlen", 500)))
+        self.frying_event_log = deque(maxlen=int(config.get("frying_event_log_maxlen", 500)))
+        self.mqtt_log_dir = os.path.join(SCRIPT_DIR, "mqtt_logs")
+        self.ops_log_dir = os.path.join(SCRIPT_DIR, "ops_logs")
+        self.app_log_dir = os.path.join(SCRIPT_DIR, "app_logs")
+        self.frying_event_log_dir = os.path.join(SCRIPT_DIR, "frying_event_logs")
+        self.relay_log_dir = os.path.join(SCRIPT_DIR, "relay_logs")
+        self._ops_log_lock = threading.Lock()
+        self._app_log_lock = threading.Lock()
+        self._frying_event_log_lock = threading.Lock()
+        self._relay_log_lock = threading.Lock()
+        self._log_app_event("INFO", "Jetson2 state initialization started")
 
         self.cameras: Dict[int, Optional[CameraWorker]] = {}
         self._init_cameras()
@@ -1534,17 +1639,6 @@ class Jetson2Web:
         }
         self.robot_status = {}
 
-        self.mqtt_message_log = deque(maxlen=int(config.get("mqtt_log_maxlen", 200)))
-        self.ops_event_log = deque(maxlen=int(config.get("ops_log_maxlen", 500)))
-        self.frying_event_log = deque(maxlen=int(config.get("frying_event_log_maxlen", 500)))
-        self.mqtt_log_dir = os.path.join(SCRIPT_DIR, "mqtt_logs")
-        self.ops_log_dir = os.path.join(SCRIPT_DIR, "ops_logs")
-        self.frying_event_log_dir = os.path.join(SCRIPT_DIR, "frying_event_logs")
-        self.relay_log_dir = os.path.join(SCRIPT_DIR, "relay_logs")
-        self._ops_log_lock = threading.Lock()
-        self._frying_event_log_lock = threading.Lock()
-        self._relay_log_lock = threading.Lock()
-
     def _init_cameras(self) -> None:
         cam_width = self.config.get("camera_width", 1920)
         cam_height = self.config.get("camera_height", 1536)
@@ -1608,9 +1702,16 @@ class Jetson2Web:
                     right_cls,
                     event_logger=self._log_ops_event,
                 )
+        self._log_app_event(
+            "INFO",
+            "AI workers initialized",
+            frying_workers=len(self.frying_workers),
+            observe_workers=len(self.observe_workers),
+        )
 
     def _init_human_workers(self) -> None:
         if not bool(self.config.get("human_safety_enabled", False)):
+            self._log_app_event("INFO", "Human safety workers disabled by config")
             return
         left_cam_id = int(self.config.get("observe_left_camera_index", 2))
         right_cam_id = int(self.config.get("observe_right_camera_index", 3))
@@ -1632,17 +1733,21 @@ class Jetson2Web:
                 config=self.config,
                 event_logger=self._log_ops_event,
             )
+        self._log_app_event("INFO", "Human safety workers initialized", worker_count=len(self.human_workers))
 
     def _init_mqtt(self) -> None:
         if not self.config.get("mqtt_enabled", False):
+            self._log_app_event("INFO", "MQTT disabled by config")
             return
 
+        broker = self.config.get("mqtt_broker", "localhost")
+        port = self.config.get("mqtt_port", 1883)
         self.mqtt_client = MQTTClient(
-            broker=self.config.get("mqtt_broker", "localhost"),
-            port=self.config.get("mqtt_port", 1883),
+            broker=broker,
+            port=port,
             client_id=self.config.get("mqtt_client_id", "jetson2_web"),
         )
-
+        self._log_app_event("INFO", "Connecting MQTT", broker=broker, port=port)
         self.mqtt_client.connect(blocking=True, timeout=5.0)
 
         qos = self.config.get("mqtt_qos", 1)
@@ -1655,6 +1760,7 @@ class Jetson2Web:
         jetson1_relay_topic = self.config.get("mqtt_topic_jetson1_relay", "jetson1/relay/status")
         if jetson1_relay_topic:
             self.mqtt_client.subscribe(jetson1_relay_topic, self.on_jetson1_relay_status, qos=qos)
+        self._log_app_event("INFO", "MQTT connected and subscriptions registered", qos=qos)
 
     def init_gpio(self) -> None:
         if not _GPIO_AVAILABLE:
@@ -3123,6 +3229,20 @@ class Jetson2Web:
             if self.debug_print:
                 print(f"[OPS 로그] 저장 실패: {e}")
 
+    def _log_app_event(self, level: str, message: str, **data) -> None:
+        ts = datetime.now()
+        entry = {
+            "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            "level": str(level).upper(),
+            "message": message,
+            **data,
+        }
+        self.app_event_log.appendleft(entry)
+        _append_app_log_entry(entry)
+
+    def get_recent_app_logs(self, limit: int = 100) -> list:
+        return get_recent_app_log_entries(limit=limit)
+
     def _pot_context(self, pot: int) -> dict:
         if pot == 1:
             side = "left"
@@ -3525,31 +3645,38 @@ class Jetson2Web:
         print("=" * 60)
         print("Jetson2 Web (Headless) Starting...")
         print("=" * 60)
+        self._log_app_event("INFO", "Jetson2 startup sequence started")
 
         self.init_gpio()
 
         # 진동센서 시작 (연결 실패해도 계속 진행)
         try:
             self._start_vibration_monitor()
+            self._log_app_event("INFO", "Vibration monitor initialized")
         except Exception as e:
             print(f"[진동] 센서 시작 실패 (무시하고 계속): {e}")
             self.vibration_monitor = None
+            self._log_app_event("ERROR", "Vibration monitor initialization failed", error=str(e))
 
         if self.config.get("gmsl_init_enabled", True):
             run_gmsl_init_script(self.config)
+            self._log_app_event("INFO", "GMSL init script executed")
         if self.config.get("quick_bring_up_enabled", False):
             run_quick_bring_up(self.config)
+            self._log_app_event("INFO", "Quick bring-up executed")
 
         for cam_id, cam in self.cameras.items():
             if cam is None:
                 continue
             cam.set_overlay_enabled(self.overlay_enabled)
+            self._log_app_event("INFO", "Starting camera worker", camera_id=cam_id, overlay_enabled=self.overlay_enabled)
             cam.start()
             time.sleep(0.3)
 
         for worker in self.frying_workers.values():
             worker.start()
             worker.set_enabled(False)
+        self._log_app_event("INFO", "Frying workers started", worker_count=len(self.frying_workers))
 
         observe_autostart = bool(self.config.get("observe_autostart", False))
         for worker in self.observe_workers.values():
@@ -3557,9 +3684,12 @@ class Jetson2Web:
             worker.set_enabled(observe_autostart)
         if observe_autostart:
             self.observe_running = True
+        self._log_app_event("INFO", "Observe workers started", worker_count=len(self.observe_workers), autostart=observe_autostart)
         for worker in self.human_workers.values():
             worker.start()
             worker.set_enabled(bool(self.config.get("human_safety_enabled", False)))
+        if self.human_workers:
+            self._log_app_event("INFO", "Human safety workers started", worker_count=len(self.human_workers))
 
         if self.config.get("web_enabled", True):
             host = self.config.get("web_host", "0.0.0.0")
@@ -3576,26 +3706,38 @@ class Jetson2Web:
             )
             self._start_web(app, host, port)
             print(f"[Web] Dashboard: http://{host}:{port}/")
+            self._log_app_event("INFO", "Web dashboard starting", host=host, port=port)
 
-        print(f"[IP] Local: {get_ip_address()}")
+        local_ip = get_ip_address()
+        print(f"[IP] Local: {local_ip}")
+        self._log_app_event("INFO", "Local IP resolved", ip=local_ip)
         tailscale_ip = get_tailscale_ip()
         if tailscale_ip:
             print(f"[IP] Tailscale: {tailscale_ip}")
+            self._log_app_event("INFO", "Tailscale IP resolved", ip=tailscale_ip)
 
         self.running = True
         self.camera_watchdog_start_ts = time.time()
         self.camera_watchdog_stop.clear()
         self.camera_watchdog_thread = threading.Thread(target=self._camera_watchdog_loop, daemon=True)
         self.camera_watchdog_thread.start()
+        self._log_app_event("INFO", "Camera watchdog thread started")
         self.collection_thread = threading.Thread(target=self._collection_loop, daemon=True)
         self.collection_thread.start()
+        self._log_app_event("INFO", "Collection loop thread started")
+        self._log_app_event("INFO", "Jetson2 main loop entering running state")
         self._main_loop()
 
     def _start_web(self, app, host: str, port: int) -> None:
         def _run():
             import uvicorn
 
-            uvicorn.run(app, host=host, port=port, log_level="warning", access_log=False)
+            try:
+                self._log_app_event("INFO", "Uvicorn thread started", host=host, port=port)
+                uvicorn.run(app, host=host, port=port, log_level="warning", access_log=False)
+            except Exception as e:
+                self._log_app_event("ERROR", "Uvicorn thread crashed", error=str(e))
+                raise
 
         self.web_thread = threading.Thread(target=_run, daemon=True)
         self.web_thread.start()
@@ -3741,6 +3883,7 @@ class Jetson2Web:
 
 
 def main() -> None:
+    install_app_log_stream_capture()
     _acquire_single_instance("jetson2_web.lock")
     config = load_config()
     app = Jetson2Web(config)

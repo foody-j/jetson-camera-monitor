@@ -70,6 +70,13 @@ def create_app(cameras: Dict[int, object], state: object, config: dict) -> FastA
         except Exception:
             return JSONResponse([])
 
+    @app.get("/api/app/log")
+    async def app_log(limit: int = 100):
+        try:
+            return JSONResponse(state.get_recent_app_logs(limit=limit))
+        except Exception:
+            return JSONResponse([])
+
     @app.post("/api/control/relay")
     async def relay_control(payload: dict = Body(...)):
         action = str(payload.get("action", "")).lower()

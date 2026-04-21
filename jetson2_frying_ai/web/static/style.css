@@ -85,6 +85,18 @@ body {
     border-bottom: 1px dashed #233041;
 }
 
+.log-level-info b {
+    color: #8fd3ff;
+}
+
+.log-level-warning b {
+    color: #ffd166;
+}
+
+.log-level-error b {
+    color: #ff7b72;
+}
+
 .snapshot-panel {
     padding: 10px 15px;
     background: #111820;

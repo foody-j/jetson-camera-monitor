@@ -48,6 +48,7 @@
             <button class="btn" onclick="publishNow()">Publish</button>
             <button class="btn" onclick="toggleMqttLog()">Log</button>
             <button class="btn" onclick="toggleOpsLog()">Ops</button>
+            <button class="btn" onclick="toggleAppLog()">App</button>
         </div>
         <div class="control-group">
             <div class="control-title">MQTT Quick</div>
@@ -82,6 +83,11 @@
     <div class="mqtt-log" id="ops-log" style="display:none;">
         <div class="mqtt-log-title">OPS 이벤트 로그</div>
         <div class="mqtt-log-list" id="ops-log-list">-</div>
+    </div>
+
+    <div class="mqtt-log" id="app-log" style="display:none;">
+        <div class="mqtt-log-title">APP 실행 로그</div>
+        <div class="mqtt-log-list" id="app-log-list">-</div>
     </div>
 
     <div class="snapshot-panel" id="snapshot-panel" style="display:none;">
@@ -252,6 +258,16 @@
             }
         }
 
+        async function toggleAppLog() {
+            const box = document.getElementById('app-log');
+            if (box.style.display === 'none') {
+                box.style.display = 'block';
+                await refreshAppLog();
+            } else {
+                box.style.display = 'none';
+            }
+        }
+
         async function refreshMqttLog() {
             try {
                 const res = await fetch('/api/mqtt/log');
@@ -282,6 +298,29 @@
                 }).join('') || '-';
             } catch (e) {
                 console.error('OPS log failed:', e);
+            }
+        }
+
+        async function refreshAppLog() {
+            try {
+                const res = await fetch('/api/app/log?limit=40');
+                const data = await res.json();
+                const list = document.getElementById('app-log-list');
+                list.innerHTML = data.slice(0, 40).map(item => {
+                    const ts = item.timestamp || '-';
+                    const level = item.level || 'INFO';
+                    const message = (item.message || '-').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const extra = { ...item };
+                    delete extra.timestamp;
+                    delete extra.level;
+                    delete extra.message;
+                    const payload = Object.keys(extra).length
+                        ? ` ${JSON.stringify(extra).replace(/</g, '&lt;').replace(/>/g, '&gt;')}`
+                        : '';
+                    return `<div class="mqtt-log-item log-level-${level.toLowerCase()}">[${ts}] <b>${level}</b> ${message}${payload}</div>`;
+                }).join('') || '-';
+            } catch (e) {
+                console.error('App log failed:', e);
             }
         }
 
@@ -378,6 +417,9 @@
                 }
                 if (document.getElementById('ops-log').style.display !== 'none') {
                     refreshOpsLog();
+                }
+                if (document.getElementById('app-log').style.display !== 'none') {
+                    refreshAppLog();
                 }
 
             } catch (e) {

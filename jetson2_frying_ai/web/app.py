@@ -152,6 +152,20 @@ def create_app(
             except Exception:
                 return JSONResponse([])
 
+        @app.get("/api/app/log")
+        async def app_log(limit: int = 100):
+            try:
+                return JSONResponse(state.get_recent_app_logs(limit=limit))
+            except Exception:
+                return JSONResponse([])
+
+        @app.get("/api/frying/events")
+        async def frying_events(limit: int = 100):
+            try:
+                return JSONResponse(state.get_recent_frying_events(limit=limit))
+            except Exception:
+                return JSONResponse([])
+
     if state is not None:
         @app.post("/api/control/relay")
         async def relay_control(payload: dict = Body(...)):
@@ -267,11 +281,9 @@ def create_app(
             sent = []
             try:
                 if action == "observe_input_left":
-                    state.observe_left_state = "FILLED"
-                    state.observe_left_effective = "투입"
+                    state._set_observe_input_decision("left", source="web_quick")
                 elif action == "observe_input_right":
-                    state.observe_right_state = "FILLED"
-                    state.observe_right_effective = "투입"
+                    state._set_observe_input_decision("right", source="web_quick")
                 elif action == "frying_discharge_left":
                     state._set_discharge_with_idle_timer(1, reason="web_quick")
                 elif action == "frying_discharge_right":
