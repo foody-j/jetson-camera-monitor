@@ -201,7 +201,7 @@
   "// vibration_force_normal_on_robot_request: 로봇 진동 요청 수신 시 실제 측정 없이 항상 NORMAL 처리": "",
   "vibration_force_normal_on_robot_request": true,
   "// vibration_force_normal_delay_sec: 강제 NORMAL일 때 MEASURING 유지 시간(초)": "",
-  "vibration_force_normal_delay_sec": 3.0,
+  "vibration_force_normal_delay_sec": 7.0,
   "vibration_abnormal_min_alerts": 1,
   "vibration_abnormal_confirm_runs": 1,
   "// AI Mode": "",
