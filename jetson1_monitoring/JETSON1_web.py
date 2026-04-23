@@ -871,6 +871,11 @@ class Jetson1Web:
         self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
         self.vibration_abnormal_timer = None
         self.vibration_cooldown_sec = float(config.get("vibration_cooldown_sec", 15.0))
+        self.vibration_force_normal_delay_sec = float(config.get("vibration_force_normal_delay_sec", 3.0))
+        self.vibration_force_normal_on_robot_request = bool(
+            config.get("vibration_force_normal_on_robot_request", False)
+        )
+        self.vibration_forced_normal_timer = None
         self.last_vibration_check_time = 0  # 쿨다운용
         self.vibration_starting = False
         self.vibration_start_lock = threading.Lock()
@@ -1181,10 +1186,8 @@ class Jetson1Web:
         # - 중복 실행은 start_vibration_check()의 쿨다운/락으로 방지
         trigger_requested = (seen_device and chk_vibration) or bool(vibration_request)
         if trigger_requested:
-            if self.config.get("vibration_force_normal_on_robot_request", False):
-                self._set_vibration_status("NORMAL", "ROBOT_REQUEST_FORCE_NORMAL")
-                self._log_ops_event(
-                    "vibration_check_bypassed",
+            if self.vibration_force_normal_on_robot_request:
+                self._start_forced_normal_vibration_check(
                     reason="robot_request_force_normal",
                     chk_vibration=chk_vibration,
                     vibration_request=bool(vibration_request),
@@ -1486,6 +1489,7 @@ class Jetson1Web:
         )
 
     def stop_vibration_check(self):
+        self._cancel_vibration_forced_normal_timer()
         if self.vibration_monitor is not None:
             self.vibration_monitor.cancel_capture()
         self.vibration_process = None
@@ -1734,6 +1738,68 @@ class Jetson1Web:
                 pass
             self.vibration_abnormal_timer = None
 
+    def _cancel_vibration_forced_normal_timer(self) -> None:
+        if self.vibration_forced_normal_timer is not None:
+            try:
+                self.vibration_forced_normal_timer.cancel()
+            except Exception:
+                pass
+            self.vibration_forced_normal_timer = None
+
+    def _start_forced_normal_vibration_check(self, **event_data) -> None:
+        cooldown_sec = max(1.0, float(self.vibration_cooldown_sec))
+        with self.vibration_start_lock:
+            elapsed = time.time() - self.last_vibration_check_time
+            if elapsed < cooldown_sec:
+                print(f"[진동] 쿨다운 중 (마지막 실행 후 {elapsed:.1f}초, 대기 필요: {cooldown_sec - elapsed:.1f}초)")
+                self._set_vibration_event("SKIPPED_COOLDOWN", self.vibration_status)
+                self._log_ops_event("vibration_check_skipped", reason="cooldown", elapsed=elapsed)
+                return
+
+            if self.vibration_starting or self.vibration_process is not None or self.vibration_status == "MEASURING":
+                self._set_vibration_event("SKIPPED_ALREADY_RUNNING", self.vibration_status)
+                self._log_ops_event("vibration_check_skipped", reason="already_running", status=self.vibration_status)
+                return
+
+            self.last_vibration_check_time = time.time()
+
+        delay = max(0.1, float(self.vibration_force_normal_delay_sec))
+        result_file = os.path.join(REPO_ROOT, "vibration_result.json")
+        self._cancel_vibration_forced_normal_timer()
+        self._set_vibration_status("MEASURING", "MEASURING")
+        print(f"[진동] 강제 NORMAL 측정 시작: status=MEASURING, delay={delay:.1f}s")
+        self._log_ops_event(
+            "vibration_check_started",
+            forced_normal=True,
+            delay_sec=delay,
+            baseline_exists=os.path.exists(os.path.join(REPO_ROOT, "vibration_baseline_jetson1.json")),
+            unit_ids="0x53,0x54",
+            result_file=result_file,
+            **event_data,
+        )
+
+        def _complete_forced_normal():
+            self.vibration_forced_normal_timer = None
+            if self.vibration_status != "MEASURING":
+                return
+            self._on_vibration_capture_complete(
+                {
+                    "status": "NORMAL",
+                    "alerts": [],
+                    "forced_normal": True,
+                    "decision_source": "robot_request_force_normal",
+                    "measured": {},
+                    "cnn": {"enabled": False},
+                    "culprit_details": [],
+                    "event_dir": "",
+                    "result_file": result_file,
+                }
+            )
+
+        self.vibration_forced_normal_timer = threading.Timer(delay, _complete_forced_normal)
+        self.vibration_forced_normal_timer.daemon = True
+        self.vibration_forced_normal_timer.start()
+
     def _schedule_vibration_abnormal_reset(self) -> None:
         self._cancel_vibration_abnormal_timer()
         delay = max(0.1, float(self.vibration_abnormal_hold_sec))
@@ -1759,6 +1825,8 @@ class Jetson1Web:
         self.vibration_status = status
         if event:
             self._set_vibration_event(event, status)
+        if status != "MEASURING":
+            self._cancel_vibration_forced_normal_timer()
         if status == "ABNORMAL":
             self._schedule_vibration_abnormal_reset()
         else:
