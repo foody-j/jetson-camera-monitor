@@ -1511,6 +1511,7 @@ class Jetson2Web:
         self.camera_watchdog_stop = threading.Event()
         self.camera_watchdog_start_ts = time.time()
         self.camera_fail_counts = {}
+        self.camera_watch_enabled = bool(self.config.get("camera_watch_enabled", False))
 
         self.pot1_food_type = None
         self.pot2_food_type = None
@@ -3843,11 +3844,12 @@ class Jetson2Web:
             self._log_app_event("INFO", "Tailscale IP resolved", ip=tailscale_ip)
 
         self.running = True
-        self.camera_watchdog_start_ts = time.time()
-        self.camera_watchdog_stop.clear()
-        self.camera_watchdog_thread = threading.Thread(target=self._camera_watchdog_loop, daemon=True)
-        self.camera_watchdog_thread.start()
-        self._log_app_event("INFO", "Camera watchdog thread started")
+        if self.camera_watch_enabled:
+            self.camera_watchdog_start_ts = time.time()
+            self.camera_watchdog_stop.clear()
+            self.camera_watchdog_thread = threading.Thread(target=self._camera_watchdog_loop, daemon=True)
+            self.camera_watchdog_thread.start()
+            self._log_app_event("INFO", "Camera watchdog thread started")
         self.collection_thread = threading.Thread(target=self._collection_loop, daemon=True)
         self.collection_thread.start()
         self._log_app_event("INFO", "Collection loop thread started")

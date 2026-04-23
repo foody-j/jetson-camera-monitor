@@ -14,6 +14,7 @@
   "camera_watch_interval_sec": 1.0,
   "camera_stall_sec": 3,
   "camera_stale_log_sec": 5,
+  "camera_watch_enabled": false,
   "gmsl_reinit_on_recover": true,
   "gmsl_reinit_after_failures": 2,
   "gmsl_reinit_cooldown_sec": 20,
