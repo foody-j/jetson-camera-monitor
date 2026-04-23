@@ -3443,6 +3443,7 @@ class Jetson2Web:
         result_file = os.path.join(os.path.dirname(os.path.abspath(SCRIPT_DIR)), "vibration_result.json")
         self.vibration_abnormal_streak = 0
         self._cancel_vibration_forced_normal_timer()
+        self._ensure_vibration_live_plot()
         self._set_vibration_status("MEASURING", "MEASURING")
         self._log_ops_event(
             "vibration_check_started",

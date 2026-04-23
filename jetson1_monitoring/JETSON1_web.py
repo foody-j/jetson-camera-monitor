@@ -1765,6 +1765,7 @@ class Jetson1Web:
         delay = max(0.1, float(self.vibration_force_normal_delay_sec))
         result_file = os.path.join(REPO_ROOT, "vibration_result.json")
         self._cancel_vibration_forced_normal_timer()
+        self._ensure_vibration_live_plot()
         self._set_vibration_status("MEASURING", "MEASURING")
         self._log_ops_event(
             "vibration_check_started",
