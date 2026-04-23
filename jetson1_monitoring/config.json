@@ -114,6 +114,8 @@
   "vibration_force_normal_on_robot_request": true,
   "_comment_vibration_force_normal_delay_sec": "강제 NORMAL일 때 MEASURING 유지 시간(초)",
   "vibration_force_normal_delay_sec": 10.0,
+  "_comment_vibration_plot_close_delay_sec": "진동 체크 완료 후 그래프 창 유지 시간(초)",
+  "vibration_plot_close_delay_sec": 10.0,
   "_comment_night_review": "야간 감지 사진 리뷰 설정",
   "night_review_enabled": true,
   "_comment_night_review_time": "리뷰 시작 시간 (HH:MM 형식) - 보통 아침에 확인",

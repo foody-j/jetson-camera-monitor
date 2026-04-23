@@ -202,6 +202,8 @@
   "vibration_force_normal_on_robot_request": true,
   "// vibration_force_normal_delay_sec: 강제 NORMAL일 때 MEASURING 유지 시간(초)": "",
   "vibration_force_normal_delay_sec": 10.0,
+  "// vibration_plot_close_delay_sec: 진동 체크 완료 후 그래프 창 유지 시간(초)": "",
+  "vibration_plot_close_delay_sec": 10.0,
   "vibration_abnormal_min_alerts": 1,
   "vibration_abnormal_confirm_runs": 1,
   "// AI Mode": "",

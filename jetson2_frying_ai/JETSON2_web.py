@@ -1542,12 +1542,16 @@ class Jetson2Web:
         self.vibration_force_normal_delay_sec = float(
             config.get("vibration_force_normal_delay_sec", 3.0)
         )
+        self.vibration_plot_close_delay_sec = float(
+            config.get("vibration_plot_close_delay_sec", 10.0)
+        )
         self.last_vibration_check_time = 0.0
         self.vibration_abnormal_hold_sec = float(config.get("vibration_abnormal_hold_sec", 5.0))
         self.vibration_abnormal_min_alerts = int(config.get("vibration_abnormal_min_alerts", 2))
         self.vibration_abnormal_confirm_runs = int(config.get("vibration_abnormal_confirm_runs", 2))
         self.vibration_abnormal_timer = None
         self.vibration_forced_normal_timer = None
+        self.vibration_plot_close_timer = None
         self.vibration_abnormal_streak = 0
         self._last_robot_process_type = {"0": None, "1": None}
         self._last_robot_recipe = {"0": None, "1": None}
@@ -3025,7 +3029,7 @@ class Jetson2Web:
             culprit_details=culprit_details if isinstance(culprit_details, list) else [],
             result_file=self.last_vibration_result.get("event_dir", ""),
         )
-        self._close_vibration_plot()
+        self._schedule_vibration_plot_close()
 
     def _open_vibration_plot(self, plot_path: str, reason: str, *, snapshot_json: Optional[str] = None, event_dir: Optional[str] = None) -> None:
         target_exists = False
@@ -3119,6 +3123,13 @@ class Jetson2Web:
         self.vibration_live_plot_stop_event = None
 
     def _close_vibration_plot(self) -> None:
+        close_timer = getattr(self, "vibration_plot_close_timer", None)
+        if close_timer is not None:
+            try:
+                close_timer.cancel()
+            except Exception:
+                pass
+            self.vibration_plot_close_timer = None
         self._stop_vibration_live_plot_feed()
         viewer_process = getattr(self, "vibration_plot_process", None)
         if viewer_process is not None and viewer_process.poll() is None:
@@ -3131,6 +3142,23 @@ class Jetson2Web:
                 except Exception:
                     pass
         self.vibration_plot_process = None
+
+    def _schedule_vibration_plot_close(self) -> None:
+        close_timer = getattr(self, "vibration_plot_close_timer", None)
+        if close_timer is not None:
+            try:
+                close_timer.cancel()
+            except Exception:
+                pass
+        delay = max(0.1, float(self.vibration_plot_close_delay_sec))
+
+        def _close_later():
+            self.vibration_plot_close_timer = None
+            self._close_vibration_plot()
+
+        self.vibration_plot_close_timer = threading.Timer(delay, _close_later)
+        self.vibration_plot_close_timer.daemon = True
+        self.vibration_plot_close_timer.start()
 
     def _ensure_vibration_live_plot(self) -> None:
         live_snapshot_path = os.path.join("/tmp", "vibration_live_jetson2.json")
