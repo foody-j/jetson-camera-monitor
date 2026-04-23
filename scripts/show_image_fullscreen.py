@@ -15,12 +15,22 @@ import numpy as np
 
 def _maximize(fig) -> None:
     manager = plt.get_current_fig_manager()
+    window = getattr(manager, "window", None)
+    if window is not None:
+        for fn_name in ("lift", "focus_force", "raise_"):
+            try:
+                getattr(window, fn_name)()
+            except Exception:
+                pass
+        for attr_name, value in (("-topmost", True), ("-topmost", False)):
+            try:
+                window.attributes(attr_name, value)
+            except Exception:
+                pass
     try:
         manager.full_screen_toggle()
-        return
     except Exception:
         pass
-    window = getattr(manager, "window", None)
     if window is None:
         return
     for fn_name, arg in (("state", "zoomed"), ("showMaximized", None), ("Maximize", None)):
