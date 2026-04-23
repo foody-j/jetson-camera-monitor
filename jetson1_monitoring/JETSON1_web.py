@@ -1282,7 +1282,6 @@ class Jetson1Web:
             return
         self.vibration_monitor = self._build_vibration_monitor()
         self.vibration_monitor.start()
-        self._ensure_vibration_live_plot()
 
     def _stop_vibration_monitor(self) -> None:
         if self.vibration_monitor is None:
