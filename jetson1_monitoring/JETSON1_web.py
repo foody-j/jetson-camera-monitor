@@ -1335,6 +1335,7 @@ class Jetson1Web:
             alerts_count=alert_count,
             result_file=self.last_vibration_result.get("event_dir", ""),
         )
+        self._close_vibration_plot()
 
     def _open_vibration_plot(self, plot_path: str, reason: str, *, snapshot_json: Optional[str] = None, event_dir: Optional[str] = None) -> None:
         target_exists = False
@@ -1426,6 +1427,20 @@ class Jetson1Web:
             thread.join(timeout=1.0)
         self.vibration_live_plot_thread = None
         self.vibration_live_plot_stop_event = None
+
+    def _close_vibration_plot(self) -> None:
+        self._stop_vibration_live_plot_feed()
+        viewer_process = getattr(self, "vibration_plot_process", None)
+        if viewer_process is not None and viewer_process.poll() is None:
+            try:
+                viewer_process.terminate()
+                viewer_process.wait(timeout=1.0)
+            except Exception:
+                try:
+                    viewer_process.kill()
+                except Exception:
+                    pass
+        self.vibration_plot_process = None
 
     def _ensure_vibration_live_plot(self) -> None:
         live_snapshot_path = os.path.join("/tmp", "vibration_live_jetson1.json")
