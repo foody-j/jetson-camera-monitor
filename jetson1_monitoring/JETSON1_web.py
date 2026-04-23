@@ -1181,7 +1181,15 @@ class Jetson1Web:
         # - 중복 실행은 start_vibration_check()의 쿨다운/락으로 방지
         trigger_requested = (seen_device and chk_vibration) or bool(vibration_request)
         if trigger_requested:
-            if self.config.get("vibration_test_mode", False):
+            if self.config.get("vibration_force_normal_on_robot_request", False):
+                self._set_vibration_status("NORMAL", "ROBOT_REQUEST_FORCE_NORMAL")
+                self._log_ops_event(
+                    "vibration_check_bypassed",
+                    reason="robot_request_force_normal",
+                    chk_vibration=chk_vibration,
+                    vibration_request=bool(vibration_request),
+                )
+            elif self.config.get("vibration_test_mode", False):
                 self._set_vibration_status("NORMAL", "TEST_MODE_NORMAL")
             else:
                 self.start_vibration_check()

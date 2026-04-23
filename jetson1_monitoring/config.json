@@ -110,6 +110,8 @@
   "preview_hide_delay": 999999,
   "_comment_vibration_test_mode": "진동센서 테스트 모드 (true=VibrationRequest 시 즉시 NORMAL 응답, false=실제 측정)",
   "vibration_test_mode": false,
+  "_comment_vibration_force_normal_on_robot_request": "로봇 진동 요청(ChkVibration/VibrationRequest) 수신 시 실제 측정 없이 항상 NORMAL 처리",
+  "vibration_force_normal_on_robot_request": true,
   "_comment_night_review": "야간 감지 사진 리뷰 설정",
   "night_review_enabled": true,
   "_comment_night_review_time": "리뷰 시작 시간 (HH:MM 형식) - 보통 아침에 확인",

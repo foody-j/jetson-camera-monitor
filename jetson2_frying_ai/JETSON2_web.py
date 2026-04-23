@@ -1629,6 +1629,9 @@ class Jetson2Web:
         self.target_probe_temp = float(config.get("target_probe_temp", 75.0))
         self.food_types = config.get("food_types", [])
         self.vibration_test_mode = bool(config.get("vibration_test_mode", False))
+        self.vibration_force_normal_on_robot_request = bool(
+            config.get("vibration_force_normal_on_robot_request", False)
+        )
         self.dynamic_camera_enabled = bool(config.get("dynamic_camera_enabled", False))
         self.overlay_enabled = bool(config.get("overlay_enabled", False))
         self.temps = {
@@ -2071,13 +2074,16 @@ class Jetson2Web:
         self._last_chk_vibration = chk_vibration if seen_device else self._last_chk_vibration
         self._last_vibration_request = bool(vibration_request)
 
-        if chk_rising:
-            if self.vibration_test_mode:
-                self._set_vibration_status("NORMAL", "TEST_MODE_NORMAL")
-            else:
-                self.start_vibration_check()
-        elif req_rising:
-            if self.vibration_test_mode:
+        if chk_rising or req_rising:
+            if self.vibration_force_normal_on_robot_request:
+                self._set_vibration_status("NORMAL", "ROBOT_REQUEST_FORCE_NORMAL")
+                self._log_ops_event(
+                    "vibration_check_bypassed",
+                    reason="robot_request_force_normal",
+                    chk_rising=chk_rising,
+                    req_rising=req_rising,
+                )
+            elif self.vibration_test_mode:
                 self._set_vibration_status("NORMAL", "TEST_MODE_NORMAL")
             else:
                 self.start_vibration_check()
