@@ -1767,7 +1767,6 @@ class Jetson1Web:
         result_file = os.path.join(REPO_ROOT, "vibration_result.json")
         self._cancel_vibration_forced_normal_timer()
         self._set_vibration_status("MEASURING", "MEASURING")
-        print(f"[진동] 강제 NORMAL 측정 시작: status=MEASURING, delay={delay:.1f}s")
         self._log_ops_event(
             "vibration_check_started",
             forced_normal=True,
