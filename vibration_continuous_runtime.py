@@ -2,6 +2,7 @@
 """Continuous vibration collector with event-window capture for Jetson web apps."""
 
 import csv
+import glob
 import json
 import logging
 import os
@@ -35,7 +36,7 @@ logging.getLogger("pymodbus.logging").setLevel(logging.ERROR)
 PymodbusLog.setLevel(logging.ERROR)
 
 
-DEFAULT_VIB_PORT_BY_ID = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A9NF7ROC-if00-port0"
+DEFAULT_VIB_PORT_GLOB = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_*"
 PARITY = "N"
 STOPBITS = 1
 BYTESIZE = 8
@@ -61,6 +62,13 @@ READ_BLOCKS = {
 }
 REG_UNLOCK_ADDR = 0x0069
 REG_SAVE = 0x00
+
+
+def _resolve_default_vibration_port() -> str:
+    candidates = sorted(glob.glob(DEFAULT_VIB_PORT_GLOB))
+    if candidates:
+        return candidates[0]
+    return "/dev/ttyUSB0"
 
 
 class ContinuousVibrationMonitor:
@@ -92,10 +100,7 @@ class ContinuousVibrationMonitor:
         self.event_root_dir = event_root_dir or os.path.join(home_dir, "data", "vibration_events")
         os.makedirs(self.event_root_dir, exist_ok=True)
 
-        self.port = os.getenv(
-            "VIB_PORT",
-            DEFAULT_VIB_PORT_BY_ID if os.path.exists(DEFAULT_VIB_PORT_BY_ID) else "/dev/ttyUSB0",
-        )
+        self.port = os.getenv("VIB_PORT", _resolve_default_vibration_port())
         self.baud = int(os.getenv("VIB_BAUD", "115200"))
         self.sample_rate_hint_per_unit = POLL_HZ_TOTAL / max(1, len(self.unit_ids))
         self.maxlen = max(200, int(self.buffer_sec * self.sample_rate_hint_per_unit))
